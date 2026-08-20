@@ -1,6 +1,6 @@
 # 自动同步上游仓库（ZTMYO/PokeIdle）到当前 fork
 # 每 30 分钟检查一次，也支持手动触发
-# 同步成功后会自动触发 Pages 部署 workflow
+# 同步成功后显式触发 Pages 部署 workflow
 
 name: Sync Fork with Upstream
 
@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # 需要用来触发部署 workflow
 
 jobs:
   sync:
@@ -33,10 +34,31 @@ jobs:
           git remote add upstream https://github.com/ZTMYO/PokeIdle.git
           git fetch upstream
 
+      # 判断上游是否有 fork 还没有的新提交
+      - name: Check upstream for new commits
+        id: check
+        run: |
+          if git merge-base --is-ancestor upstream/main main; then
+            echo "sync_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "sync_needed=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Merge upstream main
+        if: steps.check.outputs.sync_needed == 'true'
         run: |
           git checkout main
           git merge upstream/main --no-edit
 
       - name: Push to fork
+        if: steps.check.outputs.sync_needed == 'true'
         run: git push origin main
+
+      # 关键：GITHUB_TOKEN 的 push 不会触发其他 workflow，
+      # 所以必须显式触发部署 workflow（workflow_dispatch 是例外，会被执行）
+      - name: Trigger Pages deployment
+        if: steps.check.outputs.sync_needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run "Deploy to GitHub Pages" --ref main
