@@ -56,9 +56,11 @@ jobs:
 
       # 关键：GITHUB_TOKEN 的 push 不会触发其他 workflow，
       # 所以必须显式触发部署 workflow（workflow_dispatch 是例外，会被执行）
+      # 注意：用文件名 deploy-pages.yml 而不是 workflow 名称，
+      #       gh 按带空格的中文/英文名称匹配经常找不到
       - name: Trigger Pages deployment
         if: steps.check.outputs.sync_needed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh workflow run "Deploy to GitHub Pages" --ref main
+          gh workflow run deploy-pages.yml --ref main
