@@ -737,12 +737,14 @@ export function showSettingsView() {
   showView('settingsView');
 }
 
-// 捕捉条件表格：四行四类遇敌 × 三态策略（普通 / 普通闪 / 神兽 / 神兽闪）
+// 捕捉条件表格：遇敌类型 × 三态策略（普通 / 普通闪 / 神兽 / 神兽闪 / 可悬赏）
+// 可悬赏行优先级最高：遭遇目标是今日已解锁悬赏宝可梦时按该行策略执行
 const CF_ROWS = [
   { key: 'normal', label: '普通' },
   { key: 'normalShiny', label: '普通闪' },
   { key: 'legend', label: '神兽' },
   { key: 'legendShiny', label: '神兽闪' },
+  { key: 'bounty', label: '可悬赏' },
 ];
 const CF_ACTIONS = [
   { v: 'catch', t: '捕捉' },
@@ -770,15 +772,15 @@ export function renderSettings(container, s) {
   const musicEnabled = s.musicEnabled !== false;
   const sfxEnabled = s.sfxEnabled !== false;
   const battleMusic = s.battleMusic !== false;
-  // 捕捉条件表格：四行（普通/普通闪/神兽/神兽闪），策略列选中即换底色
+  // 捕捉条件表格：各遇敌类型行，策略列选中即换底色
   const cfRow = key => (cf.rows && cf.rows[key]) || { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false };
   const cfTbody = CF_ROWS.map(({ key, label }) => {
     const r = cfRow(key);
     const actCells = CF_ACTIONS.map(a => `
       <td class="cf-cell act ${r.action === a.v ? 'on' : ''}" data-row="${key}" data-act="${a.v}">${a.t}</td>`).join('');
     const dim = r.action === 'catch' ? '' : ' dim'; // 非捕捉行：等级/未捕获不生效，弱化显示
-    // 仅「捕捉」行显示等级输入框，其余行占位
-    const lvCell = r.action === 'catch' ? `
+    // 仅「捕捉」行显示等级输入框，其余行占位；可悬赏行不支持等级筛选，恒为占位
+    const lvCell = (r.action === 'catch' && key !== 'bounty') ? `
       <td class="cf-cell lv">
         <input type="text" class="filter-lv-input cf-lv-input" data-row="${key}" data-lv="min" inputmode="numeric" autocomplete="off" maxlength="2" value="${r.levelMin || 1}" />
         <input type="text" class="filter-lv-input cf-lv-input" data-row="${key}" data-lv="max" inputmode="numeric" autocomplete="off" maxlength="2" value="${r.levelMax || 20}" />
@@ -854,6 +856,7 @@ export function renderSettings(container, s) {
             <div class="toggle-knob"></div>
           </div>
         </div>
+        <div class="cf-hint" style="padding:0 4px 4px;">遇敌后 30 秒未处理宝可梦会自动逃跑，防止挂机进度卡住</div>
       </div>
 
       <div class="settings-group">
@@ -1159,7 +1162,7 @@ export function renderSettings(container, s) {
       });
     });
   });
-  // 捕捉条件：恢复默认（四行全部复位为 捕捉 / 等级 1~20 / 不勾选未捕获）
+  // 捕捉条件：恢复默认（全部行复位为 捕捉 / 等级 1~20 / 不勾选未捕获）
   container.querySelector('#cfReset')?.addEventListener('click', () => {
     const rows = gameData.settings.catchFilter?.rows;
     if (!rows) return;
@@ -1244,8 +1247,8 @@ function ensureSettings() {
       },
     };
   }
-  // 四行字段兜底 + 等级收敛
-  for (const k of ['normal', 'normalShiny', 'legend', 'legendShiny']) {
+  // 各行字段兜底 + 等级收敛
+  for (const k of ['normal', 'normalShiny', 'legend', 'legendShiny', 'bounty']) {
     const r = gameData.settings.catchFilter.rows[k] = gameData.settings.catchFilter.rows[k] || { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false };
     if (!['catch', 'stop', 'flee'].includes(r.action)) r.action = 'catch';
     r.levelMin = Math.max(0, Math.min(20, Number(r.levelMin) || 0));
@@ -1690,7 +1693,11 @@ const TUTORIAL_SECTIONS = [
       + `<p>战胜后经验只分给<b>上过场且存活</b>的宝可梦，并按<b>等级差</b>结算：NPC 等级跟随你的队伍生成，基本都是<b>同级或低打高</b>，经验倍率最高 <b>3 倍</b>。</p>`
       + `<p>战胜后还有概率掉落<b>经验糖果</b>：普通 <b>${EXP_CANDY_DROP.novice * 100}</b>%、精英 <b>${EXP_CANDY_DROP.veteran * 100}</b>%、冠军 <b>${EXP_CANDY_DROP.champion * 100}</b>%（详见「<b>经验糖果</b>」章节）。</p>`
       + `<p>挑战失败可<b>再战一次</b>，随时都能重复挑战。</p>`
-      + `<p>右键点击底部文字区域可查看实时<b>对战记录</b>。</p>`,
+      + `<p>右键点击底部文字区域可查看实时<b>对战记录</b>。</p>`
+      + `<p><b>伤害计算</b>（NPC 对战）：</p>`
+      + `<p>伤害 = ⌊( 2×等级÷5 + 2 ) × 招式威力 × 攻击 ÷ 防御 ÷ 50 + 2 ⌋ × 本系 × 克制 × 随机(0.85~1.00)</p>`
+      + `<p><b>本系</b>：招式属性与自身属性相同 ×1.5，否则 ×1；<b>克制</b>按标准属性克制表（效果绝佳 ×2、收效甚微 ×0.5、无效 ×0，双属性连乘）；<b>攻击/防御</b>按招式类别取物攻/物防或特攻/特防，为受等级、个体值、性格影响的面板能力值。</p>`
+      + `<p>实际伤害最终保底 <b>1</b> 点。</p>`,
   },
   {
     title: '经验糖果',
