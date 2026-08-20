@@ -1,0 +1,42 @@
+# 自动同步上游仓库（ZTMYO/PokeIdle）到当前 fork
+# 每 30 分钟检查一次，也支持手动触发
+# 同步成功后会自动触发 Pages 部署 workflow
+
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    # 每 30 分钟运行一次（分钟 0 和 30，每小时，每天）
+    - cron: '0,30 * * * *'
+  workflow_dispatch: # 允许在 Actions 页面手动点运行
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote and fetch
+        run: |
+          git remote add upstream https://github.com/ZTMYO/PokeIdle.git
+          git fetch upstream
+
+      - name: Merge upstream main
+        run: |
+          git checkout main
+          git merge upstream/main --no-edit
+
+      - name: Push to fork
+        run: git push origin main
