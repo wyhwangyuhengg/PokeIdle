@@ -6,8 +6,8 @@ name: Sync Fork with Upstream
 
 on:
   schedule:
-    # 每 30 分钟运行一次（分钟 0 和 30，每小时，每天）
-    - cron: '0,30 * * * *'
+    # 每 小时运行一次（分钟 0 和 30，每小时，每天）
+    - cron: '0 * * * *'
   workflow_dispatch: # 允许在 Actions 页面手动点运行
 
 permissions:
