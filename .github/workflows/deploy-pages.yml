@@ -1,0 +1,42 @@
+# ============================================================
+# 口袋挂机 · 部署到 GitHub Pages
+# 用法：放到仓库根目录 .github/workflows/deploy-pages.yml
+# 触发：push 到 main 分支后自动构建发布
+# 说明：游戏本体 src/ 为纯静态资源，无需任何构建步骤，
+#       直接把 src/ 目录作为站点内容上传发布。
+# ============================================================
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # src/ 即站点根目录（游戏入口 index.html 位于其中）
+      - name: Upload static site (src/)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: src
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
