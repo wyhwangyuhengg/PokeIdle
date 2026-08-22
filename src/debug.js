@@ -18,7 +18,7 @@ import {
 import { REGION_CYCLE } from './config.js';
 import { $, updateBackpack, updateStats, renderIncubatorView, updateIncubatorBadge } from './ui.js';
 import { refreshBerryView } from './berry.js';
-import { showGpsView, teleportToTwist } from './gps.js';
+import { showGpsView } from './gps.js';
 import { forceRefreshMassOutbreak, forceRefreshTwist } from './events.js';
 import { setDebugNextEncounter } from './battle.js';
 import { isBattleActive, renderBattleList } from './battle-view.js';
@@ -169,7 +169,7 @@ window.__nextEncounter = (idx, shiny = false) => {
   console.log(`__nextEncounter: 下次遇敌已指定为 ${poke ? poke.name : '#' + idx}${shiny ? '（闪光）' : ''}，用后即焚`);
 };
 
-// 一键刷新：对战/交换/大量出没/时空扭曲；时空扭曲存在时沿用原传送语义，并重置各自倒计时；页面正打开则同步重绘
+// 一键刷新：对战/交换/大量出没/时空扭曲（只重置生成与倒计时，不改变当前位置）
 window.__refreshAll = () => {
   refreshNpcs();
   refreshTrades();
@@ -178,12 +178,7 @@ window.__refreshAll = () => {
   if ($('gpsView')?.style.display === 'flex') showGpsView();
   const mo = gameData.massOutbreak;
   const tw = gameData.twist;
-  if (tw) {
-    teleportToTwist();
-    console.log(`对战、交换、大量出没、时空扭曲已刷新：大量出没剩余 ${mo ? mo.remain : 0} 只，时空扭曲剩余 ${tw.remain} 只（已传送）`);
-  } else {
-    console.warn('对战、交换、大量出没、时空扭曲已刷新；时空扭曲生成失败');
-  }
+  console.log(`对战、交换已刷新；大量出没剩余 ${mo ? mo.remain : 0} 只，时空扭曲剩余 ${tw ? tw.remain : 0} 只（位置不变）`);
   if ($('battleView')?.style.display !== 'none' && !isBattleActive()) renderBattleList();
   if ($('tradeView')?.style.display !== 'none') renderTrade();
 };
