@@ -36399,6 +36399,46 @@
         "form": "火炎狮-雌性"
     },
     {
+        "index": "0668-2",
+        "name": "火炎狮",
+        "name_en": "Pyroar",
+        "image": "pokemon-data/images/0668-2-超级火炎狮.png",
+        "icon": "pokemon-data/icon/0668-2-超级火炎狮.png",
+        "types": [
+            "火",
+            "一般"
+        ],
+        "pinyin": "HuoYanShi",
+        "pinyinInitials": "HYS",
+        "catchRate": 0.44,
+        "genus": "王者宝可梦",
+        "description": "雄性平时总是拖拖拉拉的，但如果有强敌来袭，就会不顾自身，保护伙伴。",
+        "height": 15,
+        "weight": 815,
+        "stats": [
+            86,
+            88,
+            92,
+            129,
+            86,
+            126
+        ],
+        "rarity": 0.6609,
+        "legend": false,
+        "region": "卡洛斯",
+        "foods": [
+            4,
+            5,
+            9
+        ],
+        "genderRate": 7,
+        "eggGroup": [
+            "陆上群"
+        ],
+        "noEggGroup": false,
+        "form": "超级火炎狮"
+    },
+    {
         "index": "0669",
         "name": "花蓓蓓",
         "name_en": "Flabébé",
@@ -37703,6 +37743,45 @@
         ],
         "noEggGroup": false,
         "form": "超能妙喵-雌性"
+    },
+    {
+        "index": "0678-2",
+        "name": "超能妙喵",
+        "name_en": "Meowstic",
+        "image": "pokemon-data/images/0678-2-超级超能妙喵.png",
+        "icon": "pokemon-data/icon/0678-2-超级超能妙喵.png",
+        "types": [
+            "超能"
+        ],
+        "pinyin": "ChaoNengMiaoMiao",
+        "pinyinInitials": "CNMM",
+        "catchRate": 0.48,
+        "genus": "抑制宝可梦",
+        "description": "会从耳朵内侧眼珠花纹的地方 释放出精神力量，但平时 会将那种力量隐藏起来。",
+        "height": 6,
+        "weight": 85,
+        "stats": [
+            74,
+            48,
+            76,
+            143,
+            101,
+            124
+        ],
+        "rarity": 0.6091,
+        "legend": false,
+        "region": "卡洛斯",
+        "foods": [
+            0,
+            9,
+            10
+        ],
+        "genderRate": 0,
+        "eggGroup": [
+            "陆上群"
+        ],
+        "noEggGroup": false,
+        "form": "超级超能妙喵"
     },
     {
         "index": "0679",
