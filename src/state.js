@@ -1,5 +1,5 @@
 // ===== 游戏状态 + 存档管理 =====
-import { REGION_CYCLE, HATCH_DIST_MIN, HATCH_DIST_MAX, HATCH_DIST_SIGMA, ROAD_SPEED_WALK, START_CANDY, BIKE_RESTORE_MAX_GAP_MS, WILD_LEVEL_MAX, DISPATCH_FREE_SLOTS } from './config.js';
+import { REGION_CYCLE, HATCH_DIST_MIN, HATCH_DIST_MAX, HATCH_DIST_SIGMA, START_CANDY, BIKE_RESTORE_MAX_GAP_MS, WILD_LEVEL_MAX, DISPATCH_FREE_SLOTS } from './config.js';
 
 // ---------- 游戏数据 ----------
 export let allPokemon = [];
@@ -47,7 +47,6 @@ export let qteState = null;           // 树果混合 QTE 进行中状态快照�
 
 // UI 状态
 export let _catchConfirmStep = false;
-export let _prevView = 'idleView';
 export let _pokedexInLogView = false;
 export let _pokedexSortBy = null; // null=默认（按图鉴编号 index 升序）
 export let _pokedexSortDir = 1;
@@ -87,7 +86,6 @@ export function setCurrentIsShiny(s) { currentIsShiny = s; }
 export function setEncounterBallsUsed(n) { encounterBallsUsed = n; }
 export function setCurrentEncounterBalls(b) { currentEncounterBalls = b; }
 export function setGameTick(n) { gameTick = n; }
-export function setPrevView(v) { _prevView = v; }
 
 // 顶层页面导航栈：栈底为挂机页（不可弹出）。进入手机主页/各 App 页压栈，
 // apptitle 返回弹栈回上一级，实现逐级返回；
@@ -197,7 +195,6 @@ export function defaultGpsState() {
     units: 0,                       // 当前路段距离（单位）
     totalPx: 0,                     // 当前路段总像素
     remainPx: 0,                    // 当前路段剩余像素
-    pxPerSec: ROAD_SPEED_WALK * 60, // 最近一次移动速度（px/秒）
     position: null,                 // 显式位置快照：存档里清楚写明当前在地区还是在道路上
     massTarget: null,               // 导航目标为大量出没事件点：{ edge:[a,b], t }；null=无
     massArrived: false,             // 是否已到达大量出没事件点（导航在该点停止后才触发大量出没）
@@ -407,15 +404,38 @@ export function addIncubatorLog({ species, gender, shiny = false }) {
 }
 
 // ---------- 存档保存 ----------
+// 批量结算期间挂起落盘：每场都写会拖慢补算，结束统一保存
+let _saveSuspended = false;
+export function setSaveSuspended(v) { _saveSuspended = !!v; }
+
+// 生效中的增益随主存档存一份：会话存档只在 beforeunload 写，安卓强杀不落盘，光靠它会白丢一瓶甜甜蜜。
+// left = 生效中剩余毫秒，paused = 遭遇中挂起的余量
+function syncBuffRecord() {
+  const rec = {};
+  if (honeyBuffActive) {
+    if (honeyCountdownEnd > 0) rec.honey = { left: Math.max(0, honeyCountdownEnd - Date.now()) };
+    else if (honeyPausedRemaining > 0) rec.honey = { paused: honeyPausedRemaining };
+  }
+  if (charmBuffActive) {
+    const count = _charmEncounterCount || 0;
+    if (charmCountdownEnd > 0) rec.charm = { left: Math.max(0, charmCountdownEnd - Date.now()), count };
+    else if (charmPausedRemaining > 0) rec.charm = { paused: charmPausedRemaining, count };
+  }
+  gameData.buffs = (rec.honey || rec.charm) ? rec : null;
+}
+
 export async function saveGame() {
   if (!gameData) return;
+  if (_saveSuspended) return;
   gameData.stats.lastSaveTime = Date.now();
+  syncBuffRecord();
   syncGpsPosition();
   const s = JSON.stringify(gameData);
   if (window.__TAURI__?.core?.invoke) {
     try { await window.__TAURI__.core.invoke('save_game_data', { data: s }); } catch (_) {}
   }
   try { localStorage.setItem('pokemon_idle_save', s); } catch (_) {}
+  try { await window.__POKEIDLE_MOBILE__?.writeSave(s); } catch (_) {}
 }
 
 // 当前遭遇的自定义文案（如钓鱼"上钩了"），写入会话状态以便刷新后沿用
@@ -504,7 +524,7 @@ export function addPlaySeconds(save, sec) {
 export function calcOffline(save) {
   const now = Date.now();
   const elapsed = Math.min((now - save.stats.lastSaveTime) / 1000, 86400);
-  if (elapsed <= 0) return 0;
+  if (!(elapsed > 0)) return 0; // 注意 NaN（旧档缺 lastSaveTime）：不能写成 elapsed <= 0，否则会把 NaN 统计进在线时长
   // 长时间离线（非刷新）不保留手动骑行状态：清除标记，重开后按走路结算
   if (elapsed * 1000 > BIKE_RESTORE_MAX_GAP_MS) {
     save.manualBike = false;
@@ -756,12 +776,6 @@ export function hasAnyBall() {
 export function rand(min, max) { return Math.random() * (max - min) + min; }
 export function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
 export function pad(n) { return String(n).padStart(2, '0'); }
-export function formatTime(sec) {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.floor(sec % 60);
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
-}
 // 大数值缩写：1000→1K、1234→1.2K、1000000→1M、1000000000→1B（小数位去掉多余的 .0）
 function shortNum(v) {
   const r = Math.round(v * 10) / 10;

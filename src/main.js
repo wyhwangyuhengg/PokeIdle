@@ -7,10 +7,6 @@ import {
   currentEncounterBalls, encounterBallsUsed,
   honeyBuffActive, charmBuffActive,
   honeyCountdownEnd, charmCountdownEnd,
-  honeyPausedRemaining, charmPausedRemaining,
-  honeyCountdownInterval, charmCountdownInterval,
-  honeyExpiryTimer, charmExpiryTimer,
-  _charmEncounterCount,
   _autoFleeTimer, _autoFleeBarInterval,
   _autoCatching,
   _catchConfirmStep, _pokedexInLogView, _idleMsgIdx,
@@ -18,9 +14,7 @@ import {
   setAllPokemon, setGameData, setPhase, setCurrentEncounter,
   setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls,
   setGameTick, pushNav, popNav, resetNav, setLastRegionId,
-  setHoneyBuffActive, setHoneyCountdownEnd, setCharmBuffActive, setCharmCountdownEnd,
-  setHoneyPausedRemaining, setCharmPausedRemaining,
-  setCharmEncounterCount, setIdleMsgIdx, setCatchConfirmStep,
+  setIdleMsgIdx, setCatchConfirmStep,
   setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState,
   getDefaultSave, saveGame, getPokemonByIndex, ensureGpsState, defaultGpsState,
   restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, addRosterEntry, getLastObtainedEntryId,
@@ -32,16 +26,16 @@ import { computeObtainScore } from './scoring.js';
 import { massTick, ensureMassInit as ensureMassInitEvents, forceRefreshMassOutbreak, twistTick, ensureTwistInit, forceRefreshTwist } from './events.js';
 import {
   $, showView, updateTextBox, hideTextBox, showConfirmBar,
-  isOnGameView, applyCharSprites, updateBackpack, updateStats, setIdleCharacter,
+  isIdleStageVisible, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyCharSprites, updateBackpack, updateStats, setIdleCharacter,
   renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip,
   isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView,
 } from './ui.js';
 import { spawnItemDrop, activateHoney, activateShinyCharm,
-  startHoneyCountdown, startCharmCountdown, clearHoneyCountdown, clearCharmCountdown,
+  restoreHoneyRecord, restoreCharmRecord,
   doCandyExchange, grantItem, cancelItemDrop, rollCandyMult } from './items.js';
 import { syncBlockVisual, startBlockCountdown, clearBlockCountdown, showMixerView } from './mixer.js';
 import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle,
-  tryEncounter, pauseAutoFleeTimer, autoCatch, showEncounter, isLegendEncounter, setDebugNextEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground } from './battle.js';
+  tryEncounter, pauseAutoFleeTimer, autoCatch, showEncounter, isLegendEncounter, setDebugNextEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, syncBattleMusic } from './battle.js';
 import { startIdleRotation, buildIdleMessages } from './messages.js';
 import { tryStartFishing, onRoadChanged, getFishingGuarantee, isFishingPending } from './fishing.js';
 import { helperTick, refreshBerryView, showBerryView, catchUpHelper } from './berry.js';
@@ -64,8 +58,7 @@ import { backFromBattlePick, isBattlePicking, migrateTeams, isTeamEditing, close
 import { refreshNpcs } from './npcs.js';
 import { showCasinoView } from './casino.js';
 import * as road from './road.js';
-import * as particles from './particles.js';
-import { initBackgroundCatchup, startBackgroundCatchup, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs } from './background-catchup.js';
+import { initBackgroundCatchup, startBackgroundCatchup, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds } from './background-catchup.js';
 
 let ROAD_PRESETS = null;
 let ROAD_LAND = [];   // 普通陆地路段池（无垂钓点、非自行车道）
@@ -209,6 +202,7 @@ function goBack() {
   // 手机页面是导航的"安全出口"：无论之前从哪进来、栈里压了什么，在手机页点返回一律回挂机页
   if ($('phoneView')?.style.display === 'flex') {
     resetNav();
+    closeAppArea(); // 手游双屏：下半屏回到手机首页
     showView('idleView');
     return;
   }
@@ -279,6 +273,11 @@ function goBack() {
     return;
   }
   const target = popNav();
+  // 手游双屏：弹回舞台页时下半屏若还停在 app 页面，退回手机首页
+  if (isDualLayout() && isStageView(target) && getAppChannelView() !== 'phoneView') {
+    closeAppArea(); // 下半屏回手机首页：重建图标/红点，并把当前页记为手机首页（入口高亮）
+    return;
+  }
   if (target === 'battleView') {
     // 战斗替换选择中从 teamView 跳设置/商店返回：恢复替换选择页，不打断替换
     if (isBattlePicking()) {
@@ -315,7 +314,7 @@ function goBack() {
 function tryUseBike() {
   if (road.isManualBike()) {
     // 骑行中再点 = 手动下车：弹二次确认，下车不返还已消耗的自行车道具
-    showConfirmBar('确认下车？不返还自行车', () => { road.setManualBike(false); }, null, { host: $('screen') });
+    showConfirmBar('确认下车？不返还自行车', () => { road.setManualBike(false); }, null, { host: $('appScreen') });
     return;
   }
   if (gameData.gps.pendingBike) {
@@ -324,7 +323,7 @@ function tryUseBike() {
     return;
   }
   if ((gameData.items['bike'] || 0) <= 0) return;
-  cancelItemDrop();
+  cancelItemDrop({ collect: true }); // 上车前清掉面前的掉落演出，但这一件照常收下（不能白丢）
   startBikeTarget();
 }
 
@@ -417,7 +416,7 @@ async function onGameTick() {
   if (walked > 0) {
     gameData.stats.walkDistance = (gameData.stats.walkDistance || 0) + walked;
     // 导航由主角实际移动推进（跑步更快）
-    gpsAddDistance(walked, road.getSpeed() * 60);
+    gpsAddDistance(walked);
   }
 
   const region = getCurrentRegion();
@@ -439,6 +438,19 @@ async function onGameTick() {
   // （派遣页内 startTimer 也会每秒推进，此处覆盖派遣页未打开时的离线完成检测）
   processDispatch();
 
+  // 日志页实时追加：放在挂机分支之前，遇敌/战斗期间主循环提前返回时也要刷
+  if ($('systemLogView')?.style.display === 'flex') {
+    const logs = gameData.systemLogs || [];
+    const ts = logs.length ? logs[logs.length - 1].time : -1;
+    if (ts !== _lastLogTs) {
+      _lastLogTs = ts;
+      const sv = $('systemLogView');
+      const st = sv ? sv.scrollTop : 0;
+      renderSystemLogs();
+      if (sv) sv.scrollTop = st;
+    }
+  }
+
   if (phase !== 'idle') { updateStats(); return; }
 
   // 浏览器后台挂机补算：后台/最小化期间按当前速度折算里程直接入账，不播放动画；掉落按
@@ -454,14 +466,16 @@ async function onGameTick() {
   let catchUpLog = null; // 补发汇总：后台挂机补算时打印控制台便于核对
   if (afkSec > 0) {
     catchUpLog = { afkSec: Math.round(afkSec), walk: 0, items: {} };
-    // 按实际滚动速率折算里程（takeDistance 实测值，高刷屏帧率>60 时速率更高，与前台推进一致）
-    const spd = road.getActualPxPerSec() || road.getSpeed() * 60;
+    // 按当前步速（px/秒）折算里程，与前台推进速率一致
+    const spd = road.getPxPerSec();
     const extraWalk = Math.floor(spd * afkSec);
     if (extraWalk > 0) {
       gameData.stats.walkDistance = (gameData.stats.walkDistance || 0) + extraWalk;
-      gpsAddDistance(extraWalk, spd);
+      gpsAddDistance(extraWalk);
       catchUpLog.walk = extraWalk;
     }
+    // 里程/掉落/帮手已入账：清掉待补的离线秒数记账
+    if (gameData.pendingOfflineSec) gameData.pendingOfflineSec = 0;
     saveGame(); // 补算入账立即落盘，避免依赖 30 秒周期存档
     // 树果帮手补算：后台 rAF 停摆期间帮手在线时长/劳作暂停，恢复时按前台节奏补齐
     const helper = catchUpHelper(afkSec);
@@ -470,9 +484,8 @@ async function onGameTick() {
     }
   }
 
-  // 遇敌调度心跳：空闲但调度计时器丢失时（如补播被 NPC 对战取消等异常路径）自动补排，
-  // 避免"玩完 NPC 对战后再也不遇敌"这类卡死；事件区/钓鱼/自行车内不预排，交给各自流程延后调度
-  if (!nextEncounterTimer && !isFishingPending() && !inMassZone() && !inTwistZone() && !road.isBike()) {
+  // 遇敌调度心跳：计时器丢失时补排；事件区/钓鱼/自行车/有待开战记录时不排
+  if (!nextEncounterTimer && !gameData.wildEncounter && !isFishingPending() && !inMassZone() && !inTwistZone() && !road.isBike()) {
     scheduleNextEncounter();
   }
 
@@ -511,6 +524,11 @@ async function onGameTick() {
   // 钓鱼：有垂钓点的路段随机停下钓鱼（钓鱼期间不生成道路道具；自行车道上不钓鱼不拾取，
   // 过渡到自行车道期间也停止生成，避免遗留道具在骑行开始后滑过；大量出没/时空扭曲事件路段内不钓鱼）
   if (!road.isBike() && !inMassZone() && !inTwistZone()) tryStartFishing();
+  // 恢复退出时冻结在路面上的那件道具，否则累积值已扣而道具消失
+  if (gameData.roadItem) {
+    const it = gameData.roadItem;
+    spawnItemDrop(it.key, { qty: it.qty, remaining: it.left });
+  }
   if (!_fishing && !road.isBike() && _pendingBike !== true) {
     for (const [item, rate] of Object.entries(ITEM_RATES)) {
       const key = `_f_${item}`;
@@ -604,18 +622,6 @@ async function onGameTick() {
     updateNurseryBadge();
     updatePhoneBadge();
   }
-  // 系统日志页开着：新日志实时追加（按最新日志时间戳判断，条数满 50 后"加一删一"条数不变也能感知）
-  if ($('systemLogView')?.style.display === 'flex') {
-    const logs = gameData.systemLogs || [];
-    const ts = logs.length ? logs[logs.length - 1].time : -1;
-    if (ts !== _lastLogTs) {
-      _lastLogTs = ts;
-      const sv = $('systemLogView');
-      const st = sv ? sv.scrollTop : 0;
-      renderSystemLogs();
-      if (sv) sv.scrollTop = st;
-    }
-  }
 }
 
 // ---------- 开场剧情音乐开关（顶栏按钮，仅开场显示） ----------
@@ -678,65 +684,90 @@ function setupShortcuts() {
 
 async function init() {
   try { await window.__TAURI__?.core?.invoke('mark_show'); } catch (_) {}
+  // 兜底：启动中任何一步抛错都不会让整页一直藏着（正常由 splash/开场剧情提前摘掉）
+  setTimeout(() => document.body.classList.remove('booting'), 6000);
 
-  // 浏览器端（非 Tauri）：console 基准 274×342，按窗口比例设置整体缩放，与 Tauri 端
-  //（Rust set_window_scale 用 JS 真实 dpr 计算 zoom，CSS 视口恒为 274×342）保持一致的画面。
-  // 必须缩放 <html> 而非 .console：局部 CSS zoom 会让 getBoundingClientRect() 与渲染坐标
-  // 不一致（Chromium 已知 bug），导致道路道具/遭遇贴图/丢球动画错位；html 级 zoom 等价
-  // 浏览器页面缩放。
+  // 布局缩放：经典模式按 console 基准 274×342 整体等比缩放，与 Tauri 端画面一致
+  //（Rust set_window_scale 用 JS 真实 dpr 计算 zoom，CSS 视口恒为 274×342）；
+  // 手游模式改为宽度固定 274、高度按屏幕比例拉长（详见 fitLayout）。
+  // 经典桌面模式必须缩放 <html> 而非 .console：局部 CSS zoom 会让 getBoundingClientRect()
+  // 与渲染坐标不一致（Chromium 已知 bug），导致道路道具/遭遇贴图/丢球动画错位
   const consoleEl = document.querySelector('.console');
-  if (consoleEl && !window.__TAURI__?.core?.invoke) {
-    document.body.classList.add('browser-mode');
-    // 移动端与桌面端浏览器对 CSS zoom 的 getBoundingClientRect 行为不一致：
-    // 桌面 Chromium 返回缩放后坐标（现有代码按此补偿），部分移动浏览器（尤其 iOS Safari）
-    // 返回未缩放坐标，导致基于 rect 差值定位的战斗贴图/道路道具/遭遇图标双重补偿错位。
-    const isMobile = /Android|iPhone|iPad|iPod|Mobile|mobile/i.test(navigator.userAgent);
-    if (isMobile) {
-      // 移动端改用 transform: scale：canvas 保持逻辑尺寸绘制、由 GPU 合成缩放，不额外增加
-      // 重绘开销（zoom 在移动端会强制整页按放大尺寸重绘，拖慢滚动）
-      let _scale = 1;
-      const fitConsole = () => {
-        const vw = window.visualViewport?.width || window.innerWidth;
-        const vh = window.visualViewport?.height || window.innerHeight;
-        _scale = Math.max(1, Math.min(vw / 274, vh / 342));
-        consoleEl.style.transform = `scale(${_scale})`;
-      };
-      fitConsole();
-      window.addEventListener('resize', fitConsole);
-      window.visualViewport?.addEventListener('resize', fitConsole);
+  const _isBrowser = !!consoleEl && !window.__TAURI__?.core?.invoke;
+  const _isMobileUA = /Android|iPhone|iPad|iPod|Mobile|mobile/i.test(navigator.userAgent);
+  let _layoutScale = 1; // 当前缩放倍率：布局重算与 rect 补偿共用
+  let _transformLayout = false; // 走 transform 缩放（手游模式/移动浏览器）时，逻辑坐标要再减去布局原点
+  // 机身逻辑高度下限：保证下屏 213 + 舞台 ≥200 放得下
+  const MIN_MOBILE_CONSOLE_H = 540;
+  // 桌面双屏模式的机身逻辑高度：经典 342 + 下屏 213 + 屏幕区间隙
+  const DUAL_CONSOLE_H = 561;
+  if (_isBrowser) document.body.classList.add('browser-mode');
 
-      // transform: scale 是纯视觉变换：getBoundingClientRect 返回缩放后（物理）坐标，
-      // 而 style.left/top 赋值是逻辑值（渲染时再 ×scale）。与桌面 zoom 分支的 /zoom 补偿
-      // 同理，这里对 console 内元素统一除以 scale 还原逻辑坐标，避免遭遇贴图/道路道具/
-      // 事件 icon 双重缩放错位（真机 UA 走本分支，F12 缩小窗口走 zoom 分支故两者表现不同）
-      const _origGetBRC = Element.prototype.getBoundingClientRect;
-      Element.prototype.getBoundingClientRect = function () {
-        const r = _origGetBRC.call(this);
-        if (_scale === 1 || !consoleEl.contains(this)) return r;
-        return new DOMRect(r.left / _scale, r.top / _scale, r.width / _scale, r.height / _scale);
-      };
+  // 缩放是纯视觉变换（zoom / transform）：getBoundingClientRect 返回缩放后坐标，而 style.left/top
+  // 赋值是逻辑值，这里把 console 内的 rect 统一除以缩放倍率还原逻辑坐标，
+  // 避免战斗贴图、道路道具、遭遇图标、随从等基于 rect 差值的定位双重缩放错位
+  const _origGetBRC = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function () {
+    const r = _origGetBRC.call(this);
+    if (_layoutScale === 1 || !consoleEl || !consoleEl.contains(this)) return r;
+    const w = r.width / _layoutScale, h = r.height / _layoutScale;
+    if (!_transformLayout) return new DOMRect(r.left / _layoutScale, r.top / _layoutScale, w, h);
+    // transform 以机身中心为原点：先把物理坐标还原到布局空间，再移回机身左上角坐标系
+    const cr = _origGetBRC.call(consoleEl);
+    const cx = cr.left + cr.width / 2, cy = cr.top + cr.height / 2;
+    const W = consoleEl.offsetWidth, H = consoleEl.offsetHeight;
+    return new DOMRect((r.left - cx) / _layoutScale + W / 2, (r.top - cy) / _layoutScale + H / 2, w, h);
+  };
+
+  // 布局缩放：经典与桌面双屏都整体等比缩放 .console（桌面 html 级 zoom / 移动端 transform），双屏基准更高；
+  // 手游模式（html.ui-mobile）宽度固定 274、高度按屏幕比例拉长，只缩放到铺满屏幕。
+  // 桌面端窗口尺寸由 Rust set_window_scale 按模式基准（经典 274×342 / 手游 274×540）设置。
+  // 切换界面风格后由 'ui-mode-changed' 事件重新调用
+  function fitLayout() {
+    if (!consoleEl) return;
+    if (isUiMobile()) {
+      // 缩放与逻辑高度同源，矮窗口整体缩小不压塌舞台
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const scale = Math.min(vw / 274, vh / MIN_MOBILE_CONSOLE_H) || 1;
+      // 居中由 body 的 flex 布局负责，这里只做缩放（缩放原点在 CSS 里设为机身中心）
+      consoleEl.style.marginLeft = '';
+      consoleEl.style.transform = `scale(${scale})`;
+      consoleEl.style.height = Math.max(Math.round(vh / scale), MIN_MOBILE_CONSOLE_H) + 'px';
+      document.documentElement.style.zoom = '';
+      _layoutScale = scale;
+      _transformLayout = true;
+      return;
+    }
+    const vw = window.visualViewport?.width || window.innerWidth;
+    const vh = window.visualViewport?.height || window.innerHeight;
+    const baseH = document.documentElement.classList.contains('ui-dual') ? DUAL_CONSOLE_H : 342;
+    consoleEl.style.transform = '';
+    consoleEl.style.height = '';
+    if (!_isBrowser) { _layoutScale = 1; _transformLayout = false; return; } // Tauri：窗口缩放由 Rust 负责，rect 保持逻辑值
+    if (_isMobileUA) {
+      // 移动端浏览器用 transform：canvas 保持逻辑尺寸绘制、由 GPU 合成缩放，不额外增加重绘开销
+      const scale = Math.max(1, Math.min(vw / 274, vh / baseH));
+      consoleEl.style.transform = `scale(${scale})`;
+      document.documentElement.style.zoom = '';
+      _layoutScale = scale;
+      _transformLayout = true;
     } else {
+      _transformLayout = false;
       // 宽屏取高为限（上下贴边），窄屏取宽为限（左右贴边）；窗口不足基准尺寸时保持 100%
-      const fitConsole = () => {
-        const scale = Math.max(1, Math.min(innerWidth / 274, innerHeight / 342));
-        document.documentElement.style.zoom = scale;
-      };
-      fitConsole();
-      window.addEventListener('resize', fitConsole);
-
-      // CSS zoom 是布局缩放：getBoundingClientRect 返回的是缩放后坐标，而 style.left/top 赋值
-      // 在渲染时还会被 zoom 再放大一次，导致战斗贴图/道具/遭遇 icon 双重缩放错位。Tauri 端
-      // 用 WebView2 页面缩放（Browser Zoom），getBoundingClientRect 始终返回逻辑 CSS 像素。
-      // 这里把返回值统一除以 zoom，还原成与 Tauri 端一致的行为（动画/特效坐标全部对齐）。
-      const _origGetBRC = Element.prototype.getBoundingClientRect;
-      Element.prototype.getBoundingClientRect = function () {
-        const r = _origGetBRC.call(this);
-        const z = parseFloat(document.documentElement.style.zoom) || 1;
-        if (z === 1) return r;
-        return new DOMRect(r.left / z, r.top / z, r.width / z, r.height / z);
-      };
+      const scale = Math.max(1, Math.min(innerWidth / 274, innerHeight / baseH));
+      document.documentElement.style.zoom = scale;
+      _layoutScale = scale;
     }
   }
+  fitLayout();
+  window.addEventListener('resize', fitLayout);
+  window.visualViewport?.addEventListener('resize', fitLayout);
+  // 设置页切换「手游模式」后：重新布局 + 道路重算画布尺寸（canvas 宽度随容器变化）
+  window.addEventListener('ui-mode-changed', () => {
+    fitLayout();
+    import('./road.js').then(m => m.refreshSize());
+  });
 
   // 系统托盘走路动画（异步加载，失败不影响主流程）
   import('./tray.js').then(m => m.startTrayAnimation()).catch(() => {});
@@ -758,6 +789,7 @@ async function init() {
     setAllPokemon(await resp.json());
   } catch (e) {
     console.error('加载数据失败');
+    document.body.classList.remove('booting');
     return;
   }
 
@@ -775,6 +807,21 @@ async function init() {
         if (parsed && parsed.items) candidates.push(parsed);
       }
     }
+    try {
+      const mobileRaw = await window.__POKEIDLE_MOBILE__?.readSave();
+      if (mobileRaw) {
+        const parsed = JSON.parse(mobileRaw);
+        if (parsed && parsed.items) candidates.push(parsed);
+      }
+    } catch (_) {}
+    // 移动端备份档：主档缺失/损坏时才可能胜出
+    try {
+      const backupRaw = await window.__POKEIDLE_MOBILE__?.readSaveBackup?.();
+      if (backupRaw) {
+        const parsed = JSON.parse(backupRaw);
+        if (parsed && parsed.items) candidates.push(parsed);
+      }
+    } catch (_) {}
     const local = localStorage.getItem('pokemon_idle_save');
     if (local) {
       const parsed = JSON.parse(local);
@@ -790,6 +837,12 @@ async function init() {
   applyWindowScale(gameData?.settings?.windowScale);
   // 应用夜间模式
   if (gameData.settings?.darkMode) document.documentElement.dataset.theme = 'dark';
+  // 界面风格：未设置时按平台取默认；手游的开场剧情仍按单屏演，剧情结束再切双屏
+  const targetUiMode = getUiMode();
+  const introWillPlay = gameData.introDone === false;
+  applyUiMode(introWillPlay && targetUiMode !== 'classic' ? 'classic' : targetUiMode);
+  // 手游双屏：下半屏默认显示手机首页
+  if (isDualLayout()) import('./phone.js').then(m => m.showPhoneHome());
   ensureGpsState(); // 初始化 GPS 状态（默认从丰缘出发）
   if (gameData.gps.roamEnabled && gameData.gps.destIdx == null) setRoamEnabled(true);
   if (!gameData.achievements) gameData.achievements = {}; // 旧存档补齐成就进度
@@ -835,8 +888,14 @@ async function init() {
     } catch (_) {}
   }
 
-  // 离线处理：仅推进 0 点刷新的内容（今日时长/告示牌），孵蛋、树果、交换广场暂停
-  if (calcOffline(gameData) > 0) await saveGame();
+  // 离线处理：推进 0 点刷新内容，孵蛋/树果/交换/训练仍是离线暂停。
+  // 离线秒数交给补发管线；累计值另存进存档，没结算就被杀进程下次开机仍会补上
+  const offlineSec = calcOffline(gameData);
+  if (offlineSec > 0) {
+    gameData.pendingOfflineSec = (gameData.pendingOfflineSec || 0) + offlineSec;
+    seedBgOfflineSeconds(gameData.pendingOfflineSec, !!gameData.manualBike);
+    await saveGame();
+  }
 
   // 加载道路预设数据
   try {
@@ -902,6 +961,16 @@ async function init() {
       if (btn) btn.style.display = 'none';
       const hint = document.getElementById('introMusicHint');
       if (hint) hint.style.display = 'none';
+      // 剧情演完切到存档里的界面风格：先释放开场收缩布局，再切模式并回手机首页
+      const sw = document.querySelector('.screen-wrapper');
+      if (sw) {
+        sw.classList.remove('boot-collapse');
+        sw.style.flex = '';
+        sw.style.height = '';
+        sw.style.transition = '';
+      }
+      applyUiMode(targetUiMode);
+      if (isDualLayout()) closeAppArea();
       // 底部背包/统计栏与顶部按钮的恢复由 startSplashDrop 统一处理（splash 显示后淡入，避免闪现）
       // 首次 splash（开场剧情结束后的首个开机动画）不静音：未白镇开场曲顺势延续
       saveGame().then(() => { beginGameplay(); startSplashDrop(null, false); });
@@ -941,71 +1010,9 @@ async function init() {
 
     // 恢复会话状态
     const sessionState = restoreSessionState();
+    const willEncounter = !!sessionState && sessionState.phase === 'encounter' && !!sessionState.encounter;
+    let sessionEncounterRestored = false;
     if (sessionState) {
-    const willEncounter = sessionState.phase === 'encounter' && sessionState.encounter;
-
-    // 恢复 Buff 状态（遇敌中不启动倒计时）
-    if (sessionState.honeyBuffActive) {
-      if (!willEncounter && sessionState.honeyRemaining > 0) {
-        setHoneyBuffActive(true);
-        setHoneyCountdownEnd(Date.now() + sessionState.honeyRemaining);
-        if ($('idleView').style.display !== 'none') {
-          $('idleText').textContent = '✦ 甜蜜蜜生效中 ✦';
-          setIdleMsgIdx(-1);
-          particles.stop();
-          particles.start('rgba(255,215,0,1)', 'circle', { sizeMult: 0.7, alphaMult: 0.6 });
-          startHoneyCountdown();
-        }
-      } else if (sessionState.honeyPausedRemaining > 0) {
-        setHoneyBuffActive(true);
-        setHoneyPausedRemaining(sessionState.honeyPausedRemaining);
-        particles.stop();
-        particles.start('rgba(255,215,0,1)', 'circle', { sizeMult: 0.7, alphaMult: 0.6 });
-        // 恢复视觉 UI（即使遇敌中，以便战后恢复）
-        $('idleText').textContent = '✦ 甜蜜蜜生效中 ✦';
-        setIdleMsgIdx(-1);
-        // 背包显示暂停的剩余秒数 + 遮罩
-        const slotH = document.querySelector('.bag-slot[data-item="sweet-honey"]');
-        if (slotH) slotH.classList.add('disabled');
-        const qtyEl = document.getElementById('bag-sweet-honey');
-        if (qtyEl) qtyEl.textContent = Math.ceil(sessionState.honeyPausedRemaining / 1000) + 's';
-      } else {
-        // 无效状态：buff 标记残留但无剩余时间 → 清除
-        setHoneyBuffActive(false);
-        clearHoneyCountdown();
-      }
-    }
-    if (sessionState.charmBuffActive) {
-      if (!willEncounter && sessionState.charmRemaining > 0) {
-        setCharmBuffActive(true);
-        setCharmCountdownEnd(Date.now() + sessionState.charmRemaining);
-        if ($('idleView').style.display !== 'none') {
-          $('idleText').textContent = '✦ 闪耀护符生效中 ✦';
-          setIdleMsgIdx(-1);
-          particles.stop();
-          particles.start('rgba(180,230,255,1)', 'star');
-          startCharmCountdown();
-        }
-      } else if (sessionState.charmPausedRemaining > 0) {
-        setCharmBuffActive(true);
-        setCharmPausedRemaining(sessionState.charmPausedRemaining);
-        particles.stop();
-        particles.start('rgba(180,230,255,1)', 'star');
-        $('idleText').textContent = '✦ 闪耀护符生效中 ✦';
-        setIdleMsgIdx(-1);
-        // 背包显示暂停的剩余秒数 + 遮罩
-        const slotC = document.querySelector('.bag-slot[data-item="shiny-charm"]');
-        if (slotC) slotC.classList.add('disabled');
-        const qtyEl = document.getElementById('bag-shiny-charm');
-        if (qtyEl) qtyEl.textContent = Math.ceil(sessionState.charmPausedRemaining / 1000) + 's';
-      } else {
-        // 无效状态：buff 标记残留但无剩余时间 → 清除
-        setCharmBuffActive(false);
-        clearCharmCountdown();
-      }
-    }
-    if (sessionState._charmEncounterCount) setCharmEncounterCount(sessionState._charmEncounterCount);
-
     // 恢复树果方块（混合器冷却）：按里程判定（主角再走满 BLOCK_DISTANCE 米失效），重新挂上里程轮询
     if (sessionState.blockBuffActive) {
       if (typeof sessionState.blockStartWalk === 'number') {
@@ -1015,7 +1022,7 @@ async function init() {
         setBlockQuality(sessionState.blockQuality);
         syncBlockVisual();
         startBlockCountdown();
-        if ($('idleView').style.display !== 'none') {
+        if (isIdleStageVisible()) {
           $('idleText').textContent = '✦ 树果方块已摆放在路旁 ✦';
           setIdleMsgIdx(-1);
         }
@@ -1035,6 +1042,15 @@ async function init() {
       _silentBikeRestore = true; // 恢复骑行非真实操作，不写"开始骑自行车"日志
       road.setManualBike(true);
     }
+
+    // 恢复生效中的增益：会话记录最新，其次主存档的耐久记录
+    const buffKeepPaused = willEncounter || !!gameData.wildEncounter;
+    restoreHoneyRecord(sessionState?.honeyBuffActive
+      ? { left: sessionState.honeyRemaining || 0, paused: sessionState.honeyPausedRemaining || 0 }
+      : gameData.buffs?.honey, buffKeepPaused);
+    restoreCharmRecord(sessionState?.charmBuffActive
+      ? { left: sessionState.charmRemaining || 0, paused: sessionState.charmPausedRemaining || 0, count: sessionState._charmEncounterCount || 0 }
+      : gameData.buffs?.charm, buffKeepPaused);
 
     // 恢复角色动画（走/跑取决于 buff 状态）
     setIdleCharacter('walk');
@@ -1056,10 +1072,15 @@ async function init() {
         setEncounterVariant(sessionState.encounter.variant || null);
         // 不跳过自动操作：恢复遭遇后，自动捕捉/佛系模式由 showEncounter 统一接管
         showEncounter(poke);
+        sessionEncounterRestored = true;
         // 启动即遭遇：splash 后 playRegion 被覆盖曲压住不弹歌曲卡，等这场遭遇结束再补弹
         setShowCardOnEncounterEnd(true);
       }
     }
+  }
+  // 主存档的待开战记录：按同一只继续，不给重摇机会
+  if (gameData.wildEncounter && !sessionEncounterRestored) {
+    import('./battle.js').then(m => m.restoreWildEncounter(gameData.wildEncounter));
   }
   // 孵化器 badge 初始同步（无 session 时也要同步，数据在 gameData 持久存档中）
   updateIncubatorBadge();
@@ -1129,28 +1150,29 @@ async function init() {
     }
   }
 
-  // 文字框箭头
-  const textBoxArrow = $('textBoxArrow');
-  if (textBoxArrow) {
-    textBoxArrow.addEventListener('click', () => {
-      // 开场剧情中：箭头推进台词
-      if (window.__introActive) { advanceIntro(); return; }
-      // 手动捕获（自动捕捉未实际接管，如闪光暂停转手动）→ 询问是否查看仓库详情
-      if (phase === 'caught' && !_autoCatching) {
-        $('textBoxArrow').style.display = 'none';
-        $('textBoxContent').textContent = '是否查看该宝可梦的详情？';
-        $('catchConfirmBtns').style.display = 'flex';
-      } else if (phase === 'eggResult') {
-        // 孵蛋成功（精简显示）→ 询问是否查看仓库详情
-        $('textBoxArrow').style.display = 'none';
-        $('textBoxContent').textContent = '是否查看该宝可梦的详情？';
-        $('catchConfirmBtns').style.display = 'flex';
-      } else {
-        setCatchConfirmStep(false);
-        goIdle();
+  // 文字框箭头推进：舞台框与下屏（app）框共用一套。孵蛋/孵蛋结果等 app 页面的文案发在下屏，
+  // 箭头也要能点，并且「查看/放弃」按钮得跟着提问的那个框走，不能留在上屏
+  const advanceTextBox = (host) => {
+    const box = $(host === 'app' ? 'appTextBox' : 'textBox');
+    const arrow = $(host === 'app' ? 'appTextBoxArrow' : 'textBoxArrow');
+    // 开场剧情中：箭头推进台词
+    if (window.__introActive) { advanceIntro(); return; }
+    // 手动捕获（自动捕捉未实际接管，如闪光暂停转手动）/ 孵蛋成功 → 询问是否查看仓库详情
+    if ((phase === 'caught' && !_autoCatching) || phase === 'eggResult') {
+      if (arrow) arrow.style.display = 'none';
+      updateTextBox('是否查看该宝可梦的详情？', false, host);
+      const btns = $('catchConfirmBtns');
+      if (btns) {
+        box?.appendChild(btns);
+        btns.style.display = 'flex';
       }
-    });
-  }
+      return;
+    }
+    setCatchConfirmStep(false);
+    goIdle();
+  };
+  $('textBoxArrow')?.addEventListener('click', () => advanceTextBox('stage'));
+  $('appTextBoxArrow')?.addEventListener('click', () => advanceTextBox('app'));
 
   // 捕捉/孵蛋确认（查看仓库个体详情，非图鉴）
   $('confirmYes')?.addEventListener('click', () => {
@@ -1168,10 +1190,12 @@ async function init() {
       });
       return;
     }
-    // 先跳详情页再收尾：showRosterView 切走游戏页后 isOnGameView() 为 false，
-    // 后续 finalizePendingCatch → goIdle 只清理战斗状态，不会切回挂机页，避免闪烁
+    // 先跳详情页再收尾：双屏下详情在下屏、上屏还停在遭遇页，只有显式 goIdle 才退得回去
     if (entryId) {
-      import('./roster.js').then(m => m.showRosterDetailById(entryId, 'idleView'));
+      import('./roster.js').then(m => {
+        m.showRosterDetailById(entryId, 'idleView');
+        import('./battle.js').then(b => b.finalizePendingCatch());
+      });
     } else {
       goIdle();
     }
@@ -1208,6 +1232,7 @@ async function init() {
       }
       if (btn.classList.contains('active')) {
         resetNav(); // 再次点击当前页图标：直接回挂机页并清空导航栈
+        closeAppArea(); // 手游双屏：下半屏同时回到手机首页
         showView('idleView');
       } else {
         open();
@@ -1253,6 +1278,12 @@ async function init() {
     goBack();
   };
   $('appTitle')?.addEventListener('click', handleAppTitleBack);
+  // 手游模式底部「返回」按钮：等价标题栏返回。
+  // 置灰态点击不响应，系统返回键不受影响
+  $('btnBack')?.addEventListener('click', (e) => {
+    if (e.currentTarget.classList.contains('inert')) return;
+    handleAppTitleBack();
+  });
   // 鼠标后侧键（后退键，button 3）返回：mousedown 先阻止浏览器历史导航的默认行为，
   // mouseup 时模拟点击 appTitle
   document.addEventListener('mousedown', e => { if (e.button === 3) e.preventDefault(); });
@@ -1293,6 +1324,10 @@ async function init() {
     document.addEventListener('mouseup', onUp);
   });
 
+  // 关闭二次确认（右上角叉 / 任务栏关闭共用，由 Rust 拦截后触发）
+  const openQuitDialog = () => $('quitDialog')?.classList.add('open');
+  const closeQuitDialog = () => $('quitDialog')?.classList.remove('open');
+
   // 窗口控制
   document.querySelector('.control-btn.minimize')?.addEventListener('click', async () => {
     try {
@@ -1303,28 +1338,42 @@ async function init() {
   });
   document.querySelector('.control-btn.close')?.addEventListener('click', async () => {
     // 触发窗口关闭流程：Rust 拦截 close-requested 后弹出二次确认，存档在确认框出现前统一保存
+    if (window.__POKEIDLE_MOBILE__) {
+      try { await saveGame(); } catch (_) {}
+      openQuitDialog();
+      return;
+    }
     try {
       const tw = window.__TAURI__?.window;
       if (tw?.getCurrentWindow) await tw.getCurrentWindow().close();
       else if (tw?.appWindow?.close) await tw.appWindow.close();
     } catch (_) {}
   });
-
-  // 关闭二次确认（右上角叉 / 任务栏关闭共用，由 Rust 拦截后触发）
-  const openQuitDialog = () => $('quitDialog')?.classList.add('open');
-  const closeQuitDialog = () => $('quitDialog')?.classList.remove('open');
   $('quitHide')?.addEventListener('click', async () => {
     closeQuitDialog();
     try { await window.__TAURI__.core.invoke('hide_to_tray'); } catch (_) {}
   });
   $('quitExit')?.addEventListener('click', async () => {
     closeQuitDialog();
+    if (window.__POKEIDLE_MOBILE__) {
+      try { await saveGame(); } catch (_) {}
+      window.__POKEIDLE_MOBILE__.exitApp();
+      return;
+    }
     try { await window.__TAURI__.core.invoke('force_close_window'); } catch (_) {}
   });
   $('quitClose')?.addEventListener('click', closeQuitDialog);
   // 点击空白遮罩处关闭确认框
   $('quitDialog')?.addEventListener('click', (e) => {
     if (e.target === $('quitDialog')) closeQuitDialog();
+  });
+
+  window.__POKEIDLE_MOBILE__?.attach({
+    saveNow: () => saveGame(),
+    back: () => {
+      if ($('appTitle')?.dataset.action === 'back') handleAppTitleBack();
+      else openQuitDialog();
+    },
   });
   if (window.__TAURI__?.event?.listen) {
     window.__TAURI__.event.listen('close-requested', async () => {
@@ -1355,7 +1404,10 @@ async function init() {
   // 1.5s 定时器触发，该定时器会被浏览器冻结导致画面卡住；切后台立即启动后台快速结算。
   // 记账/开关统一收敛在 background-catchup.js，此处只注入运行依赖
   initBackgroundCatchup({
-    isIdleRoadActive: () => phase === 'idle' && road.isActive(),
+    // 停摆补算的记账门槛：正常挂机或遭遇页；钓鱼/孵蛋/骑行等道路本就停摆的场合不记账
+    isIdleRoadActive: () => (phase === 'idle'
+      ? road.isActive()
+      : phase === 'encounter' || phase === 'caught' || phase === 'fled'),
     isBike: () => road.isBike(),
     buffRemaining: () => {
       let ms = 0;
@@ -1366,6 +1418,11 @@ async function init() {
     onHidden: () => settleEncounterForBackground(),
   });
   startBackgroundCatchup();
+
+  // 回前台：后台期间遭遇可能已结算完，校准战斗曲，避免残留的战斗曲与地区曲叠加播放
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) syncBattleMusic();
+  });
 }
 
 // 启动画面落位：旋转结束后道具依次飞向各自对应的背包槽位/糖果计数
@@ -1390,14 +1447,13 @@ function startSplashDrop(onDone, silent = true) {
   const candy = document.getElementById('statProgress');
   const autoStatus = document.getElementById('statAutoStatus');
   const timeEl = document.getElementById('statTime');
+  document.body.classList.remove('booting'); // 首帧藏起来的整页在这里放开（提前于早退分支，避免一直黑屏）
   if (!splash || !ring || items.length === 0) { onDone?.(); return; }
   if (silent) setSplashLocked(true);
   splash.style.display = 'flex';
-  // splash 期间背包顶部改回 border-top 上边框线：指示条隐藏，等落位动画结束再恢复
-  const bagBar = document.querySelector('.backpack-bar');
+  // splash 期间背包顶部只留一条线：指示条自己变形，盒子尺寸不变（藏起来会在动画结束时挤布局）
   const bagInd = $('bagPageIndicator');
-  if (bagBar) bagBar.classList.add('splash-border-top');
-  if (bagInd) bagInd.style.display = 'none';
+  if (bagInd) bagInd.classList.add('splash-line');
   // 启动画面期间禁用标题栏右侧按钮（图鉴/商店/统计/设置/最小化/关闭），动画结束后恢复
   const controls = document.querySelector('.window-controls');
   if (controls) controls.classList.add('controls-disabled');
@@ -1406,6 +1462,9 @@ function startSplashDrop(onDone, silent = true) {
   if (candy) candy.classList.add('splash-hidden');
   if (autoStatus) autoStatus.classList.add('splash-hidden');
   if (timeEl) timeEl.classList.add('splash-hidden');
+  // 手游模式底部入口行：与统计栏同拍依次淡入
+  const navBtns = isDualLayout() ? [...document.querySelectorAll('.window-controls .control-btn')] : [];
+  navBtns.forEach(b => b.classList.add('splash-hidden'));
   // 开场剧情结束后恢复布局：splash 已显示，此时释放 screen-wrapper 的收缩高度（避免屏幕在 splash 出现前跳回原高度闪现）
   const sw = document.querySelector('.screen-wrapper');
   if (sw) {
@@ -1427,11 +1486,19 @@ function startSplashDrop(onDone, silent = true) {
       el.style.transition = 'transform 0.35s ease';
       el.style.transform = `translate(0, 0) scale(${s})`;
     });
-    // 聚拢完成后，按顺序依次飞向写死的落位偏移
+    // 聚拢完成后依次飞向各自的目标槽位，偏移实时测量
     setTimeout(() => {
       items.forEach((el, i) => {
-        const t = SPLASH_DROP[i] || { dx: 0, dy: 240 };
         const target = slots[i] || (i === 6 ? candy : null);
+        let t = SPLASH_DROP[i] || { dx: 0, dy: 240 };
+        if (target && el.getBoundingClientRect && target.getBoundingClientRect) {
+          const er = el.getBoundingClientRect();
+          const tr = target.getBoundingClientRect();
+          t = {
+            dx: (tr.left + tr.width / 2) - (er.left + er.width / 2),
+            dy: (tr.top + tr.height / 2) - (er.top + er.height / 2),
+          };
+        }
         const s = el.classList.contains('splash-item--sm') ? 18 / 22 : 18 / 30;
         el.style.animation = 'none';
         el.style.transition = 'none';
@@ -1448,6 +1515,11 @@ function startSplashDrop(onDone, silent = true) {
             target.classList.add(i === 6 ? 'stats-fade' : 'bag-slot--pop');
             // 糖果（左）浮现后，统计栏中（自动状态）、右（挂机时间）按同一 120ms 节奏依次跟随
             if (i === 6) {
+              // 底部入口行同拍：按同一 120ms 节奏从左到右依次淡入
+              navBtns.forEach((b, k) => setTimeout(() => {
+                b.classList.remove('splash-hidden');
+                b.classList.add('stats-fade');
+              }, k * 120));
               if (autoStatus) {
                 setTimeout(() => {
                   autoStatus.classList.remove('splash-hidden');
@@ -1470,16 +1542,16 @@ function startSplashDrop(onDone, silent = true) {
           splash.classList.add('hide');
           setTimeout(() => {
             splash.remove();
-            // splash 结束：恢复背包页码指示条，移除 border-top 兜底线
-            if (bagBar) bagBar.classList.remove('splash-border-top');
-            if (bagInd) bagInd.style.display = '';
+            // 开场期间保持禁用；先解除禁用再清渐显类，避免按钮组闪一次压暗
+            if (controls && !window.__introActive) controls.classList.remove('controls-disabled');
+            // splash 结束：恢复背包页码指示条（两段短的重新出现）
+            if (bagInd) bagInd.classList.remove('splash-line');
             // 清理第一页槽位的落位弹出类：类还在时第一页从隐藏恢复显示（翻回第一页）会重放缩放动画
             slots.forEach(s => s.classList.remove('bag-slot--pop'));
-            // 移除开机渐显动画类：否则 statAutoStatus/statTime 每次从隐藏恢复都会重播淡入，造成闪烁
+            // 移除开机渐显动画类：否则 statAutoStatus/statTime 与入口按钮每次从隐藏恢复都会重播淡入
             if (autoStatus) autoStatus.classList.remove('stats-fade');
             if (timeEl) timeEl.classList.remove('stats-fade');
-            // 开场剧情期间保持禁用标题栏按钮（防止切走无法返回），开场结束由 beginGameplay 恢复
-            if (controls && !window.__introActive) controls.classList.remove('controls-disabled');
+            navBtns.forEach(b => b.classList.remove('stats-fade'));
             if (silent) setSplashLocked(false);
             onDone?.();
           }, 550);

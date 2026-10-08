@@ -1,13 +1,13 @@
 import { ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, BLOCK_TARGET_CHANCE, BLOCK_QUALITY, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_RARITY_BOOST, ITEM_NAMES, CATCH_RATES, ULTRA_BALL_ADD, AUTO_FLEE_TIMEOUT, AUTO_FLEE_NO_BALL_DELAY, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, MASS_SHINY_CHANCE, CANDY_EXCHANGE, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, WILD_LEVEL_MAX } from './config.js';
-import { phase, gameData, allPokemon, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, nextEncounterTimer, honeyBuffActive, charmBuffActive, blockBuffActive, blockRecipe, blockQuality, honeyCountdownEnd, charmCountdownEnd, honeyPausedRemaining, charmPausedRemaining, honeyExpiryTimer, charmExpiryTimer, honeyCountdownInterval, charmCountdownInterval, _charmEncounterCount, _autoFleeTimer, _autoFleeStartTime, _autoFleeBarInterval, _autoCatching, _throwing, _catchConfirmStep, _lastRegionId, _idleMsgIdx, _fishing, _eggHatching, encounterMsg, encounterSource, encounterVariant, saveGame, addSystemLog, getCurrentRegion, hasAnyBall, rand, randInt, formatNum, saveSessionState, inMassZone, inTwistZone, rollGuaranteedIvs, setPhase, setCurrentEncounter, setEncounterLevel, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setHoneyBuffActive, setCharmBuffActive, setCharmEncounterCount, setHoneyPausedRemaining, setCharmPausedRemaining, setHoneyCountdownEnd, setCharmCountdownEnd, setNextEncounterTimer, setAutoCatching, setThrowing, setCatchConfirmStep, setAutoFleeTimer, setAutoFleeStartTime, setAutoFleeBarInterval, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, setEncounterMsg, addRosterEntry, setLastObtainedEntryId, rollGender, genderBadge, setEncounterSource, setEncounterVariant } from './state.js';
-import { $, showView, updateTextBox, hideTextBox, setIdleCharacter, isOnGameView, updateBackpack, updateStats, tryLoadPokemonImage, tryLoadPokemonIcon, fitPokemonImage } from './ui.js';
+import { phase, gameData, allPokemon, getPokemonByIndex, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, nextEncounterTimer, honeyBuffActive, charmBuffActive, blockBuffActive, blockRecipe, blockQuality, honeyCountdownEnd, charmCountdownEnd, honeyPausedRemaining, charmPausedRemaining, honeyExpiryTimer, charmExpiryTimer, honeyCountdownInterval, charmCountdownInterval, _charmEncounterCount, _autoFleeTimer, _autoFleeStartTime, _autoFleeBarInterval, _autoCatching, _throwing, _catchConfirmStep, _lastRegionId, _idleMsgIdx, _fishing, _eggHatching, encounterMsg, encounterSource, encounterVariant, saveGame, addSystemLog, getCurrentRegion, hasAnyBall, rand, randInt, formatNum, saveSessionState, setSaveSuspended, inMassZone, inTwistZone, rollGuaranteedIvs, setPhase, setCurrentEncounter, setEncounterLevel, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setHoneyBuffActive, setCharmBuffActive, setCharmEncounterCount, setHoneyPausedRemaining, setCharmPausedRemaining, setHoneyCountdownEnd, setCharmCountdownEnd, setNextEncounterTimer, setAutoCatching, setThrowing, setCatchConfirmStep, setAutoFleeTimer, setAutoFleeStartTime, setAutoFleeBarInterval, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, setEncounterMsg, addRosterEntry, setLastObtainedEntryId, rollGender, genderBadge, setEncounterSource, setEncounterVariant } from './state.js';
+import { $, showView, updateTextBox, hideTextBox, setIdleCharacter, isOnGameView, isIdleStageVisible, isPageHidden, updateBackpack, updateStats, tryLoadPokemonImage, tryLoadPokemonIcon, fitPokemonImage } from './ui.js';
 import { getBountyTargetIndexes } from './bounty.js';
 import { pickRandomPokemon, pickWeightedPokemon, findBerryTarget, activateHoney, activateShinyCharm, clearCharmCountdown, clearHoneyCountdown, startCharmCountdown, startHoneyCountdown, handleHoneyExpired, handleCharmExpired, TYPE_COLORS, cancelSuspendedEncounterForEgg, pickFamily } from './items.js';
 import { eatBlock } from './mixer.js';
 import { delay, playCatchSequence, playFleeAnim, startShinySparkleLoop, stopShinySparkleLoop } from './animation.js';
 import { catchBonusFor, computeObtainScore, computeMeetScore } from './scoring.js';
 import { startIdleRotation } from './messages.js';
-import { playBattle, endBattle, playVictory, stopVictory, consumeShowCardOnEncounterEnd, showRegionNowPlaying, playShiny } from './audio.js';
+import { playBattle, endBattle, playVictory, stopVictory, consumeShowCardOnEncounterEnd, showRegionNowPlaying, playShiny, setBulkQuiet } from './audio.js';
 import * as road from './road.js';
 import * as particles from './particles.js';
 import { bgCatchupEnabled } from './background-catchup.js';
@@ -140,6 +140,7 @@ export async function tryEncounter() {
   setNextEncounterTimer(null);
   if (_bgCatchup) return; // 后台补算期间由补算循环统一处理遭遇，续杯等定时器触发的遇敌一律忽略
   if (phase !== 'idle') return;
+  if (gameData.wildEncounter) return; // 已有待开战的一只（图标滚动中/未结算）：不再排新的
   if (_fishing) return; // 钓鱼中不遇敌
   // 大量出没/时空扭曲事件路段内不触发普通遇敌：事件宝可梦滚动触发战斗，
   // 数量抓完由 endMassOutbreak / endTwist 重新调度普通遇敌
@@ -248,15 +249,25 @@ let _encPokeEl = null;      // 滚动的宝可梦 <img>
 let _encPokeX = 0;          // 宝可梦当前 X
 let _encPokeCharX = 0;      // 主角碰撞点 X
 let _encPokeCb = null;      // 碰到主角后的回调（真正开始战斗）
-let _encPokeRafActive = false;
+let _encPokeHooked = false; // 已注册到世界步进器（step/render）
 
 function spawnEncounterPoke(poke, shiny, cb) {
   const screen = $('screen');
   const charEl = $('walkGif');
   if (!screen || !charEl) return;
+  // 待开战这一只落主存档：图标已亮明种类/闪光/等级，刷新或被杀进程后必须还是同一只，否则可无限重摇
+  gameData.wildEncounter = {
+    index: poke.index,
+    isShiny: !!shiny,
+    level: encounterLevel,
+    source: encounterSource || 'normal',
+    variant: encounterVariant || null,
+    started: false,
+  };
+  if (!_bgCatchup) saveGame(); // 后台补算期间逐场落盘会写爆写队列，补算结束统一保存
   // 后台挂机（不在主界面 / 页面不可见）：不做滚动动画，直接进入遇敌（同拾取道具的后台直收逻辑，
   // 且后台 RAF 不推进，动画会永远停在原地）
-  if (document.hidden || $('idleView')?.style.display === 'none') {
+  if (isPageHidden() || !isIdleStageVisible()) {
     if (cb) cb();
     return;
   }
@@ -299,18 +310,40 @@ function despawnEncounterPoke() {
   stopEncPokeRaf();
 }
 
+// 注册到世界步进器：位置由世界步推进（px/步，与路面同速、与刷新率无关）
 function startEncPokeRaf() {
-  if (_encPokeRafActive) return;
-  _encPokeRafActive = true;
-  requestAnimationFrame(_encPokeFrame);
+  if (_encPokeHooked) return;
+  _encPokeHooked = true;
+  road.addStepper(_encPokeStep);
+  road.addRender(_encPokeRender);
 }
 
 function stopEncPokeRaf() {
-  _encPokeRafActive = false;
+  if (!_encPokeHooked) return;
+  _encPokeHooked = false;
+  road.removeStepper(_encPokeStep);
+  road.removeRender(_encPokeRender);
 }
 
-function _encPokeFrame() {
-  if (!_encPokeRafActive) return;
+// 世界步：图标随路面推进（被占用/离开主界面/骑行时冻结，由 render 负责显隐与收尾）
+function _encPokeStep(spd) {
+  if (!_encPokeEl) return;
+  if (phase !== 'idle' || _fishing || inMassZone() || inTwistZone()) return;
+  if (!isIdleStageVisible()) return;
+  if (road.isBike()) return;
+
+  _encPokeX -= spd;
+  if (_encPokeX <= _encPokeCharX) {
+    const cb = _encPokeCb;
+    despawnEncounterPoke();
+    if (cb) cb();
+    return;
+  }
+  if (_encPokeX < -120) { despawnEncounterPoke(); scheduleNextEncounter(); } // 走过头（异常兜底）重调度
+}
+
+// 每帧渲染：显隐与位置；游戏被占用 / 图标丢失的收尾也在这里
+function _encPokeRender() {
   // 游戏被占用（已开战/钓鱼中/大量出没/时空扭曲事件点）：移除图标，之后重新调度遇敌
   if (phase !== 'idle' || _fishing || inMassZone() || inTwistZone()) {
     despawnEncounterPoke();
@@ -319,24 +352,12 @@ function _encPokeFrame() {
   }
   // 图标丢失（图片加载失败被移除）：结束本次滚动，稍后重新调度遇敌
   if (!_encPokeEl) { despawnEncounterPoke(); scheduleNextEncounter(); return; }
-  const isIdleView = $('idleView')?.style.display !== 'none';
-  if (!isIdleView) { _encPokeEl.style.display = 'none'; requestAnimationFrame(_encPokeFrame); return; }
-  // 道路暂停（拾取道具等）：原地等待
-  if (!road.isActive()) { requestAnimationFrame(_encPokeFrame); return; }
+  // 离开主界面：隐藏图标、位置冻结（回来继续滚）
+  if (!isIdleStageVisible()) { _encPokeEl.style.display = 'none'; return; }
+  // 骑车时隐藏图标：骑行中不遇敌，图标不该显示在路边
+  if (road.isBike()) { _encPokeEl.style.display = 'none'; return; }
   _encPokeEl.style.display = '';
-  // 骑车时宝可梦原地等待（与大量出没一致）且隐藏图标：骑行中不遇敌，图标不该显示在路边
-  if (road.isBike()) { _encPokeEl.style.display = 'none'; requestAnimationFrame(_encPokeFrame); return; }
-
-  _encPokeX -= road.getSpeed();
-  _encPokeEl.style.left = _encPokeX + 'px';
-  if (_encPokeX <= _encPokeCharX) {
-    const cb = _encPokeCb;
-    despawnEncounterPoke();
-    if (cb) cb();
-    return;
-  }
-  if (_encPokeX < -120) { despawnEncounterPoke(); scheduleNextEncounter(); return; } // 走过头（异常兜底）重调度
-  requestAnimationFrame(_encPokeFrame);
+  _encPokeEl.style.left = road.snapPx(_encPokeX) + 'px'; // 对齐设备像素：像素材质不因小数偏移反复重采样
 }
 
 // 道路遇敌宝可梦碰到主角：暂停 buff 倒计时并真正进入战斗
@@ -376,11 +397,11 @@ function pauseEncounterBuffs() {
   }
 }
 
-function startRoadEncounter(poke) {
+function startRoadEncounter(poke, opts) {
   pauseEncounterBuffs();
   setPhase('encounter');
   setEncounterBallsUsed(0);
-  beginEncounter(poke);
+  beginEncounter(poke, opts);
 }
 
 // ===== 记录遭遇并展示战斗画面（普通遇敌 / 钓鱼上钩共用） =====
@@ -389,6 +410,16 @@ function beginEncounter(poke, opts = {}) {
   _encounterSource = opts.source || 'normal';
   setEncounterSource(_encounterSource); // 同步会话变量：刷新页面恢复遭遇时重建来源
   setCurrentEncounterBalls({ 'poke-ball': 0, 'ultra-ball': 0, 'master-ball': 0 });
+  // 遭遇成立：把待开战记录标为已开战，刷新后继续这一场
+  gameData.wildEncounter = {
+    index: poke.index,
+    isShiny: currentIsShiny,
+    level: encounterLevel,
+    source: _encounterSource,
+    variant: encounterVariant || null,
+    started: true,
+  };
+  if (!_bgCatchup) saveGame();
 
   // 更新图鉴遭遇统计
   const idx = String(poke.index);
@@ -532,9 +563,40 @@ export function updateAutoFleeBar() {
   }
 }
 
+// 回前台校准战斗曲：后台期间遭遇可能已结算完，残留的战斗曲会和地区曲叠着放。
+// 仍在遭遇/战斗中则不动
+export function syncBattleMusic() {
+  const fighting = phase === 'encounter' || phase === 'caught' || phase === 'fled' || phase === 'battle';
+  if (!fighting) endBattle();
+}
+
 // 当前遭遇是否神兽（神兽暂停判定，读 pokedex.json 的 legend 字段）
 export function isLegendEncounter() {
   return !!currentEncounter && currentEncounter.legend === true;
+}
+
+// 恢复待开战记录：同一只、同闪光/等级/来源；started=false 重新滚入，true 直接回战斗画面
+export function restoreWildEncounter(rec) {
+  if (!rec) return false;
+  const poke = getPokemonByIndex(String(rec.index));
+  if (!poke) {
+    gameData.wildEncounter = null;
+    return false;
+  }
+  setCurrentEncounter(poke); // 内部会重摇等级，下面按记录覆盖
+  setEncounterLevel(rec.level || encounterLevel);
+  setCurrentIsShiny(!!rec.isShiny);
+  setEncounterSource(rec.source || 'normal');
+  setEncounterVariant(rec.variant || null);
+  if (rec.started) {
+    setEncounterBallsUsed(0);
+    setCurrentEncounterBalls({ 'poke-ball': 0, 'ultra-ball': 0, 'master-ball': 0 });
+    setPhase('encounter');
+    showEncounter(poke);
+  } else {
+    spawnEncounterPoke(poke, !!rec.isShiny, () => startRoadEncounter(poke, { source: rec.source || 'normal' }));
+  }
+  return true;
 }
 
 // ===== 显示遇敌 =====
@@ -546,7 +608,7 @@ export function showEncounter(poke, opts = {}) {
   const skipAuto = opts === true || !!opts.skipAuto;
   const msg = opts && typeof opts === 'object' ? (opts.message || null) : null;
   // 如果在非首页页面（图鉴/商店等），将遇敌挂起不切换视图
-  const _onHome = $('idleView').style.display !== 'none' || $('encounterView').style.display !== 'none';
+  const _onHome = isOnGameView();
   // 进入战斗道路必须暂停（后台遇敌同样暂停），结束由 goIdle 统一恢复
   road.pause();
   // 显示视觉画面（仅在首页时切换视图；入场"文案顶起主角"动画由 showView 统一处理）
@@ -603,7 +665,7 @@ export function renderEncounterScene(poke) {
   // 这里统一收口，保证私有变量与 state 一致（正常遭遇路径两者本已一致）
   _encounterSource = encounterSource;
   _encounterVariant = encounterVariant;
-  const _onHome = $('idleView').style.display !== 'none' || $('encounterView').style.display !== 'none';
+  const _onHome = isOnGameView();
   const gSpan = genderBadge(_encounterGender); // 性别图标（♂ 蓝 / ♀ 粉），放在 Lv 前（跟等级绑定，不跟名字）
   // 遭遇页标题显示全名（变体如"风速狗-洗翠"），让玩家看清遇到的形态
   $('encounterName').innerHTML = (currentIsShiny
@@ -953,9 +1015,11 @@ export async function fleeEncounter(isAutoFlee) {
 // ===== 返回空闲状态 =====
 export function goIdle() {
   // NPC 对战进行中触发的遭遇收尾（自动捕捉被战斗打断等）：只清理遭遇状态，
-  // 不动战斗的 phase / 音乐 / 道路，避免与战斗流程互相干扰
+  // 不动战斗的 phase 与音乐，避免与战斗流程互相干扰
   if (phase === 'battle') {
     cleanupEncounterState();
+    // 道路暂停来自被打断的遭遇开场：收尾后恢复滚动，钓鱼等待期间不动
+    if (!_fishing && !road.isActive()) road.resume();
     return;
   }
   setPhase('idle');
@@ -973,6 +1037,11 @@ export function goIdle() {
   _encounterVariant = null;
   setEncounterSource('normal');
   setEncounterVariant(null);
+  // 遭遇已结算：清掉待开战记录并立即落盘，避免刷新后把上一场重新拉出来
+  if (gameData.wildEncounter) {
+    gameData.wildEncounter = null;
+    if (!_bgCatchup) saveGame();
+  }
   // 重置 UI 主题色
   document.documentElement.style.removeProperty('--ui-color');
   document.documentElement.style.removeProperty('--ui-color-rgb');
@@ -1036,6 +1105,11 @@ function cleanupEncounterState() {
   // 孵蛋挂起期间遭遇在后台被结算（飞行中的丢球/逃跑收尾等）：取消挂起现场的恢复，
   // 避免孵蛋结束后复活一个已被结算的遭遇
   cancelSuspendedEncounterForEgg();
+  // 遭遇已结算：待开战记录同时作废并落盘，否则此时被杀进程重开会把已结算的这一只复活成新遭遇
+  if (gameData.wildEncounter) {
+    gameData.wildEncounter = null;
+    if (!_bgCatchup) saveGame();
+  }
   document.documentElement.style.removeProperty('--ui-color');
   document.documentElement.style.removeProperty('--ui-color-rgb');
   updateStats();
@@ -1117,10 +1191,6 @@ async function handoffFlee(isAuto) {
 }
 
 // ===== 自动捕捉 =====
-let _abortAutoCatch = false;
-
-export function setAbortAutoCatch() { _abortAutoCatch = true; }
-
 // 智能选球：根据精灵捕获率与当前可用球，选出本次丢球用哪种球。
 // 闪光使用大师球（设置-自动捕捉）勾选后，闪光优先大师球，捕获率极高不逃跑
 function pickAutoBallType(availableBalls) {
@@ -1237,7 +1307,7 @@ export async function autoCatch() {
   $('fleeBtn')?.classList.add('disabled');
   try {
 
-  while (currentEncounter && gameData.settings?.autoCatch && !_abortAutoCatch && (phase === 'encounter' || _bgCatch)) {
+  while (currentEncounter && gameData.settings?.autoCatch && (phase === 'encounter' || _bgCatch)) {
     // 智能选球：根据精灵捕获率决定使用哪种球
     const enabledBalls = gameData.settings?.autoCatchBalls || { 'poke-ball': true, 'ultra-ball': true, 'master-ball': true };
     let availableBalls = ['poke-ball', 'ultra-ball', 'master-ball'].filter(b => enabledBalls[b] !== false && (gameData.items[b]||0) > 0);
@@ -1302,14 +1372,7 @@ export async function autoCatch() {
   } catch (e) {
     console.error('autoCatch error:', e);
   } finally {
-    _bgCatch = false; // 后台结算结束（无论是否被中止）
-    if (_abortAutoCatch) {
-      _abortAutoCatch = false;
-      // 中止自动捕捉：只恢复逃跑按钮，不跳转页面（用户可能在设置页操作）
-      if (currentIsShiny && phase === 'encounter') {
-        $('fleeBtn').style.display = '';
-      }
-    }
+    _bgCatch = false; // 后台结算结束
     if (currentIsShiny && phase === 'encounter') startShinySparkleLoop();
     $('fleeBtn')?.classList.remove('disabled');
     setAutoCatching(false);
@@ -1342,9 +1405,12 @@ export async function catchUpEncounters(secs, buffRemainingMs) {
   } else {
     buffSec = Math.min((buffRemainingMs || 0) / 1000, secs); // 无续杯：只按离开时刻 buff 剩余覆盖
   }
-  const total = Math.min(Math.floor(buffSec / buffAvg) + Math.floor((secs - buffSec) / normalAvg), 600); // 单次补算上限（防超长后台卡顿）
+  const total = Math.min(Math.floor(buffSec / buffAvg) + Math.floor((secs - buffSec) / normalAvg), 2000); // 单次补算上限（防超长后台卡顿）
   if (total <= 0) return;
   _bgCatchup = true;
+  // 逐场结算不播音效、不逐场落盘：一次返回连着结算上百场时既吵又慢，结束时统一保存
+  setBulkQuiet(true);
+  setSaveSuspended(true);
   let done = 0, balls = 0, shinies = 0;
   const caught = []; // 补算期间捕获成功的宝可梦（含形态名），随汇总日志打印便于核对
   try {
@@ -1366,12 +1432,19 @@ export async function catchUpEncounters(secs, buffRemainingMs) {
       if (shiny) shinies++;
       if (gameData.stats.totalCatches > catchesBefore) caught.push((poke.form || poke.name) + (shiny ? '(闪光)' : ''));
       if (i % 20 === 19) await delay(0); // 让出主线程，保证 UI 响应
+      if (i % 100 === 99) { // 每 100 场落一次盘：补算中途被杀进程不至于整段丢
+        setSaveSuspended(false);
+        await saveGame();
+        setSaveSuspended(true);
+      }
     }
   } catch (e) {
     console.error('[挂机补发] 遇敌补算异常:', e);
   } finally {
     _bgCatchup = false;
+    setSaveSuspended(false);
     resumeEncounterFlow(); // 补算结束统一恢复 buff 倒计时与遇敌调度
+    setBulkQuiet(false); // 恢复背景曲（补算期间的闪光提示音在此一并补播）
     saveGame();
   }
   const result = { done, total, balls, shinies, caught };

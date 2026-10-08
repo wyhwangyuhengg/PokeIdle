@@ -1,7 +1,7 @@
 // ===== 宝可梦仓库 =====
 // 查看当前拥有的每只宝可梦个体（个体值/闪光/来源/在仓状态），
 // 交互与图鉴对齐：搜索 / 来源筛选 / 表头排序 / 点击进入个体详情，详情页可返回列表。
-import { $, showView, tryLoadImage, tryLoadPokemonImage, showConfirmBar, hideConfirmBar, updateBackpack, logicViewport } from './ui.js';
+import { $, showView, getCurrentView, tryLoadImage, tryLoadPokemonImage, showConfirmBar, hideConfirmBar, updateBackpack, logicViewport, viewportToLogic, popupBounds, isDualLayout, isStageView, closeAppArea } from './ui.js';
 import { gameData, allPokemon, getPokemonByIndex, getNature, pushNav, resetNav, saveGame, addSystemLog, setPokedexInLogView, ensureGender, genderBadge, isPokemon, phase } from './state.js';
 import { TYPE_COLORS, pokemonSourceBadge } from './items.js';
 import { matchPinyinPartial, describeLogEntry } from './pokedex.js';
@@ -113,6 +113,12 @@ function perfectIvCount(p) {
 }
 
 function srcName(s) { return SOURCE_NAMES[s] || s || '野生'; }
+
+// 详情大图放大：给 #rosterList 加类，隐掉本页其余内容、让图在所在屏内居中（再点收起）
+function setDetailZoom(on) {
+  const list = $('rosterList');
+  if (list) list.classList.toggle('roster-zoom', !!on);
+}
 
 function fmtTime(ts) {
   const d = new Date(ts);
@@ -228,6 +234,7 @@ function currentFilterPool() {
 function renderList() {
   const list = $('rosterList');
   if (!list) return;
+  setDetailZoom(false);
   // 懒加载图标观察器：监听 #rosterList 视口（含预载带），回调加载后自动解除观察
   if ('IntersectionObserver' in window && !_rosterIconObs) {
     _rosterIconObs = new IntersectionObserver((entries) => {
@@ -755,8 +762,8 @@ function meClearTarget() {
 function meMoveGhost(e) {
   const g = meDragGhost();
   if (!g) return;
-  const r = $('moveEditView').getBoundingClientRect();
-  const { x: lx, y: ly } = logicViewport(e.clientX, e.clientY); // zoom 下还原逻辑坐标，与 rect 对齐
+  const r = $('moveEditView').getBoundingClientRect(); // 与幽灵同一坐标系（机身内逻辑像素）
+  const { x: lx, y: ly } = viewportToLogic(e.clientX, e.clientY); // 指针坐标换算到同一坐标系
   g.style.left = (lx - r.left) + 'px';
   g.style.top = (ly - r.top) + 'px';
 }
@@ -909,9 +916,10 @@ function showMoveSortMenu(x, y) {
   ).join('');
   menu.style.display = '';
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  const { x: lx, y: ly, w: vw, h: vh } = logicViewport(x, y); // zoom 下还原逻辑坐标
-  menu.style.left = Math.max(0, Math.min(lx - 24, vw - mw - 4)) + 'px';
-  menu.style.top = Math.max(0, Math.min(ly, vh - mh - 4)) + 'px';
+  const { x: lx, y: ly } = logicViewport(x, y); // zoom 下还原逻辑坐标
+  const b = popupBounds(); // 夹紧在机身内：手游双屏下机身只占屏幕中间一块
+  menu.style.left = Math.max(b.left, Math.min(lx - 24, b.right - mw - 4)) + 'px';
+  menu.style.top = Math.max(b.top, Math.min(ly, b.bottom - mh - 4)) + 'px';
   // 菜单内点击不触发外部关闭；点击外部任意位置关闭
   menu.addEventListener('pointerdown', (e) => e.stopPropagation());
   menu.onclick = (e) => {
@@ -1058,6 +1066,7 @@ function showRosterDetail(id) {
   if (!rootEl) return;
   const listEl = $('rosterList');
   if (listEl) { listEl.dataset.savedScroll = listEl.scrollTop; listEl.scrollTop = 0; } // 记住列表位置，详情从顶部开始
+  setDetailZoom(false);
   // 隐藏搜索框、表头、进度和高级筛选预览条（与图鉴详情一致）
   rootEl.querySelector('.pokedex-search').style.display = 'none';
   rootEl.querySelector('.roster-header').style.display = 'none';
@@ -1122,6 +1131,12 @@ function showRosterDetail(id) {
       if (p.shiny && _detailId === id) startShinySparkleOn($('rosterView'), img, { cls: 'sm', scale: 0.6 });
     });
   }
+  // 点详情大图放大查看（再点收起；点放大后的空白处也收起）
+  const zoomBox = img?.closest('.poke-img-grid');
+  const detailHead = list.querySelector('.roster-detail-head');
+  zoomBox?.addEventListener('click', e => { e.stopPropagation(); setDetailZoom(!$('rosterList')?.classList.contains('roster-zoom')); });
+  detailHead?.addEventListener('click', () => setDetailZoom(false));
+
   // 改名按钮
   const nickBtn = $('rosterNickBtn');
   if (nickBtn) {
@@ -1581,9 +1596,10 @@ function showContextMenu(x, y) {
     document.body.appendChild(menu);
   }
   menu.innerHTML = `<div class="shop-ctx-item" data-action="advFilter">高级筛选</div><div class="shop-ctx-item" data-action="batchRelease">批量放生</div>`;
-  const { x: lx, y: ly, w: vw, h: vh } = logicViewport(x, y); // zoom 下还原逻辑坐标
-  menu.style.left = Math.min(lx, vw - 120) + 'px';
-  menu.style.top = Math.min(ly, vh - 70) + 'px';
+  const { x: lx, y: ly } = logicViewport(x, y); // zoom 下还原逻辑坐标
+  const b = popupBounds(); // 夹紧在机身内：手游双屏下机身只占屏幕中间一块
+  menu.style.left = Math.min(lx, b.right - 120) + 'px';
+  menu.style.top = Math.min(ly, b.bottom - 70) + 'px';
   menu.style.display = 'block';
   menu.onclick = (e) => {
     const act = e.target.closest('[data-action]')?.dataset.action;
@@ -1654,7 +1670,7 @@ function toggleBatchRow(row) {
   updateBatchBar();
 }
 
-// 确认框固定挂到整个游戏窗口（screen）底部，不遮挡列表；
+// 确认框固定挂到当前屏底部（手游模式下即下屏），不遮挡列表；
 // 已弹出时只更新数字不重建，避免每选一只都滑入滑出
 function updateBatchBar() {
   const n = _batchSelected.size;
@@ -1668,7 +1684,7 @@ function updateBatchBar() {
     `已选中 ${n} 只，确定放生？`,
     () => { doBatchRelease(); return true; }, // 保持显示结果
     () => cancelBatchRelease(),
-    { host: $('screen'), height: '40px' } // 批量放生专用矮框，不占用列表空间
+    { height: '40px' } // 批量放生专用矮框，不占用列表空间
   );
   if (bar) bar.dataset.role = 'batchRelease';
 }
@@ -1695,7 +1711,7 @@ function doBatchRelease() {
   setBatchWheel(false);
   restoreRosterTitle();
   // 显示结果 1.5 秒后关闭并刷新（含放生返还经验/糖果产出提示）
-  showConfirmBar(`已放生 ${n} 只宝可梦${releaseXpText(gained, candies)}`, null, null, { noButtons: true, host: $('screen'), height: '40px' });
+  showConfirmBar(`已放生 ${n} 只宝可梦${releaseXpText(gained, candies)}`, null, null, { noButtons: true, height: '40px' });
   setTimeout(() => {
     hideConfirmBar();
     renderList();
@@ -1798,7 +1814,8 @@ export function restoreRosterList() {
   }
   const prog = $('rosterProgress');
   if (prog) prog.style.display = '';
-  showRosterView();
+  // keepSearch：详情返回列表要还原进入详情前的搜索/筛选上下文，而不是当作一次新的进入
+  showRosterView(false, { keepSearch: true });
   // 恢复进入详情前的列表滚动位置
   const list = $('rosterList');
   if (list) requestAnimationFrame(() => { list.scrollTop = Number(list.dataset.savedScroll || 0); });
@@ -1831,6 +1848,11 @@ export function leaveRosterDetailToSource() {
   _detailFromView = null;
   showView(target);
   resetNav(); // 直接回来源页/挂机页，清空导航栈（等价于原先"返回回挂机页"）
+  // 手游双屏：下半屏跟着收尾，否则会停在仓库页
+  if (isDualLayout()) {
+    if (isStageView(target)) closeAppArea();
+    else pushNav('phoneView');
+  }
 }
 
 // ---------- 页面入口 ----------
@@ -1893,7 +1915,10 @@ function pickRow(rid) {
   else if (p.mode === 'expcandy') import('./exp-candy.js').then(m => m.useExpCandyOn(rid, false, p.from));
 }
 
-export function showRosterView(noNav) {
+export function showRosterView(noNav, opts) {
+  const o = opts || {};
+  // 进入前不在仓库视图 = 从其它页面重新进入列表（手机菜单、背包经验糖果等）
+  const fromOtherView = getCurrentView() !== 'rosterView';
   // 正常入口压栈（返回回来源页）；选取/子流程模式传 true 跳过，避免污染导航栈
   if (!noNav) pushNav('rosterView');
   if (!_uiBound) {
@@ -1915,6 +1940,18 @@ export function showRosterView(noNav) {
     if (s) s.style.display = '';
     const h = rootEl.querySelector('.roster-header');
     if (h) h.style.display = '';
+  }
+  // 搜索框只属于当前这次浏览：从其它页面重新进入时清空，否则「仓库情况」等入口预填的搜索词会一直留在框里，
+  // 之后从首页点经验糖果，选取页便会沿用旧搜索词，只显示命中的宝可梦而不是完整列表。
+  // opts.keepSearch 保留（详情返回列表要还原进入详情前的搜索上下文）；仍在仓库视图内时同样保留
+  //（选取模式中重绘、糖果结算后回到选取列表）；opts.search 直接预填（「仓库情况」按宝可梦名搜索）。
+  const searchInput = $('rosterSearchInput');
+  if (searchInput) {
+    if (o.search != null) searchInput.value = o.search;
+    else if (!o.keepSearch && fromOtherView) searchInput.value = '';
+    // 同步清空按钮显隐（有搜索词时显示清空按钮）
+    const clearBtn = $('rosterSearchClear');
+    if (clearBtn) clearBtn.style.display = searchInput.value.trim() ? '' : 'none';
   }
   const prog = $('rosterProgress');
   if (prog) prog.style.display = '';
@@ -1964,12 +2001,8 @@ export function showRosterDetailFromList(id, returnFn) {
 export function showRosterSearch(q, returnFn) {
   _detailFromView = null;
   _detailReturnFn = typeof returnFn === 'function' ? returnFn : null;
-  const input = $('rosterSearchInput');
-  if (input) input.value = q || '';
-  showRosterView(true); // 不压栈：返回靠 returnFn 恢复来源视图
-  // 同步清空按钮显隐（有搜索词时显示清空按钮）
-  const clearBtn = $('rosterSearchClear');
-  if (clearBtn) clearBtn.style.display = (q || '').trim() ? '' : 'none';
+  // 不压栈：返回靠 returnFn 恢复来源视图。搜索词交给 showRosterView 预填（含清空按钮显隐同步）
+  showRosterView(true, { search: q || '' });
 }
 
 // 是否从悬赏提交/交换选择列表进入的详情页（返回时应直接恢复来源列表）
