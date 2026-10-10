@@ -2,12 +2,13 @@
 // 把两只宝可梦放进饲育屋配对：满足蛋组条件（雌雄共蛋组 / 百变怪万能配对）即可繁殖。
 // 互斥规则：饲育屋 / 训练 / 配队三方互斥——放入饲育屋自动离开队伍与训练槽，反之亦然。
 import { $, showView, tryLoadImage, setupFoodTooltip, showConfirmBar, hideConfirmBar } from './ui.js';
-import { gameData, getPokemonByIndex, isPokemon, saveGame, pushNav, ensureGender, genderBadge, rollGender, rollNature, addSystemLog } from './state.js';
+import { gameData, getPokemonByIndex, isPokemon, saveGame, pushNav, ensureGender, genderBadge, rollGender, rollNature, rollSexForm, addSystemLog } from './state.js';
 import { matchPinyinPartial } from './pokedex.js';
 import { BERRY_ICONS, BERRY_NAMES, TYPE_COLORS, pokemonSourceBadge } from './items.js';
 import { ensureBerryFarm } from './berry.js';
 import { removePokemonFromAllTeams } from './team.js';
-import { REGION_CYCLE } from './config.js';
+import { REGION_CYCLE, eggSprite } from './config.js';
+import { familyRoot } from './evolution.js';
 
 const BERRY_DIR = './items/berries/';
 // 产蛋时长区间（分钟，本期固定随机，后续可做同种/同蛋组和睦度加成）
@@ -60,8 +61,9 @@ for (let r = 0; r < NURSERY.h; r++) {
 
 // 繁殖特例编号（与图鉴 index 一致：补前导零，保证 getPokemonByIndex 命中）
 const DITTO = '0132';    // 百变怪：万能配对
-const MANAPHY = '0490';  // 玛纳霏：只能与百变怪繁殖（产玛纳霏）
-// 幼年宝可梦 / 尼多娜·尼多后 / 神兽幻兽等：官方蛋组均为"未发现群"，由 noEggGroup 统一覆盖，无需特判
+// 幼年宝可梦 / 尼多娜·尼多后 / 神兽幻兽等：官方蛋组均为"未发现群"，由 noEggGroup 统一覆盖，不需要特判
+// 唯一的例外：玛纳霏（无性别但有蛋组，只能和百变怪繁育）的蛋按原作固定是霏欧纳——蛋产物不是进化，蛋组和进化表都表达不了
+const BREED_CHILD = { '0490': '0489' };
 
 let _timer = null;
 const _walkers = new Map();   // id -> walker 状态
@@ -96,6 +98,7 @@ export function ensureNursery() {
   // lockedIv：锁定的遗传个体（null = 不锁定；{ key:'hp'|'atk'|…, source:'a'|'b' } = 锁定该项
   // 并固定继承指定亲本的数值，不再 50% 二选一，贴合原版"力量负重携带者固定遗传"设定）
   if (!('lockedIv' in gameData.nursery)) gameData.nursery.lockedIv = null;
+  if (!('useIncense' in gameData.nursery)) gameData.nursery.useIncense = false; // 熏香开关：本次繁殖是否跨过幼体边
   // breeding：当前繁殖批次（null = 未繁殖 / { startedAt, durMs, roundsTotal, roundsDone, reportedRounds }）
   // roundsTotal=提交的连续轮数，roundsDone=已自动入库的蛋数，reportedRounds=已提示过的产蛋数
   if (!('breeding' in gameData.nursery)) gameData.nursery.breeding = null;
@@ -111,7 +114,11 @@ export function ensureNursery() {
 // 返回 { ok, reason, mode?, childSpecies?, shared? }
 // 类型1 常规：性别一雄一雌 + 至少共用 1 个蛋组 + 都不属未发现群
 // 类型2 百变怪：一方百变怪 + 另一方不属未发现群（无视性别）
-export function checkPairing(entryA, entryB) {
+// 有没有蛋组、有没有共同蛋组决定能不能配，不看物种；后代按族根，只有玛纳霏那张表例外
+function breedChild(species, useIncense) {
+  return BREED_CHILD[String(species)] || familyRoot(species, useIncense);
+}
+export function checkPairing(entryA, entryB, useIncense = false) {
   const aDitto = String(entryA.species) === DITTO;
   const bDitto = String(entryB.species) === DITTO;
   if (aDitto && bDitto) return { ok: false, reason: '百变怪之间无法繁殖' };
@@ -119,9 +126,7 @@ export function checkPairing(entryA, entryB) {
     const other = aDitto ? entryB : entryA;
     const poke = getPokemonByIndex(String(other.species));
     if (!poke || poke.noEggGroup) return { ok: false, reason: '另一只属于未发现蛋组，无法繁殖' };
-    // 百变怪与玛纳霏：后代为玛纳霏本身（原版规则是产霏欧纳，这里统一为亲本物种）
-    if (String(other.species) === MANAPHY) return { ok: true, mode: 'ditto', childSpecies: MANAPHY, shared: ['百变怪'] };
-    return { ok: true, mode: 'ditto', childSpecies: other.species, shared: ['百变怪'] };
+    return { ok: true, mode: 'ditto', childSpecies: breedChild(other.species, useIncense), shared: ['百变怪'] };
   }
   const ga = ensureGender(entryA);
   const gb = ensureGender(entryB);
@@ -131,13 +136,10 @@ export function checkPairing(entryA, entryB) {
   const pa = getPokemonByIndex(String(entryA.species));
   const pb = getPokemonByIndex(String(entryB.species));
   if (!pa || !pb || pa.noEggGroup || pb.noEggGroup) return { ok: false, reason: '属于未发现蛋组，无法繁殖' };
-  if (String(entryA.species) === MANAPHY || String(entryB.species) === MANAPHY) {
-    return { ok: false, reason: '玛纳霏只能与百变怪繁殖' };
-  }
   const shared = (pa.eggGroup || []).filter(g => (pb.eggGroup || []).includes(g));
   if (!shared.length) return { ok: false, reason: '没有共同蛋组，无法繁殖' };
   const female = ga === 'female' ? entryA : entryB;
-  return { ok: true, mode: 'normal', childSpecies: female.species, shared };
+  return { ok: true, mode: 'normal', childSpecies: breedChild(female.species, useIncense), shared };
 }
 
 // 配对角色判定：返回该槽亲本在配对中的角色 'mother' | 'father'
@@ -1075,7 +1077,11 @@ function pairStatusHtml(n) {
   if (!ea || !eb || ea.inRoster === false || eb.inRoster === false) {
     return `<div class="nursery-pair-status idle">宝可梦已不在仓库，请重新放入</div>`;
   }
-  const r = checkPairing(ea, eb);
+  // 开关只在这 9 族幼体边上有意义：拿「不带 / 带」两种后代比，别用当前开关状态比（一比就自我消失）
+  const rBase = checkPairing(ea, eb, false);
+  const rInc = checkPairing(ea, eb, true);
+  const canIncense = rBase.ok && rInc.ok && rBase.childSpecies !== rInc.childSpecies;
+  const r = (n.useIncense && canIncense) ? rInc : rBase;
   // 防御分支：放入列表已过滤，正常不会走到这里
   if (!r.ok) return `<div class="nursery-pair-status idle">${r.reason}</div>`;
   const child = getPokemonByIndex(String(r.childSpecies));
@@ -1125,6 +1131,9 @@ function pairStatusHtml(n) {
       </div>
       <div class="nursery-pair-child">
         <span class="nursery-pair-child-name">后代：${childName}</span>
+        ${canIncense ? `<span style="display:flex;align-items:center;gap:4px;">
+          <button class="nursery-pair-lock-btn${n.useIncense ? ' on' : ''}" data-incense style="flex:0 0 52px;" title="产最低阶的幼体形态">熏香${n.useIncense ? '开' : '关'}</button>
+        </span>` : ''}
       </div>
       <div class="nursery-pair-preview">${previewIvCells(preview)}</div>
     </div>
@@ -1348,14 +1357,18 @@ export function settleBreeding() {
     const eb = c && (gameData.roster || []).find(x => x.id === c.id);
     // 亲本缺失/配对失效：终止剩余轮次（已产蛋已入库，无丢失）
     if (!ea || !eb || ea.inRoster === false || eb.inRoster === false) { n.breeding = null; break; }
-    const r = checkPairing(ea, eb);
+    const r0 = checkPairing(ea, eb, false);
+    const r1 = checkPairing(ea, eb, true);
+    // 只有这一族真会因开关改变后代时才算数，用不上的族自动走默认
+    const useIncense = !!n.useIncense && r1.ok && r0.ok && r1.childSpecies !== r0.childSpecies;
+    const r = useIncense ? r1 : r0;
     if (!r.ok) { n.breeding = null; break; }
     const entry = createEggEntry(ea, eb, r.childSpecies, n.lockedIv || null);
     if (!Array.isArray(gameData.roster)) gameData.roster = [];
     gameData.roster.push(entry);
     n.lastEggAt = Date.now();
     gameData.stats.totalEggsProduced = (gameData.stats.totalEggsProduced || 0) + 1; // 育种成就统计
-    addSystemLog('nursery_egg', { pokemon: r.childSpecies, shiny: entry.shiny });
+    addSystemLog('nursery_egg', { pokemon: entry.species, shiny: entry.shiny });
     b.roundsDone++;
     produced++;
   }
@@ -1402,6 +1415,7 @@ export function markNurseryBreedVisited() {
 // 生成蛋条目：个体值 6 项中 5 项继承双亲、1 项随机。锁定位固定继承所选亲本（source）的
 // 数值（占 1 个继承名额），其余随机遗传位 50% 取父/母；性别/性格/闪光出生即定，孵化后完全沿用
 function createEggEntry(ea, eb, childSpecies, lockedIv) {
+  childSpecies = rollSexForm(childSpecies); // 雌雄异形：后代性别单独 roll，出了哪种就落哪条形态
   const keys = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
   const inherits = new Set();
   const ivs = {};
@@ -1427,6 +1441,7 @@ function createEggEntry(ea, eb, childSpecies, lockedIv) {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
     kind: 'egg', // 蛋条目：孵化后原地转正为宝可梦
     species: childSpecies,
+    originSpecies: String(childSpecies), // 同 state.addRosterEntry：详情页的「获得方式」按它翻日志
     gender: rollGender(String(childSpecies)),
     level: 1,
     exp: 0,
@@ -1520,6 +1535,16 @@ function bindSlots(host) {
       }
       saveGame();
       refreshBoard(); // 刷新后代预览与来源选择行
+    });
+  });
+  // 熏香开关：开启后本次繁殖跨过幼体边，产最低阶的那个
+  host.querySelectorAll('[data-incense]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const n = ensureNursery();
+      n.useIncense = !n.useIncense;
+      saveGame();
+      refreshBoard();
     });
   });
   // 锁定位来源切换：固定继承所选亲本的该项数值
@@ -1737,7 +1762,7 @@ export function renderEggView() {
             const name = poke ? poke.name : `#${eg.species}`;
             return `
               <div class="pokedex-entry roster-row nursery-egg-row" data-egg-id="${eg.id}">
-                <span class="pokedex-name"><img class="roster-icon-img" src="./items/mystery-egg.png" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
+                <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
                 <span class="roster-iv">${eggIvSlash(eg)}</span>
                 ${eggDiscardCell(eg)}
               </div>`;
@@ -1783,7 +1808,7 @@ export function renderEggView() {
               const name = poke ? poke.name : `#${eg.species}`;
               return `
                 <div class="pokedex-entry roster-row nursery-egg-row" data-egg-id="${eg.id}">
-                  <span class="pokedex-name"><img class="roster-icon-img" src="./items/mystery-egg.png" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
+                  <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
                   <span class="roster-iv">${eggIvSlash(eg)}</span>
                   ${eggDiscardCell(eg)}
                 </div>`;

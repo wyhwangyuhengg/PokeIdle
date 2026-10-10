@@ -74,6 +74,9 @@
   <symbol id="icon-folder" viewBox="0 0 1024 1024">
     <path d="M77.0594 97H412.763L491.923 198.178H948V846H77V97H77.0594ZM156.22 177.955V765.045H868.84V279.194H453.917L374.756 177.955H156.22Z" fill="currentColor"/>
   </symbol>
+  <symbol id="icon-itembox" viewBox="0 0 1024 1024">
+    <path d="M418 42.8a213.9 213.9 0 0 0-182.3 117.8L65 501.9a213.8 213.8 0 0 0 72.5 272.9l256 170.7a213.5 213.5 0 0 0 236.6 0l256-170.7a213.8 213.8 0 0 0 84.1-244.9l-85.3-256A213.4 213.4 0 0 0 750 139L494 53.6a212 212 0 0 0-76.1-10.8z m49.1 91.7l256 85.3a127.9 127.9 0 0 1 80.9 81l85.3 256a127.6 127.6 0 0 1-50.4 146.9l-256 170.7a127.7 127.7 0 0 1-142 0l-256-170.7a127.5 127.5 0 0 1-43.5-163.8l170.7-341.3a127.5 127.5 0 0 1 155-64.2z m146.3 338a42.7 42.7 0 0 0-57.9 31.1l-85.8 426.7a42.7 42.7 0 0 0 33.4 50.2 42.7 42.7 0 0 0 50.3-33.4L629 571l286 116.4a42.7 42.7 0 0 0 55.6-23.4 42.7 42.7 0 0 0-23.4-55.6zM340.3 61.2a42.7 42.7 0 0 0-15.9 58.2l235.9 413.9a42.7 42.7 0 0 0 58.2 15.9 42.7 42.7 0 0 0 15.9-58.2l-236-413.9a42.7 42.7 0 0 0-58.2-15.9z" fill="currentColor"/>
+  </symbol>
   <symbol id="icon-clear" viewBox="0 0 1024 1024">
     <path d="M930.568 806.633L873.26 481.254H892.615C908.186 481.254 920.729 468.903 920.729 453.571V249.145C920.729 233.813 908.186 221.462 892.615 221.462H626.617V27.6827C626.617 12.3508 614.074 0 598.504 0H425.497C409.926 0 397.384 12.3508 397.384 27.6827V221.462H131.386C115.815 221.462 103.272 233.813 103.272 249.145V453.571C103.272 468.903 115.815 481.254 131.386 481.254H150.741L93.4325 806.633C93.1081 808.23 93 809.827 93 811.317C93 826.649 105.543 839 121.114 839H902.887C904.509 839 906.131 838.894 907.645 838.574C922.999 836.019 933.271 821.645 930.568 806.633ZM178.963 295.992H473.074V74.5305H550.927V295.992H845.038V406.723H178.963V295.992ZM685.007 764.47V598.373C685.007 593.688 681.114 589.855 676.357 589.855H624.455C619.697 589.855 615.804 593.688 615.804 598.373V764.47H408.196V598.373C408.196 593.688 404.304 589.855 399.546 589.855H347.644C342.886 589.855 338.994 593.688 338.994 598.373V764.47H177.665L226.431 487.642H797.461L846.228 764.47H685.007Z" fill="currentColor"></path>
   </symbol>
@@ -375,7 +378,7 @@
               </div>
               <!-- 捕捉动画舞台 -->
               <div class="catch-stage" id="catchStage">
-                <img id="animBall" class="anim-ball" src="./items/poke-ball.png" alt="精灵球" />
+                <img id="animBall" class="anim-ball" src="./items/balls/poke-ball.png" alt="精灵球" />
                 <div id="animStars"
                   style="position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;z-index:4;"></div>
                 <div id="animMsg" class="catch-msg"></div>
@@ -400,7 +403,7 @@
       <div class="screen app-screen" id="appScreen">
           <div class="app-host" id="appHost">
 
-            <div id="pokedexView" class="view-fixed view-list" style="display:none;">
+            <div id="pokedexView" class="view-fixed view-list" style="display:none;position:relative;">
               <div class="pokedex-progress" id="pokedexProgress"></div>
               <div class="pokedex-search">
                 <div class="pokedex-search-row">
@@ -517,8 +520,15 @@
               <div id="albumContent" style="flex:1;display:flex;flex-direction:column;color:var(--ui-color);min-height:0;"></div>
             </div>
 
+            <!-- 道具盒 -->
+            <div id="itemBoxView" class="view-fixed" style="display:none;">
+              <div id="itemBoxContent" style="flex:1;display:flex;flex-direction:column;color:var(--ui-color);min-height:0;"></div>
+            </div>
+
             <!-- 随从（糖果抽卡的临时跟随增益） -->
-            <div id="followerView" class="view-fixed" style="display:none;">
+            <div id="followerDexView" class="view-fixed" style="display:none;"></div>
+            <div id="followerView" class="view-fixed" style="display:none;position:relative;">
+              <button class="incubator-log-btn" id="followerDexBtn">随从图鉴</button>
               <div id="followerContent" style="flex:1;display:flex;flex-direction:column;color:var(--ui-color);min-height:0;"></div>
             </div>
 
@@ -714,6 +724,30 @@
             <div id="hatchAllView" style="display:none;">
               <div id="hatchAllGrid" class="hatch-all-grid"></div>
             </div>
+            <!-- 进化演出：图层都在这，尺寸/配色由 evo-view.js 每帧算 -->
+            <div id="evoView" style="display:none;">
+              <canvas id="evoFx"></canvas>
+              <div class="evo-glow" id="evoGlowL"></div>
+              <div class="evo-glow" id="evoGlowR"></div>
+              <div id="evoVig"></div>
+              <div id="evoStarBox"><i></i><i></i><i></i></div>
+              <div id="evoFloor"></div>
+              <div id="evoMonBox">
+                <div id="evoHalo"></div>
+                <div id="evoCore"></div>
+                <img id="evoMon" alt="" />
+              </div>
+              <img id="evoItem" alt="" />
+              <div id="evoFlash"></div>
+              <!-- 完成提示：这块文字框归演出自己所有，不共用游戏文本框（
+                   挂机遭遇的 逃跑/确定 按钮都挂在那边的框里，会被带出来） -->
+              <div id="evoDone" class="text-box" style="display:none;">
+                <div class="text-box-content" id="evoDoneText"></div>
+                <div class="catch-confirm-btns">
+                  <span id="evoDoneOk" class="catch-confirm-btn">确定</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div id="appTextBox" class="text-box" style="transform:translateY(100%);">
             <div id="appTextBoxContent" class="text-box-content"></div>
@@ -730,13 +764,13 @@
               <div class="splash-stage">
                 <img class="splash-hero" src="./character/brendan-front.png" alt="" />
                 <div class="splash-ring" id="splashRing">
-                  <img class="splash-item" style="--i:0" src="./items/poke-ball.png" alt="" />
-                  <img class="splash-item" style="--i:1" src="./items/ultra-ball.png" alt="" />
-                  <img class="splash-item" style="--i:2" src="./items/master-ball.png" alt="" />
-                  <img class="splash-item" style="--i:3" src="./items/mystery-egg.png" alt="" />
-                  <img class="splash-item" style="--i:4" src="./items/honey.png" alt="" />
-                  <img class="splash-item" style="--i:5" src="./items/shiny-charm.png" alt="" />
-                  <img class="splash-item splash-item--sm" style="--i:6" src="./items/candy.png" alt="" />
+                  <img class="splash-item" style="--i:0" src="./items/balls/poke-ball.png" alt="" />
+                  <img class="splash-item" style="--i:1" src="./items/balls/ultra-ball.png" alt="" />
+                  <img class="splash-item" style="--i:2" src="./items/balls/master-ball.png" alt="" />
+                  <img class="splash-item" style="--i:3" src="./items/goods/mystery-egg.png" alt="" />
+                  <img class="splash-item" style="--i:4" src="./items/goods/honey.png" alt="" />
+                  <img class="splash-item" style="--i:5" src="./items/goods/shiny-charm.png" alt="" />
+                  <img class="splash-item splash-item--sm" style="--i:6" src="./items/goods/candy.png" alt="" />
                 </div>
               </div>
             </div>
@@ -747,7 +781,7 @@
             <div class="goodbye-xp-pool" id="goodbyeXpPool" style="display:none;">
               <div class="expcandy-expbar"><div class="expcandy-expfill" id="goodbyeXpFill"></div></div>
               <div class="goodbye-xp-pool-text" id="goodbyeXpText"></div>
-              <img class="goodbye-xp-candy" id="goodbyeXpCandy" src="./items/xp-candy.png" alt="经验糖果" style="display:none;" />
+              <img class="goodbye-xp-candy" id="goodbyeXpCandy" src="./items/goods/xp-candy.png" alt="经验糖果" style="display:none;" />
             </div>
             <div class="encounter-right" id="goodbyeRight" style="display:none;">
               <span class="encounter-owned-wrap" style="display:none;">
@@ -820,44 +854,44 @@
       <div class="backpack-items" id="backpack">
         <div id="bagPage1" class="bag-page">
           <div class="bag-slot" data-item="poke-ball">
-            <img src="./items/poke-ball.png" class="bag-icon" alt="精灵球" />
+            <img src="./items/balls/poke-ball.png" class="bag-icon" alt="精灵球" />
             <span class="bag-name">精灵球</span>
             <span class="bag-qty" id="bag-poke-ball">0</span>
           </div>
           <div class="bag-slot" data-item="ultra-ball">
-            <img src="./items/ultra-ball.png" class="bag-icon" alt="高级球" />
+            <img src="./items/balls/ultra-ball.png" class="bag-icon" alt="高级球" />
             <span class="bag-name">高级球</span>
             <span class="bag-qty" id="bag-ultra-ball">0</span>
           </div>
           <div class="bag-slot" data-item="master-ball">
-            <img src="./items/master-ball.png" class="bag-icon" alt="大师球" />
+            <img src="./items/balls/master-ball.png" class="bag-icon" alt="大师球" />
             <span class="bag-name">大师球</span>
             <span class="bag-qty" id="bag-master-ball">0</span>
           </div>
           <div class="bag-slot" data-item="mystery-egg">
-            <img src="./items/mystery-egg.png" class="bag-icon" alt="神秘蛋" />
+            <img src="./items/goods/mystery-egg.png" class="bag-icon" alt="神秘蛋" />
             <span class="bag-name">神秘蛋</span>
             <span class="bag-qty" id="bag-mystery-egg">0</span>
           </div>
           <div class="bag-slot" data-item="sweet-honey">
-            <img src="./items/honey.png" class="bag-icon" alt="甜甜蜜" />
+            <img src="./items/goods/honey.png" class="bag-icon" alt="甜甜蜜" />
             <span class="bag-name">甜甜蜜</span>
             <span class="bag-qty" id="bag-sweet-honey">0</span>
           </div>
           <div class="bag-slot" data-item="shiny-charm">
-            <img src="./items/shiny-charm.png" class="bag-icon" alt="闪耀护符" />
+            <img src="./items/goods/shiny-charm.png" class="bag-icon" alt="闪耀护符" />
             <span class="bag-name">闪耀护符</span>
             <span class="bag-qty" id="bag-shiny-charm">0</span>
           </div>
         </div>
         <div id="bagPage2" class="bag-page" style="display:none;">
           <div class="bag-slot" data-item="bike">
-            <img src="./items/bike.png" class="bag-icon" alt="自行车" />
+            <img src="./items/goods/bike.png" class="bag-icon" alt="自行车" />
             <span class="bag-name">自行车</span>
             <span class="bag-qty" id="bag-bike">0</span>
           </div>
           <div class="bag-slot" data-item="exp-candy">
-            <img src="./items/xp-candy.png" class="bag-icon" alt="经验糖果" />
+            <img src="./items/goods/xp-candy.png" class="bag-icon" alt="经验糖果" />
             <span class="bag-name">经验糖果</span>
             <span class="bag-qty" id="bag-exp-candy">0</span>
           </div>
@@ -869,7 +903,7 @@
         </div>
       </div>
       <div class="stats-bar">
-        <span id="statProgress"><img src="./items/candy.png"
+        <span id="statProgress"><img src="./items/goods/candy.png"
             style="width:14px;height:14px;vertical-align:middle;image-rendering:pixelated;" /> 0</span>
         <span id="statDropHint" class="stat-drop-hint" style="display:none;"></span>
         <span id="statAutoStatus" class="stat-auto-status"><span id="statAutoText"></span><span

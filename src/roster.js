@@ -1,11 +1,13 @@
 // ===== 宝可梦仓库 =====
 // 查看当前拥有的每只宝可梦个体（个体值/闪光/来源/在仓状态），
 // 交互与图鉴对齐：搜索 / 来源筛选 / 表头排序 / 点击进入个体详情，详情页可返回列表。
-import { $, showView, getCurrentView, tryLoadImage, tryLoadPokemonImage, showConfirmBar, hideConfirmBar, updateBackpack, logicViewport, viewportToLogic, popupBounds, isDualLayout, isStageView, closeAppArea } from './ui.js';
-import { gameData, allPokemon, getPokemonByIndex, getNature, pushNav, resetNav, saveGame, addSystemLog, setPokedexInLogView, ensureGender, genderBadge, isPokemon, phase } from './state.js';
-import { TYPE_COLORS, pokemonSourceBadge } from './items.js';
+import { $, showView, getCurrentView, tryLoadImage, tryLoadPokemonImage, showConfirmBar, hideConfirmBar, updateBackpack, updateStats, logicViewport, viewportToLogic, popupBounds, isDualLayout, isStageView, closeAppArea } from './ui.js';
+import { gameData, allPokemon, getPokemonByIndex, isTmUnlocked, getNature, pushNav, resetNav, saveGame, addSystemLog, setPokedexInLogView, ensureGender, genderBadge, isPokemon, phase } from './state.js';
+import { TYPE_COLORS, typeIconColor, pokemonSourceBadge, itemIconSrc, MINT_KEYS } from './items.js';
+import { evolutionRows, applyEvolution, condItems, moveCondText, evoPreEvos, evolutionData, loadEvolution } from './evolution.js';
+import { playEvolution } from './evo-view.js';
 import { matchPinyinPartial, describeLogEntry } from './pokedex.js';
-import { REGION_CYCLE, EXP_CANDY_XP, RELEASE_XP_RATE, MAX_LEVEL } from './config.js';
+import { REGION_CYCLE, EXP_CANDY_XP, RELEASE_XP_RATE, MAX_LEVEL, MINT_NATURES } from './config.js';
 import { showGoodbyeConfirm, startShinySparkleOn, stopShinySparkleLoop } from './animation.js';
 import { chooseMoves, fallbackMoves } from './moves.js';
 import { NATURES } from './battle-core.js';
@@ -96,6 +98,7 @@ let _detailId = null;  // 当前详情个体 id（非空=处于详情页）
 let _detailFromView = null; // 详情跳转来源（捕获/孵蛋后“查看详情”进入时记录，返回列表后再返回时优先回来源）
 let _detailReturnFn = null; // 从悬赏提交/交换选择列表进入详情时注册的返回回调（返回时恢复来源列表）
 let _detailJumpedToPokedex = false; // 详情页跳转图鉴中（返回键应先回详情页，再按来源返回）
+let _detailEvoAllowed = false; // 详情页是否允许「改性格 / 进化链」：只有从宝可梦 app 列表点行进来才允许（挑一只来用的入口都不行）
 let _picker = null; // 选取模式：配队/训练点击空位跳转仓库选择，{ mode:'team'|'train', slot, from, exclude[] }
 let _renderSeq = 0; // 列表分片渲染版本号：新一轮渲染作废旧一轮，避免快速切换筛选时乱序
 let _rosterIconObs = null; // 列表图标懒加载观察器：滚动进入视口（含预载带）才加载，避免大仓库并发请求打爆资源
@@ -154,6 +157,31 @@ function matchesQuery(p, q) {
 }
 
 // 当前筛选后的个体池：普通工具筛选 或 高级筛选二选一（批量全选共用同一逻辑）
+// 「可进化」筛选用：有进化空间的物种编号，含超级进化 / 超极巨，按表缓存
+let _evoCapableSet = null;
+function evoCapableSet() {
+  const T = evolutionData();
+  if (!T) return null;
+  if (!_evoCapableSet) {
+    _evoCapableSet = new Set(Object.keys(T.edges || {}));
+    for (const f of Object.keys(T.stones || {})) _evoCapableSet.add(String(f).split('-')[0]);
+  }
+  return _evoCapableSet;
+}
+// 现在就能进化：至少有一条进化行的条件全齐，等级 / 道具 / 糖果币 / 地区 / 招式 / 性别都算
+function canEvolveNow(p) {
+  const cap = evoCapableSet();
+  if (!cap || !cap.has(String(p.species))) return false;
+  if (!_moveData || !_learnset) return false;   // 招式条件是判定的一部分，数据没到先不算"能进化"
+  const carried = new Set(currentMoveIds(p).filter((m) => m != null).map(String));
+  return evolutionRows(p, { moveIds: carried, moveData: _moveData }).some((r) => r.ok);
+}
+// 筛选要用进化表 + 招式表：没加载就补上、加载完自动重画，并清掉物种缓存
+function ensureEvoDataForFilter() {
+  if (evolutionData() && _moveData && _learnset) return;
+  Promise.all([ensureMoveData(), loadEvolution()]).then(() => { _evoCapableSet = null; renderList(); }).catch(() => {});
+}
+
 function currentFilterPool() {
   let pool = inRoster();
   const adv = _advFilter;
@@ -190,6 +218,7 @@ function currentFilterPool() {
     if (adv.ivMax !== '') pool = pool.filter(p => ivSum(p) <= Number(adv.ivMax));
     if (adv.ivCount !== '' && adv.ivCount != null) pool = pool.filter(p => perfectIvCount(p) === Number(adv.ivCount));
     if (adv.gender) pool = pool.filter(p => ensureGender(p) === adv.gender);
+    if (adv.evolvable) pool = pool.filter(canEvolveNow);
   } else {
     // 普通模式：来源 → 稀有度 → 闪光 →（时空扭曲）变体 → 属性 → 地区 → 搜索词
     // 大量出没（mass）归入「野生」（normal）；时空扭曲（twist）单列来源
@@ -341,6 +370,7 @@ function renderList() {
       return;
     }
     _detailFromView = null;
+    _detailEvoAllowed = true; // 从宝可梦列表点行进来：允许改性格和进化
     showRosterDetail(row.dataset.rid);
   };
   // 批量模式底部栏
@@ -559,37 +589,45 @@ function currentMoveIds(p) {
     });
   }
   const pd = getPokemonByIndex(String(p.species));
-  return chooseMoves(_learnset[p.species] || {}, p.level || 1, _moveData, { types: pd ? pd.types : [], includeTm: true });
+  return chooseMoves(_learnset[p.species] || {}, p.level || 1, _moveData, { types: pd ? pd.types : [], tmIds: unlockedTmIds(), allowEgg: p.source === 'egg' });
 }
 
-// 可学习候选：升级习得（≤当前等级）+ 蛋招式 + 招式机，过滤未实现招式，按学习等级升序（TM 排最后）
+// 可学习候选：升级习得、蛋招式、招式机、继承，过滤未实现招式，按学习等级升序，招式机和继承排最后
+// 门禁：招式机要先在商店解锁，蛋招式只对孵蛋个体（source==='egg'）开放；同一招式有多条渠道时取可用的那条
 function candidateMoves(p) {
   const ls = _learnset[p.species] || { lv: [], tm: [], egg: [] };
+  const hatched = p.source === 'egg';
   const out = [];
   for (const [lv, m] of ls.lv || []) {
     if (lv <= (p.level || 1)) out.push({ id: m, lv, egg: false });
   }
-  for (const m of ls.egg || []) out.push({ id: m, lv: null, egg: true });
-  for (const m of ls.tm || []) out.push({ id: m, lv: null, tm: true });
-  const seen = new Set();
-  const res = [];
+  for (const m of ls.egg || []) out.push({ id: m, lv: null, egg: true, locked: !hatched });
+  for (const m of ls.tm || []) out.push({ id: m, lv: null, tm: true, locked: !isTmUnlocked(m) });
+  // 继承：进化线前形态独有的招；只有进化那一刻带过来的可选，其余永远灰着
+  for (const m of lineInheritedIds(p.species)) out.push({ id: m, lv: null, inherited: true, locked: !(p.inherited || []).includes(m) });
+  const byId = new Map();
   for (const c of out) {
-    if (seen.has(c.id)) continue;
+    const prev = byId.get(c.id);
+    if (!prev) { byId.set(c.id, c); continue; }
+    if (prev.locked && !c.locked) byId.set(c.id, c); // 优先保留可用的渠道
+  }
+  const res = [];
+  for (const c of byId.values()) {
     const mv = _moveData.moves[c.id];
     if (!mv || mv.effect.kind === 'unimplemented') continue;
-    seen.add(c.id);
     res.push(c);
   }
   // 学不到任何已实现招式（如百变怪只有变身、图图犬只有写生且均未实装）：
   // 候选列表补通用兜底攻击招，保证配招页有招可选、移除后可恢复
   if (res.length === 0) {
+    const seen = new Set();
     for (const id of fallbackMoves(_moveData)) {
       if (seen.has(id)) continue;
       seen.add(id);
       res.push({ id, lv: null, egg: false });
     }
   }
-  res.sort((a, b) => (a.lv ?? (a.tm ? 9999 : 999)) - (b.lv ?? (b.tm ? 9999 : 999)));
+  res.sort((a, b) => (a.lv ?? (a.tm ? 9999 : a.inherited ? 10000 : 999)) - (b.lv ?? (b.tm ? 9999 : b.inherited ? 10000 : 999)));
   return res;
 }
 
@@ -599,7 +637,7 @@ function movesBlockHtml(p) {
     const mv = ids[i] ? _moveData.moves[ids[i]] : null;
     return `<div class="roster-move-slot${mv ? '' : ' empty'}" data-move="${mv ? ids[i] : ''}">
       ${mv
-        ? `<span class="b-move-type" style="background:${TYPE_COLORS[mv.type] || '#888'}">
+        ? `<span class="b-move-type" style="background:${TYPE_COLORS[mv.type] || '#888'};color:${typeIconColor(mv.type)}">
              <svg class="b-move-type-icon"><use xlink:href="#icon-type-${mv.type}"></use></svg>
            </span>
            <span class="roster-move-slot-name">${mv.name}</span>`
@@ -634,7 +672,7 @@ function bindMovesBlock(id) {
   if (!p) return;
   box.querySelector('#rosterAutoSet')?.addEventListener('click', () => {
     const pd = getPokemonByIndex(String(p.species));
-    p.moves = chooseMoves(_learnset[p.species] || {}, p.level || 1, _moveData, { types: pd ? pd.types : [], includeTm: true });
+    p.moves = chooseMoves(_learnset[p.species] || {}, p.level || 1, _moveData, { types: pd ? pd.types : [], tmIds: unlockedTmIds(), allowEgg: p.source === 'egg' });
     saveGame();
     renderMovesBlock(id);
   });
@@ -653,8 +691,8 @@ function bindMovesBlock(id) {
 // ---------- 手动配招独立页 ----------
 const MOVE_STATUS_CN = { sleep: '睡眠', poison: '中毒', paralysis: '麻痹', burn: '灼伤', confusion: '混乱', flinch: '畏缩', freeze: '冰冻' };
 
-// 招式类别 → 图标文件与中文名（物理/特殊/变化；伤害类招式按 effect.cat 归类）
-const MOVE_CAT_ICON = { phys: 'physical.png', spec: 'special.png', status: 'status.png' };
+// 招式类别 → 中文名与 CSS 类（物理/特殊/变化；伤害类招式按 effect.cat 归类）
+// 图形由 CSS mask 上色（源图是白色位图），颜色跟随 --ui-color-dark
 const MOVE_CAT_CN = { phys: '物理', spec: '特殊', status: '变化' };
 function moveCat(mv) {
   const ef = mv.effect || {};
@@ -663,13 +701,14 @@ function moveCat(mv) {
   }
   return 'status';
 }
-function catIconHtml(mv) {
+// 招式类别图标 / 招式描述：配招页与商店的招式机详情共用
+export function catIconHtml(mv) {
   const c = moveCat(mv);
-  return `<span class="move-cat-icon"><img src="./icons/${MOVE_CAT_ICON[c]}" alt="${MOVE_CAT_CN[c]}" data-tip="${MOVE_CAT_CN[c]}"></span>`;
+  return `<span class="move-cat-icon cat-${c}" data-tip="${MOVE_CAT_CN[c]}" aria-label="${MOVE_CAT_CN[c]}"></span>`;
 }
 
 // 按 effect.kind 生成招式描述
-function moveDesc(mv) {
+export function moveDesc(mv) {
   const ef = mv.effect || {};
   switch (ef.kind) {
     case 'damage': {
@@ -712,8 +751,16 @@ function moveDesc(mv) {
   }
 }
 
-// 把选中的招式装入指定槽位（已在其它槽则顺移，保留空位）
+// 把选中的招式装入指定槽位，已在别的槽则顺移；未解锁的招式机 / 蛋招式 / 继承招式在这里统一拦截
 function assignMove(p, moveId, slot) {
+  const cand = candidateMoves(p).find((c) => c.id === moveId);
+  if (cand && cand.locked) {
+    const why = cand.tm ? '该招式机还没解锁，去商店解锁'
+      : cand.inherited ? '继承的招式只能靠进化时带过来'
+      : '蛋招式只能由孵蛋获得的宝可梦学习';
+    showConfirmBar(why, null, null, { singleButton: true });
+    return;
+  }
   const cur = currentMoveIds(p); // 手动配过则基于 p.moves，否则基于自动配招（避免首次操作清空自动配招）
   const arr = [0, 1, 2, 3].map((i) => cur[i] ?? null);
   if (arr[slot] === moveId) return;
@@ -721,6 +768,38 @@ function assignMove(p, moveId, slot) {
   if (oldIdx >= 0) arr[oldIdx] = null;
   arr[slot] = moveId;
   p.moves = arr;
+}
+
+// 已解锁招式机的 id 集合（传进 chooseMoves 控制自动配招能用的招）
+function unlockedTmIds() {
+  return new Set(Object.keys(gameData.tmUnlocked || {}).map(Number));
+}
+
+// 招式数据（moves.json + learnset.json）：商店的招式机区块读表用
+export async function moveDataset() {
+  await ensureMoveData();
+  return { moves: _moveData, learnset: _learnset };
+}
+
+// 解锁招式机后调用：能给这招的个体全部学会。
+// 已手动配过招的个体只在空槽里装（满 4 招的是玩家自己的配置，不覆盖）；没配过的走自动配招池，天然会带上这招。
+export function learnTmForAll(moveId) {
+  let n = 0;
+  for (const p of gameData.roster || []) {
+    if (!p.inRoster || (p.kind && p.kind === 'egg')) continue;
+    const ls = _learnset && _learnset[String(p.species)];
+    if (!ls || !(ls.tm || []).includes(moveId)) continue;
+    const cur = currentMoveIds(p);
+    if (cur.includes(moveId)) { n++; continue; }
+    if (!Array.isArray(p.moves) || !p.moves.length) continue; // 未手动配招：自动配招没选上就不强塞
+    const free = [0, 1, 2, 3].find((i) => cur[i] == null);
+    if (free == null) continue;
+    const arr = [0, 1, 2, 3].map((i) => cur[i] ?? null);
+    arr[free] = moveId;
+    p.moves = arr;
+    n++;
+  }
+  return n;
 }
 
 export function isRosterInMoveEdit() {
@@ -784,6 +863,7 @@ function bindMoveEditDrag(box) {
       const t = document.createElement('span');
       t.className = 'b-move-type';
       t.style.background = TYPE_COLORS[info.type] || '#888';
+      t.style.color = typeIconColor(info.type);
       t.innerHTML = `<svg class="b-move-type-icon"><use xlink:href="#icon-type-${info.type}"></use></svg>`;
       g.appendChild(t);
     }
@@ -951,7 +1031,7 @@ export function renderMoveEditor() {
         const mv = ids[i] ? _moveData.moves[ids[i]] : null;
         return `<div class="move-edit-slot${mv ? '' : ' empty'}" data-slot="${i}"${mv ? '' : ' title="点击装入选中的招式"'}>
           ${mv
-            ? `<span class="b-move-type" style="background:${TYPE_COLORS[mv.type] || '#888'}">
+            ? `<span class="b-move-type" style="background:${TYPE_COLORS[mv.type] || '#888'};color:${typeIconColor(mv.type)}">
                  <svg class="b-move-type-icon"><use xlink:href="#icon-type-${mv.type}"></use></svg>
                </span>
                <span class="move-edit-slot-name">${mv.name}</span>
@@ -968,12 +1048,12 @@ export function renderMoveEditor() {
           const mv = _moveData.moves[c.id];
           const active = ids.includes(c.id);
           const sel = c.id === _moveSel;
-          return `<button class="move-edit-row${active ? ' active' : ''}${sel ? ' sel' : ''}" data-move="${c.id}">
-            <span class="b-move-type" style="background:${TYPE_COLORS[mv.type] || '#888'}">
+          return `<button class="move-edit-row${active ? ' active' : ''}${sel ? ' sel' : ''}${c.locked ? ' locked' : ''}" data-move="${c.id}">
+            <span class="b-move-type" style="background:${TYPE_COLORS[mv.type] || '#888'};color:${typeIconColor(mv.type)}">
               <svg class="b-move-type-icon"><use xlink:href="#icon-type-${mv.type}"></use></svg>
             </span>
             <span class="move-edit-row-name">${mv.name}</span>
-            <span class="move-edit-row-lv">${c.tm ? '招式机' : c.egg ? '蛋招式' : c.lv ? `Lv${c.lv}` : ''}</span>
+            <span class="move-edit-row-lv">${c.inherited ? '继承' : c.tm ? '招式机' : c.egg ? '蛋招式' : c.lv ? `Lv${c.lv}` : ''}</span>
           </button>`;
         }).join('')}
       </div>
@@ -1034,7 +1114,7 @@ function renderMoveDetail(p, ids) {
   }
   return `
     <div class="move-edit-detail-head">
-      <span class="b-move-type big" style="background:${TYPE_COLORS[mv.type] || '#888'}">
+      <span class="b-move-type big" style="background:${TYPE_COLORS[mv.type] || '#888'};color:${typeIconColor(mv.type)}">
         <svg class="b-move-type-icon"><use xlink:href="#icon-type-${mv.type}"></use></svg>
       </span>
       <div class="move-edit-detail-name">${mv.name}</div>
@@ -1048,11 +1128,224 @@ function renderMoveDetail(p, ids) {
     <div class="move-edit-detail-desc">${moveDesc(mv)}</div>`;
 }
 
-// 详情页数据就绪后渲染配招块（异步加载招式数据，避免阻塞详情首帧）
+// 详情页数据就绪后渲染配招块 + 进化块；招式数据异步加载，不阻塞详情首帧
 async function loadMovesBlock(id) {
   await ensureMoveData();
   if (_detailId !== id) return; // 已切走则放弃
   renderMovesBlock(id);
+  renderEvoBlock(id);
+}
+
+// 从别的页面切回详情时等级与进化条件都可能变了，就地重算
+window.addEventListener('view-changed', (e) => {
+  if (e.detail !== 'rosterView' || _detailId == null) return;
+  if (!$('rosterEvoBox')?.innerHTML) return; // 还没渲染过就交给正常流程
+  const p = (gameData.roster || []).find((r) => r.id === _detailId);
+  if (!p) return;
+  const lvEl = $('rosterDetailLv');
+  if (lvEl) lvEl.innerHTML = `${genderBadge(ensureGender(p))}Lv${p.level || 1}`;
+  loadMovesBlock(_detailId);
+});
+
+// ---------- 进化链 ----------
+// 只有从宝可梦列表点行进详情才显示，别的入口不给，见 _detailEvoAllowed
+function evoBlockHtml(p, rows) {
+  const title = `<div class="roster-detail-title">进化</div>`;
+  if (!rows.length) return `${title}<div class="evo-empty">该宝可梦没有进化形态</div>`;
+  const rowsHtml = rows.map((r, i) => {
+    // 一行一个目标；没遇到过的用问号图占位
+    const tid = String(r.targets[0]);
+    const tp = getPokemonByIndex(tid);
+    const seen = (gameData.pokedex?.[tid]?.seen || 0) > 0;
+    const name = seen && tp ? (tp.form || tp.name) : '？？？';
+    const iconId = seen ? tid : null;
+    const conds = [];
+    if (r.cond.lv) conds.push({ text: `Lv${r.cond.lv}`, ok: !r.unmet.lv });
+    for (const it of condItems(r.cond)) conds.push({ text: it, ok: !r.unmet.items.has(it) });
+    if (r.cond.move) conds.push({ text: moveCondText(r.cond.move), ok: !r.unmet.move });   // 判定看的是"带着的 4 招"，不是学过
+    if (r.cond.region) conds.push({ text: `${r.cond.region}地区`, ok: !r.unmet.region });
+    if (r.cond.gender) conds.push({ text: r.cond.gender === 'female' ? '雌性' : '雄性', ok: !r.unmet.gender });
+    if (r.cond.candy) conds.push({ text: `${r.cond.candy} 糖果`, ok: !r.unmet.candy });
+    if (r.cond.coin) conds.push({ text: `${r.cond.coin} 游戏币`, ok: !r.unmet.coin });
+    return `<div class="evo-row${r.ok ? '' : ' off'}" data-evo="${i}">
+      <div class="evo-main">
+        ${iconId ? `<img class="evo-icon" data-icon="${iconId}" alt="" />` : '<img class="evo-icon" data-unknown alt="" />'}
+        <div class="evo-info">
+          <div class="evo-name">${name}</div>
+          <div class="evo-conds">${conds.map((c) => `<span class="evo-cond${c.ok ? '' : ' inert'}">${c.text}</span>`).join('')}</div>
+        </div>
+      </div>
+      <span class="evo-btn${r.ok ? '' : ' inert'}">进化</span>
+    </div>`;
+  }).join('');
+  return `${title}${rowsHtml}`;
+}
+
+async function renderEvoBlock(id) {
+  const box = $('rosterEvoBox');
+  if (!box) return;
+  const p = (gameData.roster || []).find((r) => r.id === id);
+  if (!p) return;
+  if (!_detailEvoAllowed) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const carried = new Set(currentMoveIds(p).filter((id) => id != null).map((id) => String(id)));
+  const rows = evolutionRows(p, { moveIds: carried, moveData: _moveData });
+  box.innerHTML = evoBlockHtml(p, rows);
+  box.querySelectorAll('.evo-icon[data-icon]').forEach((im) => {
+    const pd = getPokemonByIndex(im.dataset.icon);
+    if (pd?.icon) tryLoadImage(im, pd.icon);
+  });
+  // 图鉴里还没见过的目标
+  box.querySelectorAll('.evo-icon[data-unknown]').forEach((im) => tryLoadImage(im, 'pokemon-data/icon/unknown.png'));
+  // 顺手预取进化目标的立绘并解掉首帧：点进化后演出要立刻换图、立刻起手，别等到那时候才加载/解码
+  for (const t of rows.flatMap((r) => r.targets)) {
+    const pd = getPokemonByIndex(String(t));
+    if (!pd) continue;
+    const warm = new Image();
+    tryLoadPokemonImage(warm, pd, p.shiny ? '_shiny' : '').then(() => { try { warm.decode && warm.decode().catch(() => {}); } catch (_) {} });
+  }
+  // 只有点按钮才触发进化
+  box.querySelectorAll('.evo-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const row = rows[Number(btn.closest('.evo-row')?.dataset.evo)];
+      if (btn.classList.contains('inert') || !row?.ok) return;
+      startEvolution(id, row);
+    });
+  });
+}
+
+// 这个形态在任何渠道都学不到这招吗：升级 / 招式机 / 蛋招式都翻一遍
+function learnsAtAll(species, id) {
+  const l = _learnset?.[species];
+  if (!l) return true;
+  return (l.lv || []).some(([, m]) => m === id) || (l.tm || []).includes(id) || (l.egg || []).includes(id);
+}
+
+// 进化线上前形态能学、本形态整个学不到的招，沿反向边逐级往上找
+const _inheritCache = new Map();
+function lineInheritedIds(species) {
+  const key = String(species);
+  const hit = _inheritCache.get(key);
+  if (hit) return hit;
+  const out = new Set();
+  const walk = (idx, seen) => {
+    if (seen.has(idx)) return;
+    seen.add(idx);
+    for (const { from } of evoPreEvos(idx)) {
+      const l = _learnset?.[from];
+      if (l) {
+        for (const [, m] of l.lv || []) if (!learnsAtAll(key, m)) out.add(m);
+        for (const m of l.tm || []) if (!learnsAtAll(key, m)) out.add(m);
+        for (const m of l.egg || []) if (!learnsAtAll(key, m)) out.add(m);
+      }
+      walk(from, seen);
+    }
+  };
+  walk(key, new Set());
+  if (evolutionData()) _inheritCache.set(key, out); // 表还没加载时先不缓存，免得记下一份空结果
+  return out;
+}
+
+// 二次确认后扣东西、改 species，再播进化演出
+function startEvolution(id, row) {
+  const p = (gameData.roster || []).find((r) => r.id === id);
+  if (!p || !row.ok) return;
+  const to = row.targets[0];   // 分支已经拆成多行，一行就一个目标
+  const target = getPokemonByIndex(String(to));
+  const from = getPokemonByIndex(String(p.species));
+  const costs = [...condItems(row.cond)];
+  if (row.cond.candy) costs.push(`${row.cond.candy} 糖果`);
+  if (row.cond.coin) costs.push(`${row.cond.coin} 游戏币`);
+  const who = p.nickname || (from ? (from.form || from.name) : '这只宝可梦');
+  const costText = costs.length ? `消耗 ${costs.join(' + ')}，` : '';
+  // 目标没解锁就不点破名字，详情页里显示 ？？？
+  const seenTarget = (gameData.pokedex?.[to]?.seen || 0) > 0;
+  const ask = seenTarget
+    ? `${costText}${who}进化为${target ? (target.form || target.name) : '新的形态'}？`
+    : `${costText}确定进化${who}？`;
+  showConfirmBar(ask, () => {
+    const fromIdx = String(p.species);                 // 演出要按"进化前"的形态开场，先记下来
+    const shiny = !!p.shiny;
+    // 结算（扣道具 / 写图鉴 / 存档 / 重绘）放到演出结束：确认后立刻开演，起手那一帧不再被 saveGame 和界面刷新卡住
+    const commit = () => {
+      // 进化前这只解锁到哪就带过来哪些：新形态整个学不到的按「继承」留底，之后再练级也不会解锁新的
+      const before = _learnset ? candidateMoves(p).filter((c) => !c.locked).map((c) => c.id) : [];
+      const gone = before.filter((m) => !learnsAtAll(String(to), m));
+      if (gone.length) p.inherited = [...new Set([...(p.inherited || []), ...gone])];
+      applyEvolution(p, to, row.cond);
+    };
+    // 演出可点屏跳过；演完（或直接播不了）再结算，然后回到已经变了的那只详情
+    playEvolution({
+      from: { idx: fromIdx, name: from ? (from.form || from.name) : fromIdx, types: (from && from.types) || [] },
+      to: { idx: String(to), name: target ? (target.form || target.name) : String(to), types: (target && target.types) || [] },
+      items: condItems(row.cond),
+      shiny,
+      variant: p.variant || null,   // RGB / 污染特效：演出贴图也要带出来
+      onFinish: () => { commit(); showRosterDetail(id); },
+    });
+  }, null, { overlay: true });
+}
+
+// ---------- 使用薄荷（改性格） ----------
+// 用掉一颗薄荷改性格；没库存 / 已经是该性格 / 不是薄荷都不动（返回 false）
+export function applyMint(entry, mintKey) {
+  const nature = MINT_NATURES[mintKey];
+  if (!entry || !nature) return false;
+  if ((gameData.items[mintKey] || 0) <= 0 || entry.nature === nature) return false;
+  gameData.items[mintKey]--;
+  entry.nature = nature;
+  addSystemLog('item_use', { item: mintKey, pokemon: entry.species });
+  saveGame();
+  updateBackpack(mintKey);
+  updateStats();
+  window.dispatchEvent(new CustomEvent('roster-changed')); // 性格影响派遣速度，相关界面要重算
+  return true;
+}
+
+let _mintPanelDoc = null; // 点面板外关闭的文档监听：打开时挂、关闭时摘
+function closeMintPanel() {
+  document.getElementById('mintPanel')?.remove();
+  if (_mintPanelDoc) { document.removeEventListener('click', _mintPanelDoc); _mintPanelDoc = null; }
+}
+
+// 底部薄荷面板：列持有的薄荷（当前性格那种不列），点一颗二次确认后用掉
+function openMintPanel() {
+  const view = $('rosterView');
+  const entry = (gameData.roster || []).find(r => r.id === _detailId);
+  if (!view || !entry) return;
+  closeMintPanel();
+  const owned = MINT_KEYS.filter((k) => (gameData.items[k] || 0) > 0 && MINT_NATURES[k] !== entry.nature);
+  const rows = owned.length
+    ? owned.map((k) => `<div class="mint-row" data-mint="${k}">
+        <img src="${itemIconSrc(k)}" alt="" /><span class="mint-name">${k}</span><em class="mint-qty">×${gameData.items[k]}</em></div>`).join('')
+    : '<div class="mint-empty">没有可用的薄荷</div>';
+  const panel = document.createElement('div');
+  panel.id = 'mintPanel';
+  panel.className = 'berry-picker berry-board'; // 复用告示牌/种子选择那套上浮框
+  panel.innerHTML = `<div class="berry-picker-head">
+      <span class="berry-picker-title">使用薄荷</span>
+      <div class="berry-picker-x" data-mint-close>✕</div>
+    </div>
+    <div class="berry-board-sections">
+      <div class="berry-board-section-title">持有中的薄荷</div>
+      <div class="mint-list">${rows}</div>
+    </div>`;
+  (view.closest('.screen') || view).appendChild(panel);
+  panel.onclick = (e) => {
+    if (e.target.closest('[data-mint-close]') || e.target === panel) { closeMintPanel(); return; }
+    const row = e.target.closest('[data-mint]');
+    if (!row) return;
+    const key = row.dataset.mint;
+    showConfirmBar(`用掉 1 颗「${key}」，性格变为${key.replace('薄荷', '')}？`, () => {
+      if (!applyMint(entry, key)) return;
+      closeMintPanel();
+      showRosterDetail(_detailId); // 就地刷新详情（性格与持有数量都变了）
+    }, null, { overlay: true });
+  };
+  // 点面板外的空白也关掉（打开那次点击已在入口 stopPropagation，不会立刻触发）
+  _mintPanelDoc = (ev) => { if (!panel.contains(ev.target)) closeMintPanel(); };
+  document.addEventListener('click', _mintPanelDoc);
 }
 
 // ---------- 个体详情 ----------
@@ -1079,12 +1372,12 @@ function showRosterDetail(id) {
 
   const poke = getPokemonByIndex(String(p.species));
   const dGSpan = genderBadge(ensureGender(p));
-  const lastLog = latestLogLine(String(p.species), p.obtainedAt);
+  const lastLog = latestLogLine(String(p.originSpecies || p.species), p.obtainedAt);
   const list = $('rosterList');
   if (!list) return;
   list.innerHTML = `
     <div style="font-size:13px;font-weight:700;padding:4px 5px 2px;display:flex;align-items:center;justify-content:space-between;">
-      <span><span id="rosterNickSpan">${rosterName(p)}</span><button class="roster-nick-btn" id="rosterNickBtn" title="改名"><svg t="1786243847045" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M138.666667 810.666667V213.333333c0-41.216 33.450667-74.666667 74.666666-74.666666h469.333334v64H213.333333a10.666667 10.666667 0 0 0-10.666666 10.666666v597.333334c0 5.888 4.778667 10.666667 10.666666 10.666666h597.333334a10.666667 10.666667 0 0 0 10.666666-10.666666V352h64V810.666667A74.666667 74.666667 0 0 1 810.666667 885.333333H213.333333A74.666667 74.666667 0 0 1 138.666667 810.666667z" fill="currentColor"></path><path d="M444.330667 540.032L856.362667 128l45.226666 45.226667-411.989333 412.032-45.226667-45.226667z" fill="currentColor"></path></svg></button>${p.shiny ? ' <svg class="roster-shiny" viewBox="0 0 1024 1024" width="14" height="14" style="flex-shrink:0;vertical-align:-2px;transform:translateY(-2px);"><use xlink:href="#icon-star"/></svg>' : ''}<span class="roster-detail-lv">${dGSpan}Lv${p.level || 1}</span></span>
+      <span><span id="rosterNickSpan">${rosterName(p)}</span><button class="roster-nick-btn" id="rosterNickBtn" title="改名"><svg t="1786243847045" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M138.666667 810.666667V213.333333c0-41.216 33.450667-74.666667 74.666666-74.666666h469.333334v64H213.333333a10.666667 10.666667 0 0 0-10.666666 10.666666v597.333334c0 5.888 4.778667 10.666667 10.666666 10.666666h597.333334a10.666667 10.666667 0 0 0 10.666666-10.666666V352h64V810.666667A74.666667 74.666667 0 0 1 810.666667 885.333333H213.333333A74.666667 74.666667 0 0 1 138.666667 810.666667z" fill="currentColor"></path><path d="M444.330667 540.032L856.362667 128l45.226666 45.226667-411.989333 412.032-45.226667-45.226667z" fill="currentColor"></path></svg></button>${p.shiny ? ' <svg class="roster-shiny" viewBox="0 0 1024 1024" width="14" height="14" style="flex-shrink:0;vertical-align:-2px;transform:translateY(-2px);"><use xlink:href="#icon-star"/></svg>' : ''}<span class="roster-detail-lv" id="rosterDetailLv">${dGSpan}Lv${p.level || 1}</span></span>
       <div style="display:flex;flex-direction:row;align-items:flex-end;gap:2px;flex-shrink:0;">
         <button class="roster-release" data-pokedex title="查看图鉴">图鉴</button>
         <button class="roster-release" data-release>放生</button>
@@ -1098,7 +1391,7 @@ function showRosterDetail(id) {
           ${memberStatusTags(p)}
         </div>
         <div style="font-size:10px;opacity:0.7;line-height:1.6;">
-          <div style="display:flex;flex-wrap:wrap;column-gap:8px;"><div data-tip="${natureBoostText(p.nature)}" style="cursor:pointer;">性格：${natureText(p.nature)}</div><span>来源：${srcName(p.source)}</span></div>
+          <div style="display:flex;flex-wrap:wrap;column-gap:8px;"><div class="roster-nature${_detailEvoAllowed ? ' can-use' : ''}" data-tip="${natureBoostText(p.nature)}"${_detailEvoAllowed ? ' data-mint-open' : ''}>性格：${natureText(p.nature)}</div><span>来源：${srcName(p.source)}</span></div>
           <div style="display:flex;flex-wrap:wrap;column-gap:8px;">获得时间：${fmtTime(p.obtainedAt)}${lastLog ? `<span>${lastLog}</span>` : ''}</div>
         </div>
       </div>
@@ -1118,6 +1411,7 @@ function showRosterDetail(id) {
       </div>
     </div>
     <div class="roster-detail-block roster-moves-block" id="rosterMovesBox"></div>
+    <div class="roster-detail-block" id="rosterEvoBox" style="display:none;"></div>
   `;
   const img = $('rosterDetailImg');
   if (img && poke) {
@@ -1137,13 +1431,16 @@ function showRosterDetail(id) {
   zoomBox?.addEventListener('click', e => { e.stopPropagation(); setDetailZoom(!$('rosterList')?.classList.contains('roster-zoom')); });
   detailHead?.addEventListener('click', () => setDetailZoom(false));
 
+  // 性格行：只有从宝可梦列表进来的详情允许点开薄荷面板（挑一只来用的入口不给改）
+  list.querySelector('[data-mint-open]')?.addEventListener('click', (e) => { e.stopPropagation(); openMintPanel(); });
+
   // 改名按钮
   const nickBtn = $('rosterNickBtn');
   if (nickBtn) {
     nickBtn.addEventListener('click', () => {
       const nickSpan = $('rosterNickSpan');
       if (!nickSpan) return;
-      const orig = p.nickname || '';
+      const orig = p.nickname || (poke ? poke.name : '');
       const input = document.createElement('input');
       input.type = 'text';
       input.value = orig;
@@ -1151,7 +1448,8 @@ function showRosterDetail(id) {
       input.className = 'roster-nick-input';
       nickSpan.replaceWith(input);
       input.focus();
-      input.select();
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
       const save = () => {
         const v = input.value.trim();
         if (v && v !== poke.name) p.nickname = v;
@@ -1323,6 +1621,9 @@ function advFilterHtml() {
         </div></div>
         <div class="adv-group"><div class="adv-group-name">性别</div><div class="adv-chips">
           ${chip('gender', '', '不限')}${chip('gender', 'male', '雄性')}${chip('gender', 'female', '雌性')}${chip('gender', 'genderless', '无性别')}
+        </div></div>
+        <div class="adv-group"><div class="adv-group-name">进化</div><div class="adv-chips">
+          ${chip('evolvable', '', '不限')}${chip('evolvable', '1', '可进化')}
         </div></div>
         <div class="adv-group adv-span2"><div class="adv-group-name">来源</div><div class="adv-chips">
           ${ADV_SRCS.map(([v, l]) => chip('src', v, l)).join('')}
@@ -1496,7 +1797,9 @@ function bindAdvFilter(panel) {
       ivMax: numClamp(panel.querySelector('#advFilterIvMax'), 186, 186),
       gender: getChips('gender'),
       ivCount: getChips('ivcount'),
+      evolvable: getChips('evolvable'),
     };
+    if (_advFilter.evolvable) ensureEvoDataForFilter();
     syncAdvFilterUi();
     renderList();
     closeAdvFilter();
@@ -1545,7 +1848,7 @@ function removeAdvBadge(F, k) {
 
 // 所有条件均为默认/不限时视为空筛选：恢复到未启用状态
 function advIsEmpty(F) {
-  return !(F.poke || F.q || F.legend || F.shiny || F.variant || F.src || F.gender
+  return !(F.poke || F.q || F.legend || F.shiny || F.variant || F.src || F.gender || F.evolvable
     || (F.type && F.type.length) || F.region
     || (Number(F.lvMin) > 0) || (Number(F.lvMax) < 100)
     || (Number(F.ivMin) > 0) || (Number(F.ivMax) < 186)
@@ -1553,7 +1856,7 @@ function advIsEmpty(F) {
 }
 
 // 高级筛选条件预览条：每个 tag 可点击单独移除（data-key 标识来源字段）
-const ADV_SRC_NAMES = { normal: '野生', mass: '大量出没', twist: '时空扭曲', fishing: '钓鱼', egg: '孵蛋', honey: '甜甜蜜', trade: '交换' };
+const ADV_SRC_NAMES = { normal: '野生', mass: '大量出没', twist: '时空扭曲', legend: '每日神兽', fishing: '钓鱼', egg: '孵蛋', honey: '甜甜蜜', trade: '交换' };
 function advFilterBadges(F) {
   const parts = [];
   if (F.poke) {
@@ -1582,6 +1885,7 @@ function advFilterBadges(F) {
   if (iv.length) parts.push({ k: 'iv', t: `个体值${iv.join(' ')}` });
   if (F.ivCount !== '' && F.ivCount != null) parts.push({ k: 'ivcount', t: `恰好${F.ivCount}V` });
   if (F.gender) parts.push({ k: 'gender', t: F.gender === 'male' ? '雄性' : F.gender === 'female' ? '雌性' : '无性' });
+  if (F.evolvable) parts.push({ k: 'evolvable', t: '可进化' });
   return parts.map(b => `<span class="adv-bar-chip" data-key="${b.k}">${b.t}</span>`).join('');
 }
 
@@ -1783,7 +2087,7 @@ function releasePokemon(id) {
   });
 }
 
-// 该物种最近一次遭遇日志（一行小字，附在获得时间下）
+// 该个体获得时那次遭遇的日志（一行小字，附在获得时间下）：按 originSpecies 匹配，进化后不会串到别的日志
 function latestLogLine(idx, obtainedAt) {
   const logs = (gameData.encounterLogs || {})[idx] || [];
   if (logs.length === 0) return null;
@@ -1804,6 +2108,7 @@ export function restoreRosterList() {
   stopShinySparkleLoop();
   if (_detailId == null) return;
   _detailJumpedToPokedex = false;
+  _detailEvoAllowed = false; // 退出详情就关掉改性格/进化链的开关，别漏给下一次别的入口
   // 从悬赏提交/交换选择列表进入的详情：返回直接恢复来源列表
   if (_detailReturnFn) { leaveRosterDetailToList(); return; }
   _detailId = null;
@@ -1944,7 +2249,7 @@ export function showRosterView(noNav, opts) {
   // 搜索框只属于当前这次浏览：从其它页面重新进入时清空，否则「仓库情况」等入口预填的搜索词会一直留在框里，
   // 之后从首页点经验糖果，选取页便会沿用旧搜索词，只显示命中的宝可梦而不是完整列表。
   // opts.keepSearch 保留（详情返回列表要还原进入详情前的搜索上下文）；仍在仓库视图内时同样保留
-  //（选取模式中重绘、糖果结算后回到选取列表）；opts.search 直接预填（「仓库情况」按宝可梦名搜索）。
+  //（选取模式中重绘、糖果结算后回到选取列表）；opts.search 直接预填（「仓库情况」按图鉴编号搜索）。
   const searchInput = $('rosterSearchInput');
   if (searchInput) {
     if (o.search != null) searchInput.value = o.search;
@@ -1975,6 +2280,7 @@ function setupSelectAll() {
 // fromView：从该页面离开后，详情返回列表时再返回优先回到这里
 export function showRosterDetailById(id, fromView) {
   _detailFromView = fromView || 'idleView';
+  _detailEvoAllowed = false; // 捕获/孵蛋/交换后的“查看详情”不算正常途径
   showRosterView();    // 先渲染并显示仓库列表
   showRosterDetail(id); // 再进入该个体的详情
 }
@@ -1988,6 +2294,7 @@ export function refreshRosterDetail(id) {
 // 从悬赏提交/交换选择列表进入个体详情（第三层）
 // returnFn：详情页按返回时执行，负责切回来源视图并恢复其子页状态
 export function showRosterDetailFromList(id, returnFn) {
+  _detailEvoAllowed = false; // 悬赏/交换/放入等「挑一只来用」的入口
   _detailFromView = null;
   _detailReturnFn = typeof returnFn === 'function' ? returnFn : null;
   // 不压导航栈：详情是来源列表的子层级，返回靠 returnFn 恢复来源视图。
@@ -1999,6 +2306,7 @@ export function showRosterDetailFromList(id, returnFn) {
 // 从其他页面查看「仓库情况」：跳到仓库列表并预填搜索词（如交换详情页的「仓库情况」按钮）
 // returnFn：仓库页按返回时执行，负责切回来源视图并恢复其子页状态
 export function showRosterSearch(q, returnFn) {
+  _detailEvoAllowed = false;
   _detailFromView = null;
   _detailReturnFn = typeof returnFn === 'function' ? returnFn : null;
   // 不压栈：返回靠 returnFn 恢复来源视图。搜索词交给 showRosterView 预填（含清空按钮显隐同步）

@@ -1,7 +1,7 @@
 // ===== UI 管理 =====
-import { phase, currentEncounter, currentIsShiny, gameData, saveGame, _fishing, _eggHatching, _navStack, allPokemon } from './state.js';
+import { phase, currentEncounter, gameData, saveGame, _fishing, _eggHatching, _navStack } from './state.js';
 import { formatNum, getCurrentRegion, getCurrentRoadInfo, anyIncubatorReady, getIncubatorUnlockCost, getMassOutbreak, getTwist, getRoadNumForEdge, getPokemonByIndex, isPokemon, genderBadge } from './state.js';
-import { ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, PX_PER_METER } from './config.js';
+import { ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, PX_PER_METER, eggSprite } from './config.js';
 import { formatLogTime } from './pokedex.js';
 import * as road from './road.js';
 
@@ -53,7 +53,7 @@ export function showNowPlaying(title, artist) {
 
 // ---------- 视图切换 ----------
 // 全部全屏视图 id：显示切换与"记录返回来源"共用同一份列表
-const VIEW_IDS = ['idleView','introView','phoneView','pokedexView','encounterView','hatchView','hatchAllView','gpsView','bountyView','dataView','achievementView','shopView','settingsView','tutorialView','declarationView','systemLogView','incubatorView','incubatorEggView','mixerView','berryView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','casinoGameView','mahjongView','gachaView','gachaHistoryView','casinoHistoryView','albumView','followerView','dispatchView'];
+const VIEW_IDS = ['idleView','introView','phoneView','pokedexView','encounterView','hatchView','hatchAllView','gpsView','bountyView','dataView','achievementView','shopView','settingsView','tutorialView','declarationView','systemLogView','incubatorView','incubatorEggView','mixerView','berryView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','casinoGameView','mahjongView','gachaView','gachaHistoryView','casinoHistoryView','albumView','itemBoxView','followerView','followerDexView','dispatchView','evoView'];
 const CASINO_VIEWS = new Set(['casinoView', 'casinoGameView', 'mahjongView', 'gachaView', 'gachaHistoryView', 'casinoHistoryView']);
 // 舞台类视图 = 游戏画面（挂机/遇敌），其余都是下屏的应用类
 const STAGE_VIEWS = new Set(['idleView', 'encounterView']);
@@ -81,7 +81,7 @@ export function closeAppArea() {
 }
 
 // 当前页标记与入口按钮高亮：showView 与「下半屏回手机首页」共用同一套记账
-const PHONE_VIEWS = new Set(['phoneView','gpsView','pokedexView','incubatorView','hatchView','hatchAllView','berryView','mixerView','dataView','achievementView','systemLogView','tutorialView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','albumView']);
+const PHONE_VIEWS = new Set(['phoneView','gpsView','pokedexView','incubatorView','hatchView','hatchAllView','berryView','mixerView','dataView','achievementView','systemLogView','tutorialView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','albumView','itemBoxView']);
 export function syncViewChrome(id) {
   document.documentElement.dataset.view = id;
   _currentView = id;
@@ -143,6 +143,7 @@ export function showView(id) {
     el.style.display = on ? 'flex' : 'none';
     el.classList.toggle('is-active', on); // 供 CSS 定位/调试：当前视图
   });
+  if (!VIEW_IDS.includes(id)) console.warn('[view] 页面未注册到 VIEW_IDS：', id); // 漏注册会得到一片空屏
   // 双屏下两块屏都不留空：上屏无画面顶挂机页，下屏无 app 回手机首页
   if (mobileDual) {
     if (!targetStage && ![...STAGE_VIEWS].some(v => $(v)?.style.display !== 'none')) {
@@ -155,6 +156,8 @@ export function showView(id) {
   // 手游双屏：下半屏的 app 页面才是当前页，标题/返回态与入口高亮跟它走
   const chromeId = mobileDual ? (getAppChannelView() || 'phoneView') : id;
   syncViewChrome(chromeId);
+  // 页面重新露出来时广播，常驻 DOM 的页面据此刷新
+  window.dispatchEvent(new CustomEvent('view-changed', { detail: chromeId }));
   // 重新进入孵蛋器：重置记录页/选蛋页状态，总是回到主列表
   if (id === 'incubatorView') {
     _incLogOpen = false;
@@ -253,7 +256,7 @@ export function showView(id) {
     title.innerHTML = '口袋挂机';
     title.dataset.action = '';
   } else {
-    const names = { phoneView:'手机', pokedexView:'图鉴', gpsView:'导航', bountyView:'地区悬赏', dataView:'统计', achievementView:'成就', shopView:'商店', settingsView:'设置', tutorialView:'教程', declarationView:'版权声明', systemLogView:'系统日志', incubatorView:'孵蛋器', incubatorEggView:'放入蛋', hatchView:'孵化', hatchAllView:'孵化全部', mixerView:'混合器', berryView:'农场', rosterView:'宝可梦', moveEditView:'配招', tradeView:'交换', battleView:'对战', teamView:'配队', trainView:'训练', nurseryView:'饲育屋', dispatchView:'派遣', casinoView:'游戏厅', casinoGameView:'21 点', mahjongView:'口袋麻将', gachaView:'抽卡机', gachaHistoryView:'抽卡记录', casinoHistoryView:'战绩记录', albumView:'卡册', followerView:'随从' };
+    const names = { phoneView:'手机', pokedexView:'图鉴', gpsView:'导航', bountyView:'地区悬赏', dataView:'统计', achievementView:'成就', shopView:'商店', settingsView:'设置', tutorialView:'教程', declarationView:'版权声明', systemLogView:'系统日志', incubatorView:'孵蛋器', incubatorEggView:'放入蛋', followerDexView:'随从图鉴', hatchView:'孵化', hatchAllView:'孵化全部', evoView:'进化', mixerView:'混合器', berryView:'农场', rosterView:'宝可梦', moveEditView:'配招', tradeView:'交换', battleView:'对战', teamView:'配队', trainView:'训练', nurseryView:'饲育屋', dispatchView:'派遣', casinoView:'游戏厅', casinoGameView:'21 点', mahjongView:'口袋麻将', gachaView:'抽卡机', gachaHistoryView:'抽卡记录', casinoHistoryView:'战绩记录', albumView:'卡册', itemBoxView:'道具盒', followerView:'随从' };
     title.innerHTML = `<svg style="width:16px;height:16px;vertical-align:middle;fill:var(--ui-color);transform:translateY(-1px);" viewBox="0 0 1024 1024"><use xlink:href="#icon-back"/></svg> ${names[chromeId]||''}`;
     title.dataset.action = 'back';
   }
@@ -297,7 +300,6 @@ export function hideTextBox(owner = 'stage') {
 // ---------- 通用底部确认文案框 ----------
 // 复用 .text-box.shop-text-box 样式，动态创建、用完即删。
 // 传入文案和确定/取消回调；onYes 返回 true 则保持显示（用于结算结果停留），返回 falsy 则关闭。
-let _confirmBarId = 0;
 export function showConfirmBar(text, onYes, onNo, opts = {}) {
   hideConfirmBar();
   const bar = document.createElement('div');
@@ -456,7 +458,6 @@ const GET_ITEM_Y = {
   'mystery-egg': -138,      'sweet-honey': -184,
   'shiny-charm': -230, 'candy': -276,
 };
-
 let _getItemRaf = null;
 
 function startGetItemAnim(el, yOffset) {
@@ -485,15 +486,18 @@ export function setIdleCharacter(state, itemKey) {
   el.style.backgroundPosition = '';
   if (state === 'get-item') {
     el.classList.add('get-item');
-    if (itemKey && GET_ITEM_Y[itemKey] !== undefined) {
+    // 进化/专属道具没有专属姿势，借用糖果那一格，别让拾取动作整个不播
+    const rowY = itemKey ? (GET_ITEM_Y[itemKey] ?? GET_ITEM_Y['candy']) : undefined;
+    if (rowY !== undefined) {
       el.style.backgroundImage = `url("./character/${getCharPrefix()}-get-all.png")`;
       el.style.backgroundSize = '320px 322px';
-      startGetItemAnim(el, GET_ITEM_Y[itemKey]);
+      startGetItemAnim(el, rowY);
     }
   } else {
     if (road.isBike()) {
       el.classList.add('bike');
-      road.setSpeed(ROAD_SPEED_BIKE);
+      // 随从（飞行/妖精）主效果：骑行提速
+      road.setSpeed(ROAD_SPEED_BIKE * (window.__followerBoostMechanic?.('bikeSpeed', 1) ?? 1));
     } else if (isBuffActive()) {
       el.classList.add('run');
       road.setSpeed(ROAD_SPEED_RUN);
@@ -799,8 +803,8 @@ let _prevBagCounts = {};
 export function updateStats() {
   const candy = gameData.items['candy'] || 0;
   const coin = gameData.items['casinoCoin'] || 0;
-  const coinHtml = /casino|mahjong|gacha/i.test(_currentView) ? ` <img src="./items/coin.png" style="width:14px;height:14px;vertical-align:middle;image-rendering:pixelated;margin-left:4px;" /> ${formatNum(coin)}` : '';
-  $('statProgress').innerHTML = `<img src="./items/candy.png" style="width:14px;height:14px;vertical-align:middle;image-rendering:pixelated;" /> ${formatNum(candy)}${coinHtml}`;
+  const coinHtml = /casino|mahjong|gacha/i.test(_currentView) ? ` <img src="./items/goods/coin.png" style="width:14px;height:14px;vertical-align:middle;image-rendering:pixelated;margin-left:4px;" /> ${formatNum(coin)}` : '';
+  $('statProgress').innerHTML = `<img src="./items/goods/candy.png" style="width:14px;height:14px;vertical-align:middle;image-rendering:pixelated;" /> ${formatNum(candy)}${coinHtml}`;
   const g = gameData?.gps;
   const region = getCurrentRegion();
   const onRoad = !!(g && g.path && g.path.length >= 2 && g.seg < g.path.length - 1 && g.totalPx > 0);
@@ -849,8 +853,8 @@ export function updateIncubatorBadge() {
 // ---------- 孵蛋器视图渲染 ----------
 // 空槽点加号弹出选择菜单（神秘蛋 / 宝可梦蛋），无需顶部页签
 let _eggPickSlot = null; // 菜单选「宝可梦蛋」后正在选蛋的槽位下标；null = 未在选蛋
-let _eggPickSortBy = null;  // 选蛋列表排序列：null=默认按获得时间 | name | iv
-let _eggPickSortDir = 1;    // 1 升序 / -1 降序
+let _eggPickSortBy = null;  // 选蛋列表排序列：null=默认按获得时间降序（最新在前）| name | iv
+let _eggPickSortDir = -1;   // 1 升序 / -1 降序
 let _eggPickQuery = '';     // 选蛋列表搜索文本
 let _incLogOpen = false; // 孵蛋记录页是否打开（点顶部"孵蛋记录"进入，返回后关闭）
 let _incLogPrevTitle = null; // 打开记录页前的标题栏内容（关闭时还原）
@@ -879,6 +883,13 @@ function slotEggName(s) {
     }
   }
   return '神秘蛋';
+}
+
+// 槽位里的蛋图：培育蛋按蛋里那只的属性取彩色版，神秘蛋（物种没揭晓）用基础蛋图
+function slotEggSrc(s) {
+  const eggEntry = s && s.eggRef ? (gameData.roster || []).find(r => r.id === s.eggRef) : null;
+  const poke = eggEntry ? getPokemonByIndex(String(eggEntry.species)) : null;
+  return eggSprite(poke?.types?.[0]);
 }
 
 // 六维个体值斜杠串：31/31/31/31/31/31（HP/攻击/防御/特攻/特防/速度，与繁殖页面一致；
@@ -921,7 +932,7 @@ function renderEggPickList() {
       vb = (b.ivs ? (b.ivs.hp + b.ivs.atk + b.ivs.def + b.ivs.spa + b.ivs.spd + b.ivs.spe) : 0);
       return (va - vb) * _eggPickSortDir;
     }
-    // time: newest first by default (_eggPickSortDir 控制）
+    // time：默认最新获得在前（与饲育屋纸箱一致，_eggPickSortDir 控制）
     va = a.obtainedAt || 0; vb = b.obtainedAt || 0;
     return (va - vb) * _eggPickSortDir;
   });
@@ -947,7 +958,7 @@ function renderEggPickList() {
             const name = poke ? poke.name : `#${eg.species}`;
             return `
               <div class="pokedex-entry roster-row nursery-egg-row" data-egg-pick="${eg.id}">
-                <span class="pokedex-name"><img class="roster-icon-img" src="./items/mystery-egg.png" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
+                <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
                 <span class="roster-iv">${eggIvSlash(eg)}</span>
               </div>`;
           }).join('');
@@ -992,7 +1003,7 @@ function renderEggPickList() {
               const name = poke ? poke.name : `#${eg.species}`;
               return `
                 <div class="pokedex-entry roster-row nursery-egg-row" data-egg-pick="${eg.id}">
-                  <span class="pokedex-name"><img class="roster-icon-img" src="./items/mystery-egg.png" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
+                  <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
                   <span class="roster-iv">${eggIvSlash(eg)}</span>
                 </div>`;
             }).join('')}
@@ -1010,13 +1021,13 @@ function renderEggPickList() {
     });
   }
   if (clearBtn) clearBtn.addEventListener('click', () => { _eggPickQuery = ''; input.value = ''; clearBtn.style.display = 'none'; renderEggPickList(); });
-  // 排序（3 段 toggle：升序 → 降序 → 回到默认时间排序）
+  // 排序（3 段 toggle：升序 → 降序 → 回到默认时间排序，默认最新在前）
   box.querySelectorAll('.nursery-egg-header [data-sort]').forEach(el => {
     el.addEventListener('click', () => {
       const k = el.dataset.sort;
       if (_eggPickSortBy === k) {
         if (_eggPickSortDir === 1) _eggPickSortDir = -1;
-        else { _eggPickSortBy = null; _eggPickSortDir = 1; }
+        else { _eggPickSortBy = null; _eggPickSortDir = -1; }
       } else { _eggPickSortBy = k; _eggPickSortDir = 1; }
       renderEggPickList();
     });
@@ -1136,7 +1147,7 @@ export function renderIncubatorView() {
       const canAfford = (gameData.items['candy'] || 0) >= cost;
       const disabled = !isNext || !canAfford;
       html += `<div class="incubator-row locked">
-        <div class="incubator-lock-icon"><img src="./items/candy.png" style="width:18px;height:18px;image-rendering:pixelated;opacity:0.5;" /><span class="incubator-lock-cost">×${cost}</span></div>
+        <div class="incubator-lock-icon"><img src="./items/goods/candy.png" style="width:18px;height:18px;image-rendering:pixelated;opacity:0.5;" /><span class="incubator-lock-cost">×${cost}</span></div>
         <span class="incubator-hatch-text${disabled ? ' disabled' : ''}" data-unlock="${i}" ${disabled ? 'style="pointer-events:none;"' : ''}>解锁</span>
       </div>`;
       continue;
@@ -1145,14 +1156,16 @@ export function renderIncubatorView() {
     const rowCls = 'incubator-row' + (s?.ignored ? ' ignored' : '');
     if (s && s.hatched) {
       html += `<div class="${rowCls}">
-        <div class="incubator-egg-slot has-egg" data-tip="${eggName}"><img src="./items/mystery-egg.png" alt="蛋" class="shake" /></div>
-        <div class="incubator-info"><div class="incubator-name" data-tip="${eggName}">蛋</div></div>
-        ${hatchBtnHtml(i, hatchLocked)}
+        <div class="incubator-egg-slot has-egg" data-tip="${eggName}"><img src="${slotEggSrc(s)}" alt="蛋" class="shake" /></div>
+        <div class="incubator-info">
+          <div class="incubator-name" data-tip="${eggName}">${eggName}</div>
+          <div class="incubator-actions">${hatchBtnHtml(i, hatchLocked)}</div>
+        </div>
       </div>`;
     } else if (hasEgg) {
       const used = (gameData.stats?.walkDistance || 0) - s.hatchStart;
       const usedValid = !isNaN(used) && used >= 0;
-      // 随从增益：hatch 类动态减免孵化所需里程（达标线 = 原始里程 × 当前随从倍率）
+      // 随从（龙/火）辅效果：蛋的里程需求降低
       const need = (s.hatchDuration || 0) * (window.__followerBoostMechanic?.('hatchDist', 1) ?? 1);
       const shouldBeReady = (!usedValid || (used >= need)) && !s.hatched;
       if (shouldBeReady) {
@@ -1162,9 +1175,11 @@ export function renderIncubatorView() {
       }
       if (s.hatched) {
         html += `<div class="${rowCls}">
-          <div class="incubator-egg-slot has-egg" data-tip="${eggName}"><img src="./items/mystery-egg.png" alt="蛋" class="shake" /></div>
-          <div class="incubator-info"><div class="incubator-name" data-tip="${eggName}">蛋</div></div>
-          ${hatchBtnHtml(i, hatchLocked)}
+          <div class="incubator-egg-slot has-egg" data-tip="${eggName}"><img src="${slotEggSrc(s)}" alt="蛋" class="shake" /></div>
+          <div class="incubator-info">
+            <div class="incubator-name" data-tip="${eggName}">${eggName}</div>
+            <div class="incubator-actions">${hatchBtnHtml(i, hatchLocked)}</div>
+          </div>
         </div>`;
         continue;
       }
@@ -1175,9 +1190,9 @@ export function renderIncubatorView() {
       const remain = Math.max(0, Math.ceil((need - used) / PX_PER_METER));
       const distStr = remain >= 1000 ? `${(remain / 1000).toFixed(1)}公里` : `${remain}米`;
       html += `<div class="incubator-row">
-        <div class="incubator-egg-slot has-egg" data-tip="${eggName}"><img src="./items/mystery-egg.png" alt="蛋" /></div>
+        <div class="incubator-egg-slot has-egg" data-tip="${eggName}"><img src="${slotEggSrc(s)}" alt="蛋" /></div>
         <div class="incubator-info">
-          <div class="incubator-name" data-tip="${eggName}">蛋</div>
+          <div class="incubator-name" data-tip="${eggName}">${eggName}</div>
           <div class="incubator-progress-wrap" data-slot="${i}">
             <div class="incubator-progress-fill${boostPct > 0 ? ' has-boost' : ''}" style="width:${pct}%"></div>
             ${boostPct > 0 ? `<div class="incubator-progress-boost" style="left:${pct}%;width:${boostPct}%"></div>` : ''}
@@ -1345,7 +1360,7 @@ export function updateIncubatorTimers() {
     if (s.hatched) { changed = true; return; }
     const used = (gameData.stats?.walkDistance || 0) - s.hatchStart;
     const usedValid = !isNaN(used) && used >= 0;
-    // 随从增益：hatch 类动态减免孵化所需里程（达标线 = 原始里程 × 当前随从倍率）
+    // 随从（龙/火）辅效果：蛋的里程需求降低
     const need = (s.hatchDuration || 0) * (window.__followerBoostMechanic?.('hatchDist', 1) ?? 1);
     if (!usedValid || (used + 100) >= need) {
       s.hatched = true;

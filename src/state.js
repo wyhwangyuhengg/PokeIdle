@@ -1,5 +1,5 @@
 // ===== 游戏状态 + 存档管理 =====
-import { REGION_CYCLE, HATCH_DIST_MIN, HATCH_DIST_MAX, HATCH_DIST_SIGMA, START_CANDY, BIKE_RESTORE_MAX_GAP_MS, WILD_LEVEL_MAX, DISPATCH_FREE_SLOTS } from './config.js';
+import { REGION_CYCLE, HATCH_DIST_MIN, HATCH_DIST_MAX, HATCH_DIST_SIGMA, START_CANDY, START_POKE_BALLS, BIKE_RESTORE_MAX_GAP_MS, WILD_LEVEL_MAX, DISPATCH_FREE_SLOTS } from './config.js';
 
 // ---------- 游戏数据 ----------
 export let allPokemon = [];
@@ -15,8 +15,29 @@ export function getPokemonByIndex(idx) {
 }
 export function setAllPokemon(a) { allPokemon = a; _pokemonMap = null; }
 
+// 强化形态（超级 / 超极巨 / 原始回归 / 合体 / 王形态…）：战斗中的临时形态而非独立物种，不进任何抽取池。
+// 名单由 evolution.js 读到表之后灌进来（stones 的 141 条，命名不一定带"超级/超极巨"）；表没到之前靠 form 名兜底
+let _powerForms = null;
+export function setPowerForms(ids) { _powerForms = new Set((ids || []).map(String)); }
+export function isPowerForm(p) {
+  if (p && _powerForms && _powerForms.has(String(p.index))) return true;
+  const f = p?.form || '';
+  return f.includes('超级') || f.includes('超极巨');
+}
+
+// 进化链终点（有前代、自己不再进化）不进路边池，wildKeep 名单里的例外照旧可遇。
+// 名单由 evolution.js 读到表之后灌进来；表没到之前不拦人
+let _wildExcluded = null;
+export function setWildExcluded(ids) { _wildExcluded = new Set((ids || []).map(String)); }
+export function isWildExcluded(p) { return !!_wildExcluded && _wildExcluded.has(String(p?.index)); }
+
+// 招式机是否已解锁
+export function isTmUnlocked(moveId) {
+  return !!(gameData && gameData.tmUnlocked && gameData.tmUnlocked[moveId]);
+}
+
 export let gameData = null;
-export let phase = 'idle'; // idle | encounter | caught | fled | eggResult
+export let phase = 'idle'; // idle | encounter | caught | fled | eggResult | evo
 export let currentEncounter = null;
 export let currentIsShiny = false;
 export let encounterLevel = 1; // 当前野生遇敌的等级（1~20，遇敌时随机生成）
@@ -32,6 +53,7 @@ export let honeyCountdownInterval = null;
 export let honeyPausedRemaining = 0;
 export let honeyExpiryTimer = null;
 export let charmBuffActive = false;
+export let charmGuaranteed = false;   // 护符保底：下一只遭遇必定闪光
 export let charmCountdownEnd = 0;
 export let charmCountdownInterval = null;
 export let charmPausedRemaining = 0;
@@ -63,7 +85,6 @@ export let _idleMsgs = [];
 export let _idleMsgIdx = 0;
 export let _regionMsgInterval = 0;
 export let _idleMsgTimer = null;
-export let _idlePickupTimer = null;
 
 // 佛系倒计时
 export let _autoFleeTimer = null;
@@ -76,10 +97,18 @@ export let _prevBagCounts = {};
 // ---------- Setter 函数（跨模块同步） ----------
 export function setGameData(d) { gameData = d; }
 export function setPhase(p) { phase = p; }
+// 野池等级上限表（编号 → 最高等级）：evolution.js 读表后灌进来
+let _wildLevelCaps = null;
+export function setWildLevelCaps(caps) { _wildLevelCaps = caps || null; }
+// 某个物种的野池等级上限：普通遇敌与时空扭曲都走它
+export function wildLevelCap(idx) {
+  return (_wildLevelCaps && _wildLevelCaps[String(idx)]) || WILD_LEVEL_MAX;
+}
+
 export function setCurrentEncounter(e) {
   currentEncounter = e;
-  // 新遇敌生成野生等级；结束遇敌（null）时重置
-  encounterLevel = e ? 1 + Math.floor(Math.random() * WILD_LEVEL_MAX) : 1;
+  // 新遇敌摇等级；带上限的物种压低上限，免得一抓来就能进化
+  encounterLevel = e ? 1 + Math.floor(Math.random() * wildLevelCap(e.index)) : 1;
 }
 export function setEncounterLevel(lv) { encounterLevel = lv; }
 export function setCurrentIsShiny(s) { currentIsShiny = s; }
@@ -113,6 +142,7 @@ export function setLastRegionId(id) { _lastRegionId = id; }
 export function setHoneyBuffActive(v) { honeyBuffActive = v; window.__honeyBuffActive__ = v; }
 export function setHoneyCountdownEnd(t) { honeyCountdownEnd = t; }
 export function setCharmBuffActive(v) { charmBuffActive = v; window.__charmBuffActive__ = v; }
+export function setCharmGuaranteed(v) { charmGuaranteed = !!v; }
 export function setCharmCountdownEnd(t) { charmCountdownEnd = t; }
 export function setHoneyPausedRemaining(v) { honeyPausedRemaining = v; }
 export function setCharmPausedRemaining(v) { charmPausedRemaining = v; }
@@ -121,7 +151,6 @@ export function setIdleMsgIdx(n) { _idleMsgIdx = n; }
 export function setIdleMsgs(a) { _idleMsgs = a; }
 export function setRegionMsgInterval(n) { _regionMsgInterval = n; }
 export function setIdleMsgTimer(t) { _idleMsgTimer = t; }
-export function setIdlePickupTimer(t) { _idlePickupTimer = t; }
 export function setAutoFleeTimer(t) { _autoFleeTimer = t; }
 export function setAutoFleeStartTime(t) { _autoFleeStartTime = t; }
 export function setAutoFleeBarInterval(i) { _autoFleeBarInterval = i; }
@@ -221,16 +250,16 @@ export function ensureGpsState() {
 export function getDefaultSave() {
   return {
     manualBike: false, // 手动骑行状态标记（上车/下车时随主存档持久化，刷新/重开可恢复）
-    items: { 'poke-ball':0, 'ultra-ball':0, 'master-ball':0, 'candy':START_CANDY, 'casinoCoin':0, 'sweet-honey':0, 'mystery-egg':0, 'shiny-charm':0, 'bike':0 },
+    items: { 'poke-ball':START_POKE_BALLS, 'ultra-ball':0, 'master-ball':0, 'candy':START_CANDY, 'casinoCoin':0, 'sweet-honey':0, 'mystery-egg':0, 'shiny-charm':0, 'bike':0 },
     stats: {
       totalPlaySeconds:0, playSecondsToday:0, lastPlayDate:'', walkDistance:0, totalCatches:0, totalFlees:0, lastSaveTime:Date.now(),
       totalShinySeen:0, totalShinyCaught:0,
       totalBallsUsed:0, totalEggsHatched:0, totalShinyEggsHatched:0, totalEggsProduced:0, totalShinyTraded:0,
       totalBlockMade:0, totalPlantings:0, totalHarvests:0, totalBerriesHarvested:0, totalBoardTrades:0,
       totalBountyClaims:0, totalBountyCandy:0, bountyClaimsToday:0, lastBountyDate:'',
-      totalTrades:0, tradesToday:0, lastTradeDate:'',
+      totalTrades:0, tradesToday:0, lastTradeDate:'', totalEvolutions:0, evolutionsToday:0, lastEvoDate:'',
       releaseXpPool: 0, // 放生返还的经验累积池：攒满 EXP_CANDY_XP 自动产出一颗经验糖果并清零
-      totalNpcWins:0, totalNpcNoviceWins:0, totalNpcEliteWins:0, totalNpcChampionWins:0, totalNpcCandy:0,
+      totalNpcWins:0, totalNpcNoviceWins:0, totalNpcEliteWins:0, totalNpcLeaderWins:0, totalNpcChampionWins:0, totalNpcCandy:0,
       luckyGachaScore:0, luckyGachaCount:0, // 抽卡欧气累计（独立累计，不受抽卡日志 50 条窗口影响）
       totalItemsEarned: { 'poke-ball':0, 'ultra-ball':0, 'master-ball':0, 'candy':START_CANDY, 'sweet-honey':0, 'mystery-egg':0, 'shiny-charm':0, 'bike':0 },
     },
@@ -242,8 +271,9 @@ export function getDefaultSave() {
     massNextGenAt: 0,       // 下一次大量出没生成时间戳（毫秒）
     twist: null,            // 时空扭曲事件：{ edge:[a,b], t, remain, expiresAt, nextSpawnAt, active }；null=无事件
     twistNextGenAt: 0,      // 下一次时空扭曲生成时间戳（毫秒）
-    follower: null,         // 随从（糖果抽卡的临时跟随）：{ index, tier, group, endsAt }；null=无随从
-    followerPending: null,  // 抽卡结果待处理（未选跟随/放走就退出）：{ index, name, tier }；null=无
+    follower: null,         // 随从（糖果抽卡的临时跟随）：{ index, tier, groups, star, boost, endsAt }；null=无随从
+    followerPending: null,  // 抽卡结果待处理（未选跟随/放走就退出）：{ index, name, tier, dex }；null=无
+    followerDex: {},        // 随从图鉴：{ '<编号>': { count } }，星级 = min(5, count)（只记次数，星级派生）
     roster: [], // 宝可梦仓库：每只捕获/孵化的宝可梦一个独立条目（个体值/闪光/来源/是否在仓）
     team: [], // 出战队伍（镜像：始终 = teams[activeTeam].ids 引用，战斗等逻辑直接读它）
     teams: Array.from({ length: 6 }, (_, i) => ({ name: `队伍${i + 1}`, ids: [] })), // 6 组配队：{ name, ids }
@@ -254,6 +284,10 @@ export function getDefaultSave() {
     casinoRecords: [],   // 21点战绩（滑动窗口 50 条）：{ time, bet, action, result, net }
     mahjongRecords: [],  // 麻将战绩（滑动窗口 50 条，整场一条）：{ time, net, rank, stake }
     bounty: null, // 地区悬赏：{ date: 'YYYY-MM-DD', rewards: [{ pokemon, candy, claimed }] }，由 bounty.js 管理
+    tmUnlocked: {}, // 招式机解锁：{ 招式id: 解锁时间 }，由 tm.js 管理
+    tmShop: null,   // 商店今日招式机货架：{ date, ids }，由 tm.js 管理
+    legendPool: null, // 每日神兽池：{ date, byRegion: { 地区: [编号…] } }，由 items.js 管理
+    legendPity: 0,    // 神兽池软保底计数：连着多少场遇敌没出神兽
     trades: null, // 交换广场：{ refreshedAt: Date.now(), offers: [{ npc, want, give, traded }] }，由 trade.js 管理
     battleNpcs: null, // NPC 挑战：{ refreshedAt: Date.now(), list: [{ id, tier, title, name, sprite, lvBonus, candy, mons }] }，由 npcs.js 管理
     pokedex: {},
@@ -322,6 +356,28 @@ export function rollGender(species) {
   return Math.random() * 8 < rate ? 'female' : 'male';
 }
 
+// 雌雄异形的两条形态（轻飘飘、爱管侍这类）：返回 { male, female }，没有则 null
+function sexFormPair(species) {
+  const me = getPokemonByIndex(String(species));
+  if (!me) return null;
+  const base = String(species).split('-')[0];
+  let male = null, female = null;
+  for (const p of allPokemon) {
+    if (p.index !== base && !String(p.index).startsWith(base + '-')) continue;
+    if (p.form === `${p.name}-雄性`) male = String(p.index);
+    else if (p.form === `${p.name}-雌性`) female = String(p.index);
+  }
+  return male && female ? { male, female } : null;
+}
+
+// 蛋的物种：雌雄异形由性别定形态，比例按两条形态合并后 roll
+export function rollSexForm(species) {
+  const pair = sexFormPair(species);
+  if (!pair) return String(species);
+  const femaleRate = ((getPokemonByIndex(pair.male)?.genderRate ?? 4) + (getPokemonByIndex(pair.female)?.genderRate ?? 4)) / 16;
+  return Math.random() < femaleRate ? pair.female : pair.male;
+}
+
 // 旧存档兼容：无 gender 字段的旧个体按物种比例补 roll 并写回
 export function ensureGender(entry) {
   if (!entry || entry.gender) return entry?.gender || 'genderless';
@@ -344,15 +400,41 @@ export function isPokemon(p) {
   return !p || !p.kind || p.kind !== 'egg';
 }
 
-// 把一只刚获得的宝可梦加入仓库（捕获/孵蛋时调用）
+// 图鉴「获得过」登记：任何来源拿到一只都算解锁，捕获数另有 caught
+export function markDexOwned(idx, shiny) {
+  if (!gameData) return;
+  const key = String(idx);
+  if (!gameData.pokedex) gameData.pokedex = {};
+  if (!gameData.pokedex[key]) gameData.pokedex[key] = { seen: 0, caught: 0, lastTime: null, shinySeen: 0, shinyCaught: 0 };
+  const e = gameData.pokedex[key];
+  e.owned = (e.owned || 0) + 1;
+  if (shiny) e.shinyOwned = (e.shinyOwned || 0) + 1;
+}
+
+// 图鉴「已解锁」：获得过就解锁，后两个条件给没有 owned 的老存档兜底
+export function dexUnlocked(idx) {
+  const e = gameData && gameData.pokedex && gameData.pokedex[String(idx)];
+  return !!e && ((e.owned || 0) > 0 || (e.caught || 0) > 0 || (e.evolved || 0) > 0);
+}
+
+// 图鉴「持有过闪光」：任何来源的闪光都算
+export function dexShinyOwned(idx) {
+  const e = gameData && gameData.pokedex && gameData.pokedex[String(idx)];
+  return !!e && ((e.shinyOwned || 0) > 0 || (e.shinyCaught || 0) > 0 || (e.shinyEvolved || 0) > 0);
+}
+
+// 把一只刚获得的宝可梦加入仓库（捕获/孵蛋/交换时调用）
 export function addRosterEntry({ species, shiny = false, source = 'normal', level = 1, gender, ivs, variant }) {
   if (!gameData) return null;
+  markDexOwned(species, !!shiny); // 任何来源获得即解锁图鉴
   if (!Array.isArray(gameData.roster)) gameData.roster = [];
   const poke = getPokemonByIndex(String(species));
   const legendIv = source !== 'egg' && poke && poke.legend === true;
   const entry = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
     species,
+    // 获得时的物种：详情页那句「获得方式」永远按它翻遭遇日志，之后进化也不跟着变
+    originSpecies: String(species),
     shiny: !!shiny,
     gender: gender || rollGender(species), // 显式传入的性别优先（如捕获时沿用遭遇性别，避免两次 roll 不一致）
     level, // 捕获/孵化即 Lv1（战斗系统）；野生捕获可传随机等级
@@ -418,8 +500,8 @@ function syncBuffRecord() {
   }
   if (charmBuffActive) {
     const count = _charmEncounterCount || 0;
-    if (charmCountdownEnd > 0) rec.charm = { left: Math.max(0, charmCountdownEnd - Date.now()), count };
-    else if (charmPausedRemaining > 0) rec.charm = { paused: charmPausedRemaining, count };
+    if (charmCountdownEnd > 0) rec.charm = { left: Math.max(0, charmCountdownEnd - Date.now()), count, guaranteed: charmGuaranteed };
+    else if (charmPausedRemaining > 0) rec.charm = { paused: charmPausedRemaining, count, guaranteed: charmGuaranteed };
   }
   gameData.buffs = (rec.honey || rec.charm) ? rec : null;
 }
@@ -459,6 +541,7 @@ export function saveSessionState(extra) {
       honeyBuffActive,
       honeyPausedRemaining,
       charmBuffActive,
+      charmGuaranteed,
       charmPausedRemaining,
       _charmEncounterCount,
       blockBuffActive,

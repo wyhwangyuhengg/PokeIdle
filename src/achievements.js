@@ -2,23 +2,23 @@
 // 每个成就按「等级」递进：达标一级即可领取一次糖果，领取后自动进入下一级。
 // 等级无限：阈值/糖果都按 1-2-5 规整序列递进（10,20,50,100,200,500…），数字好记、等级多。
 // 领取一级一级来；未领取的等级会一直累计。图鉴类（maxTiers）达到上限即完结。
-import { gameData, saveGame, formatNum } from './state.js';
+import { gameData, saveGame, formatNum, addSystemLog, dexUnlocked, dexShinyOwned } from './state.js';
 import { updateBackpack, updateStats } from './ui.js';
 import { PX_PER_METER } from './config.js';
 
 // 糖果图标（显示在按钮左侧）
-const CANDY_ICON = '<img src="./items/candy.png" style="width:12px;height:12px;vertical-align:-2px;image-rendering:pixelated;" />';
+const CANDY_ICON = '<img src="./items/goods/candy.png" style="width:12px;height:12px;vertical-align:-2px;image-rendering:pixelated;" />';
 
-// 图鉴已捕获种类数（去重）
+// 图鉴已解锁种类数（去重）
 function dexCount() {
   if (!gameData?.pokedex) return 0;
-  return Object.values(gameData.pokedex).filter(e => e && (e.caught || 0) > 0).length;
+  return Object.keys(gameData.pokedex).filter(k => dexUnlocked(k)).length;
 }
 
 // 图鉴已拥有闪光的种类数（去重，对应图鉴实心五角星）
 function shinyDexCount() {
   if (!gameData?.pokedex) return 0;
-  return Object.values(gameData.pokedex).filter(e => e && (e.shinyCaught || 0) > 0).length;
+  return Object.keys(gameData.pokedex).filter(k => dexShinyOwned(k)).length;
 }
 
 // 规整等级系数：1, 2, 5, 10, 20, 50, 100, ...（每 3 级一个数量级，等级多且数字好记）
@@ -61,6 +61,11 @@ export const ACHIEVEMENTS = [
     fmt: v => `${formatNum(v)} 只`,
   },
   {
+    id: 'evolve', name: '进化论', desc: '累计进化宝可梦',
+    metric: d => d.stats.totalEvolutions || 0, base: 1, reward: 30,
+    fmt: v => `${formatNum(v)} 次`,
+  },
+  {
     id: 'breed', name: '育种大师', desc: '累计繁殖产蛋',
     metric: d => d.stats.totalEggsProduced || 0, base: 1, reward: 30,
     fmt: v => `${formatNum(v)} 枚`,
@@ -96,6 +101,11 @@ export const ACHIEVEMENTS = [
     fmt: v => `${formatNum(v)} 次`,
   },
   {
+    id: 'npcLeader', name: '道馆挑战者', desc: '累计战胜馆主 NPC 训练家',
+    metric: d => d.stats.totalNpcLeaderWins || 0, base: 1, reward: 90,
+    fmt: v => `${formatNum(v)} 次`,
+  },
+  {
     id: 'npcChampion', name: '冠军挑战者', desc: '累计战胜冠军 NPC 训练家',
     metric: d => d.stats.totalNpcChampionWins || 0, base: 1, reward: 120,
     fmt: v => `${formatNum(v)} 次`,
@@ -103,17 +113,22 @@ export const ACHIEVEMENTS = [
   {
     id: 'dex', name: '图鉴收藏家', desc: '图鉴中累计捕获不同种类',
     metric: () => dexCount(), base: 10, reward: 30, maxTiers: 8,
-    // 满级阈值对齐当前全图鉴 1428 种，最后一级 1428
+    // 满级阈值对齐当前全图鉴 1429 种，最后一级 1429
     // 后续新增宝可梦时：把末级数字改为最新图鉴总数，同时同步 maxTiers（= tiers 数组长度）
-    tiers: [10, 20, 50, 100, 200, 500, 1000, 1428],
+    tiers: [10, 20, 50, 100, 200, 500, 1000, 1429],
     // 不改 formatNum：避免 1.3K 缩写，图鉴进度显示具体数字
     fmt: v => `${Number(v)} 种`,
   },
   {
+    id: 'followerDex', name: '随从收藏家', desc: '随从图鉴中收集的不同种类',
+    metric: () => Object.keys(gameData?.followerDex || {}).length, base: 5, reward: 20,
+    fmt: v => `${Number(v)} 只`,
+  },
+  {
     id: 'shinyDex', name: '闪光收藏家', desc: '图鉴中累计拥有闪光的不同种类',
     metric: () => shinyDexCount(), base: 10, reward: 100, maxTiers: 8,
-    // 满级阈值对齐全图鉴 1428 种，达成即图鉴全实心五角星
-    tiers: [10, 20, 50, 100, 200, 500, 1000, 1428],
+    // 满级阈值对齐全图鉴 1429 种，达成即图鉴全实心五角星
+    tiers: [10, 20, 50, 100, 200, 500, 1000, 1429],
     fmt: v => `${Number(v)} 种`,
   },
   {
@@ -191,9 +206,11 @@ function grantTier(a) {
   return reward;
 }
 
-// 领取收尾：落盘 + 刷新背包/状态栏 + 通知手机"成就"app 红点
-function afterClaim(total) {
+// 领取收尾：落盘 + 刷新背包/状态栏 + 通知手机"成就"app 红点 + 记一条来源明确的日志
+// （发放走的是内部累加，不经过 grantItem，所以这里补日志；tiers 是本次领取的等级数）
+function afterClaim(total, tiers = 0) {
   if (!(total > 0)) return;
+  addSystemLog('achievement_claim', { tiers, candy: total });
   saveGame();
   updateBackpack('candy');
   updateStats();
@@ -205,24 +222,24 @@ export function claimAchievementTier(id) {
   ensureAchievements();
   const a = ACHIEVEMENTS.find(x => x.id === id);
   const got = a ? grantTier(a) : 0;
-  afterClaim(got);
+  afterClaim(got, got > 0 ? 1 : 0);
   return got;
 }
 
 // 一键领取：循环领到不再有新达标——领糖可能联动解锁「糖果富翁」，故发糖后重新评估
 export function claimAllAchievements() {
   ensureAchievements();
-  let total = 0;
+  let total = 0, tiers = 0;
   while (true) {
     let round = 0; // 本轮领取的糖果
     for (const a of ACHIEVEMENTS) {
       let got;
-      while ((got = grantTier(a)) > 0) round += got;
+      while ((got = grantTier(a)) > 0) { round += got; tiers++; }
     }
     if (round === 0) break; // 本轮没有任何可领 → 结束
     total += round;
   }
-  afterClaim(total);
+  afterClaim(total, tiers);
   return total;
 }
 

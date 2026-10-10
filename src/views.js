@@ -1,77 +1,75 @@
-import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_WIDTH_MIN, ROAD_WIDTH_MAX, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, ROAD_SWITCH_CYCLES, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BLOCK_DISTANCE, BLOCK_TARGET_CHANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, FARM_HELPER_STAGE_COST, FARM_HELPER_STAGE_INC, FARM_HELPER_WORK_MIN, FARM_HELPER_WORK_MAX,
-  MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX,
-  MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE,
-  TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_COUNT_MAX,
-  TWIST_SPAWN_MIN, TWIST_SPAWN_MAX, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS,
-  TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX,
-  TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY,
-  TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT,
-  TRAIN_SATIETY_PER_BERRY,
-  BATTLE_REFRESH_MS, BATTLE_NPC_COUNTS, BATTLE_MONS_COUNT, ITEM_DESC,
-  COIN_RATE, DEALER_STAND, BJ_MULT, HAND_SIZE, RIICHI_COST,
-  GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE,
-  TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX,
-  FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_DUR, FOLLOWER_TIER_BOOST, ITEM_SELL_RATE,
-  DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_VALUE_PER_HOUR, DISPATCH_SPEED_MIN, DISPATCH_SPEED_MAX, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_ITEM_VALUE } from './config.js';
-import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, currentIsShiny, honeyBuffActive, charmBuffActive, saveGame, addSystemLog, formatNum, pad, randInt, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing } from './state.js';
+import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE } from './config.js';
+import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, honeyBuffActive, charmBuffActive, saveGame, formatNum, pad, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing } from './state.js';
 import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform } from './ui.js';
-import { doCandyExchange, doSellBall, activateHoney, activateShinyCharm, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES } from './items.js';
-import { formatLogTime, showEncounterLogs, restorePokedex } from './pokedex.js';
-import { stopAutoFleeTimer, startAutoFleeTimer, fleeEncounter, autoCatch } from './battle.js';
+import { doCandyExchange, doSellBall, activateHoney, activateShinyCharm, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf } from './items.js';
+import { formatLogTime } from './pokedex.js';
+import { stopAutoFleeTimer, startAutoFleeTimer, autoCatch } from './battle.js';
 import { setVolume, setBattleMusic, setMusicEnabled, setSfxEnabled, playBattle, endBattle } from './audio.js';
 import { renderAchievements, refreshAchievements } from './achievements.js';
 import { TEAM_MAX } from './team.js';
 import { clearBattleTier } from './battle-view.js';
 
 // ===== 欧气综合评定 =====
-// 每场遭遇的欧气分（捕获用获得分 score，宝可梦挣脱逃跑用相遇分）取平均，映射到 9 档称号。
+// 取"最好的那一批场次"的平均分（前 10%，至少 10 场）映射到 9 档称号。
+// 为什么不取全场平均：稀有度复位后闪光 1/1000、神兽只在事件出现，单场分的方差虽大，
+// 但几百场求平均会把运气抹平——实测全场平均的玩家间差距只有 1.6 分（几乎人人相同），
+// 而"前 10% 场次平均"差距有 3.2 分，才分得出欧非。
 // 玩家主动逃跑（手动 / 佛系 / 无球自动）属于策略选择，不参与评定。
-// 参考分布：普通遭遇 20~26、捕获 26~48、闪光 50~78、钓鱼 20~29、孵蛋 30/60；
-// 正常玩家平均约 25~27，欧皇（多稀有/闪光）可达 30+，极欧 45+。
+// 参考分布（8000 名玩家 × 200 场模拟）：前 10% 平均 均值 38.6、P25 38.0、P75 39.3、P90 39.9、P97 40.6、P99.5 41.4
 const LUCKY_TIERS = [
-  { min: 42, name: '天运所归' },
-  { min: 33, name: '大欧皇' },
-  { min: 29, name: '小欧皇' },
-  { min: 26, name: '小有运气' },
-  { min: 23.5, name: '平凡训练家' },
-  { min: 22, name: '小非酋' },
-  { min: 20.5, name: '大非酋' },
-  { min: 19, name: '终极非酋' },
+  { min: 39.3, name: '天运所归' },   // 前 ~1%
+  { min: 38.1, name: '大欧皇' },     // 前 ~6%
+  { min: 37.1, name: '小欧皇' },     // 前 ~16%
+  { min: 36.3, name: '小有运气' },   // 前 ~40%
+  { min: 35.3, name: '平凡训练家' }, // 中位附近
+  { min: 34.5, name: '小非酋' },
+  { min: 33.9, name: '大非酋' },
+  { min: 33.0, name: '终极非酋' },
   { min: -Infinity, name: '终极无敌至尊非酋' },
 ];
 
-// 汇总全部遭遇日志 + 抽卡欧气累计，计算平均欧气分并返回对应称号（无有效记录返回 null）
+// 汇总全部遭遇日志 + 抽卡欧气累计，取分数最高的一批（前 10%，至少 10 场）求平均，返回对应称号
 function calcLuckyRating() {
   const logs = gameData.encounterLogs || {};
-  let total = 0, count = 0;
+  const scores = [];
   for (const arr of Object.values(logs)) {
     if (!Array.isArray(arr)) continue;
     for (const l of arr) {
-      // 跳过无有效评分的旧记录（旧 fled 无相遇分，score=0），避免拉低平均
+      // 跳过无有效评分的旧记录（旧 fled 无相遇分，score=0）
       if (!l || typeof l.score !== 'number' || l.score <= 0) continue;
       // 主动逃跑（selfFlee）是策略选择，不计入欧气评定
       if (l.selfFlee === true) continue;
-      total += l.score;
-      count++;
+      scores.push(l.score);
     }
   }
-  // 抽卡欧气：独立累计字段（不受抽卡日志 50 条窗口影响），与遭遇分合并取平均
+  // 抽卡欧气：独立累计字段（不受抽卡日志 50 条窗口影响），按"累计分/次数"折算成等量场次并入
   const gachaScore = gameData.stats?.luckyGachaScore || 0;
   const gachaCount = gameData.stats?.luckyGachaCount || 0;
-  total += gachaScore;
-  count += gachaCount;
-  if (count === 0) return null;
-  const avg = total / count;
+  if (gachaCount > 0) {
+    const avgGacha = gachaScore / gachaCount;
+    for (let i = 0; i < gachaCount; i++) scores.push(avgGacha);
+  }
+  if (scores.length === 0) return null;
+  scores.sort((a, b) => b - a); // 高到低
+  const topN = Math.max(10, Math.ceil(scores.length * 0.1));
+  const pool = scores.slice(0, topN);
+  const avg = pool.reduce((a, b) => a + b, 0) / pool.length;
   return LUCKY_TIERS.find(t => avg >= t.min) || null;
 }
 
 // ===== 数据统计视图 =====
 
 // 今日统计：从遭遇日志按"今天 0 点后"筛选（孵蛋/交换单独计数，不算道路遭遇；逃跑只算挣脱，不含主动逃跑）
+// 当天日期键（YYYY-MM-DD，本地时区）
+function dayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // 每次调用重新取当天零点，跨天自动归零
 function calcTodayStats() {
   const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
-  const t = { seen: 0, caught: 0, fled: 0, shinySeen: 0, shinyCaught: 0, hatched: 0, shinyHatched: 0, trades: 0, shinyTraded: 0, catchRate: '0.0' };
+  const t = { seen: 0, caught: 0, fled: 0, shinySeen: 0, shinyCaught: 0, hatched: 0, shinyHatched: 0, trades: 0, shinyTraded: 0, evolutions: 0, catchRate: '0.0' };
   for (const arr of Object.values(gameData.encounterLogs || {})) {
     for (const l of arr) {
       if (!l || !l.time || l.time < todayStart) continue;
@@ -91,6 +89,7 @@ function calcTodayStats() {
       if (l.shiny) t.shinySeen++;
     }
   }
+  t.evolutions = (gameData.stats && gameData.stats.lastEvoDate === dayKey()) ? (gameData.stats.evolutionsToday || 0) : 0;
   t.catchRate = (t.caught + t.fled) > 0 ? (t.caught / (t.caught + t.fled) * 100).toFixed(1) : '0.0';
   return t;
 }
@@ -160,6 +159,8 @@ function refreshDataStats() {
   $('dataTodayHatched').textContent = formatNum(t.hatched);
   $('dataTodayShinyHatched').textContent = formatNum(t.shinyHatched);
   $('dataTodayShinyTraded').textContent = formatNum(t.shinyTraded);
+  $('dataTodayEvolved').textContent = formatNum(t.evolutions);
+  $('dataTotalEvolved').textContent = formatNum(stats.totalEvolutions || 0);
   $('dataTradesToday').textContent = formatNum(stats.tradesToday || 0);
   $('dataRating').textContent = rating ? rating.name : '暂无评定，先去冒险吧';
   $('dataTotalSeen').textContent = formatNum(totalSeen);
@@ -188,6 +189,7 @@ function refreshDataStats() {
   $('dataNpcWins').textContent = formatNum(stats.totalNpcWins || 0);
   $('dataNpcNoviceWins').textContent = formatNum(stats.totalNpcNoviceWins || 0);
   $('dataNpcEliteWins').textContent = formatNum(stats.totalNpcEliteWins || 0);
+  $('dataNpcLeaderWins').textContent = formatNum(stats.totalNpcLeaderWins || 0);
   $('dataNpcChampionWins').textContent = formatNum(stats.totalNpcChampionWins || 0);
   $('dataNpcCandy').textContent = formatNum(stats.totalNpcCandy || 0);
 
@@ -245,6 +247,7 @@ export function showDataView() {
           <tr><td>孵化闪光</td><td id="dataTodayShinyHatched"></td><td id="dataTotalShinyHatched"></td></tr>
           <tr><td>交换次数</td><td id="dataTradesToday"></td><td id="dataTradesTotal"></td></tr>
           <tr><td>交换闪光</td><td id="dataTodayShinyTraded"></td><td id="dataTotalShinyTraded"></td></tr>
+          <tr><td>进化次数</td><td id="dataTodayEvolved"></td><td id="dataTotalEvolved"></td></tr>
         </tbody>
       </table>
 
@@ -273,6 +276,7 @@ export function showDataView() {
       <div class="stat-row"><span>累计战胜训练家</span><span id="dataNpcWins"></span></div>
       <div class="stat-row"><span>战胜普通训练家</span><span id="dataNpcNoviceWins"></span></div>
       <div class="stat-row"><span>战胜精英</span><span id="dataNpcEliteWins"></span></div>
+      <div class="stat-row"><span>战胜馆主</span><span id="dataNpcLeaderWins"></span></div>
       <div class="stat-row"><span>战胜冠军</span><span id="dataNpcChampionWins"></span></div>
       <div class="stat-row"><span>对战糖果</span><span id="dataNpcCandy"></span></div>
 
@@ -353,7 +357,13 @@ export function renderSystemLogs() {
     let desc = '';
     switch (log.type) {
       case 'item_gain':
-        desc = `获得 ${ITEM_NAMES[log.details.item] || log.details.item} ×${log.details.qty}`;
+        desc = `${log.details.from ? `【${log.details.from}】` : ''}获得 ${ITEM_NAMES[log.details.item] || log.details.item} ×${log.details.qty}`;
+        break;
+      case 'achievement_claim':
+        desc = `【成就】领取 ${log.details.tiers} 级奖励，糖果 ×${log.details.candy}`;
+        break;
+      case 'tm_unlock':
+        desc = `【招式】解锁 ${log.details.move}（消耗${log.details.cost}糖果${log.details.learned ? `，${log.details.learned} 只学会` : ''}）`;
         break;
       case 'item_use':
         desc = `${log.details.auto ? '[自动] ' : ''}使用了${ITEM_NAMES[log.details.item] || log.details.item}`;
@@ -388,7 +398,9 @@ export function renderSystemLogs() {
         desc = `进入 ${log.details.region} 地区`;
         break;
       case 'bounty_claim':
-        desc = `完成地区悬赏，获得糖果 ×${log.details.candy}`;
+        desc = log.details.item
+          ? `完成地区悬赏，获得${ITEM_NAMES[log.details.item] || log.details.item} ×${log.details.qty || 1}`
+          : `完成地区悬赏，获得糖果 ×${log.details.candy}`;
         break;
       case 'berry_helper':
         desc = `招募了帮手${log.details.stages ? `（工作 ${log.details.stages} 阶段）` : ''}`;
@@ -456,6 +468,17 @@ export function renderSystemLogs() {
         break;
       case 'exp_candy_use':
         desc = `${logName(log)} 使用 ${log.details.qty} 颗经验糖果升至 Lv${log.details.level}`;
+        break;
+      case 'evolve': {
+        const fromP = getPokemonByIndex(String(log.details.from));
+        const toP = getPokemonByIndex(String(log.details.to));
+        const me = (gameData.roster || []).find((r) => r.id === log.details.id);
+        const who = me && me.nickname ? `「${me.nickname}」` : '';
+        desc = `${who}由 ${fromP ? (fromP.form || fromP.name) : log.details.from} 进化成了 ${toP ? (toP.form || toP.name) : log.details.to}`;
+        break;
+      }
+      case 'gacha':
+        desc = `抽到 ${log.details.tier || ''} ${log.details.cnName || log.details.card || ''}${log.details.isNew ? '（新）' : '（重复）'}`;
         break;
       case 'nursery_breed_start': {
         const na = getPokemonByIndex(String(log.details.a));
@@ -530,11 +553,6 @@ const SELL_QTY_OPTIONS = [5, 20, 50, 100];
 // 出售模式开关：顶部按钮切换「兑换 / 出售」两种列表
 let _shopSellMode = false;
 
-// 出售单价 = 兑换价 × 回收比例（四舍五入）
-function sellPriceOf(itemKey) {
-  return Math.round((CANDY_EXCHANGE[itemKey] || 0) * ITEM_SELL_RATE);
-}
-
 // ===== 商店兑换确认（行内二次确认，替代弹框） =====
 let _pendingExchange = null; // { item, qty } 待确认的兑换项
 
@@ -579,7 +597,54 @@ function cancelPendingExchange() {
   row?.classList.remove('shop-confirming');
 }
 
-export function showShopView() {
+// ===== 商店详情弹框 =====
+// 道具/招式机的介绍都在这里看：小卡片挂在商店页容器内（双屏下也留在下屏），点空白处关闭
+function showShopDetail(detail) {
+  if (!detail) { hideShopDetail(); return; } // 传空 = 收起卡片
+  const { badgeHtml, title, statsHtml, desc } = detail;
+  const host = $('shopView');
+  if (!host) return;
+  let mask = $('shopDetailMask');
+  if (!mask) {
+    mask = document.createElement('div');
+    mask.id = 'shopDetailMask';
+    mask.className = 'shop-detail-mask';
+    mask.innerHTML = `<div class="shop-detail-card">
+      <div class="shop-detail-head">
+        <span class="shop-detail-badge"></span>
+        <span class="shop-detail-name"></span>
+      </div>
+      <div class="move-edit-detail-stats"></div>
+      <div class="shop-detail-desc"></div>
+    </div>`;
+    host.appendChild(mask);
+    mask.addEventListener('click', hideShopDetail); // 点卡片外的空白关闭
+    mask.querySelector('.shop-detail-card').addEventListener('click', (e) => e.stopPropagation());
+  }
+  mask.querySelector('.shop-detail-badge').innerHTML = badgeHtml || '';
+  mask.querySelector('.shop-detail-name').textContent = title || '';
+  mask.querySelector('.move-edit-detail-stats').innerHTML = statsHtml || '';
+  mask.querySelector('.shop-detail-desc').textContent = desc || '';
+  mask.style.display = 'flex';
+}
+
+function hideShopDetail() {
+  const mask = $('shopDetailMask');
+  if (mask) mask.style.display = 'none';
+}
+
+// 就地刷新商店顶部的糖果数（招式机解锁后调用，避免为了一个数字重建整页把滚动位置顶掉）
+function refreshShopCandy() {
+  const el = $('shopCandyNum');
+  if (el) el.textContent = String(gameData.items['candy'] || 0);
+}
+
+// 道具详情：只给介绍文字（价格在列表行上已经有了）
+function showItemDetail(item) {
+  showShopDetail(itemDetailOf(item));
+}
+
+export function showShopView(opts) {
   // 兑换结算后 doCandyExchange 会重渲染本页：此时文案框保持固定，不清空不隐藏
   const isReRender = $('shopView')?.style.display === 'flex';
   pushNav('shopView');
@@ -591,38 +656,42 @@ export function showShopView() {
     _shopSellMode = false;
   }
   const content = $('shopContent');
+  // 结算后的重渲染会重建整个列表：带上原滚动位置，否则买完东西会被弹回顶部（商店下半部尤其明显）
+  const keepScroll = opts?.keepScroll ? (content?.scrollTop || 0) : 0;
   const candy = gameData.items['candy'] || 0;
 
   let itemsHtml = '';
   if (_shopSellMode) {
-    // 出售列表：全部道具按回收价换糖果
-    for (const item of Object.keys(CANDY_EXCHANGE)) {
-      const have = gameData.items[item] || 0;
+    // 出售列表 = 实际持有的道具（含进化/专属），顺序：基础道具 → 进化道具 → 专属道具
+    const owned = Object.entries(gameData.items)
+      .filter(([k, n]) => n > 0 && k !== 'casinoCoin' && sellPriceOf(k) > 0)
+      .sort((a, b) => sellSortRank(a[0]) - sellSortRank(b[0]) || b[1] - a[1]);
+    itemsHtml = owned.length ? owned.map(([item, n]) => {
       const price = sellPriceOf(item);
-      itemsHtml += `
-      <div class="shop-item ${have > 0 ? '' : 'disabled'}" data-item="${item}">
-        <div class="shop-item-left" data-tip="${(ITEM_DESC[item] || '').replace(/"/g, '&quot;')}">
-          <img src="./items/${ITEM_ICONS[item]}" class="shop-icon" alt="${ITEM_NAMES[item]}" />
-          <span class="shop-item-name">${ITEM_NAMES[item]}</span>
+      return `
+      <div class="shop-item" data-item="${item}">
+        <div class="shop-item-left">
+          <img src="${itemIconSrc(item)}" class="shop-icon" alt="${ITEM_NAMES[item] || item}" />
+          <span class="shop-item-name">${ITEM_NAMES[item] || item}</span><span class="idx">×${n}</span>
         </div>
         <div class="shop-item-right">
-          <span class="shop-cost"><img src="./items/candy.png" style="width:14px;height:14px;vertical-align:middle;image-rendering:pixelated;" /> ×${price}</span>
+          <span class="shop-cost"><img src="./items/goods/candy.png" style="width:14px;height:14px;vertical-align:middle;image-rendering:pixelated;" /> ×${price}</span>
           <span class="shop-btn" title="右键可批量出售">出售</span>
         </div>
       </div>`;
-    }
+    }).join('') : '<div class="rec-empty">背包里还没有可出售的道具</div>';
   } else {
     for (const [item, cost] of Object.entries(CANDY_EXCHANGE)) {
       const enough = candy >= cost;
       itemsHtml += `
-      <div class="shop-item ${enough ? '' : 'disabled'}" data-item="${item}">
-        <div class="shop-item-left" data-tip="${(ITEM_DESC[item] || '').replace(/"/g, '&quot;')}">
+      <div class="shop-item" data-item="${item}">
+        <div class="shop-item-left">
           <img src="./items/${ITEM_ICONS[item]}" class="shop-icon" alt="${ITEM_NAMES[item]}" />
           <span class="shop-item-name">${ITEM_NAMES[item]}</span>
         </div>
         <div class="shop-item-right">
-          <span class="shop-cost"><img src="./items/candy.png" style="width:14px;height:14px;vertical-align:middle;image-rendering:pixelated;" /> ×${cost}</span>
-          <span class="shop-btn" title="右键可批量购买">兑换</span>
+          <span class="shop-cost"><img src="./items/goods/candy.png" style="width:14px;height:14px;vertical-align:middle;image-rendering:pixelated;" /> ×${cost}</span>
+          <span class="shop-btn${enough ? '' : ' inert'}" title="右键可批量购买">兑换</span>
         </div>
       </div>`;
     }
@@ -632,9 +701,10 @@ export function showShopView() {
     <div style="padding:6px 8px;color:var(--ui-color);">
       <div style="position:relative;text-align:center;font-weight:700;margin-bottom:6px;">
         <span class="shop-mode-btn" id="shopModeBtn" style="position:absolute;left:0;top:50%;transform:translateY(-50%);">${_shopSellMode ? '兑换' : '出售'}</span>
-        当前糖果：<img src="./items/candy.png" style="width:16px;height:16px;vertical-align:middle;image-rendering:pixelated;" /> ${candy}
+        当前糖果：<img src="./items/goods/candy.png" style="width:16px;height:16px;vertical-align:middle;image-rendering:pixelated;" /> <span id="shopCandyNum">${candy}</span>
       </div>
       ${itemsHtml}
+      ${_shopSellMode ? '' : '<div id="shopTmBox"></div><div id="shopEvoBox"></div>'}
     </div>
   `;
   // 事件委托：
@@ -645,6 +715,7 @@ export function showShopView() {
     if (modeBtn) {
       _shopSellMode = !_shopSellMode;
       cancelPendingExchange();
+      hideShopDetail();
       showShopView();
       return;
     }
@@ -656,7 +727,7 @@ export function showShopView() {
     const btn = e.target.closest('.shop-btn');
     if (btn) {
       const item = btn.closest('.shop-item');
-      if (!item || item.classList.contains('disabled')) return;
+      if (!item || !item.dataset.item || btn.classList.contains('inert')) return; // 招式机行由 tm.js 自己处理
       if (_shopSellMode) {
         doSellBall(item.dataset.item, 1);
         return;
@@ -664,18 +735,31 @@ export function showShopView() {
       requestCandyExchange(item.dataset.item);
       return;
     }
-    cancelPendingExchange(); // 点到非按钮区域取消行内确认
+    // 点条目本身 → 弹框看详情（糖果不够 / 没有库存的条目也能看）
+    const row = e.target.closest('.shop-item[data-item]');
+    cancelPendingExchange();
+    if (row) showItemDetail(row.dataset.item);
   };
   // 右键"兑换/出售"按钮弹出批量菜单（确认态下右键同样有效）
   content.oncontextmenu = (e) => {
     const btn = e.target.closest('.shop-btn, .shop-confirm');
     if (!btn) return;
     const item = btn.closest('.shop-item');
-    if (!item || item.classList.contains('disabled')) return;
+    if (!item || !item.dataset.item || btn.classList.contains('inert')) return;
     e.preventDefault();
     showShopContextMenu(item.dataset.item, e.clientX, e.clientY, _shopSellMode ? 'sell' : 'buy');
   };
   showView('shopView');
+  if (keepScroll && content) content.scrollTop = keepScroll;
+  if (!isReRender) hideShopDetail(); // 真正进入商店：关掉上次残留的详情弹框
+  // 招式机区块：每天轮换的招式机（异步填内容，招式数据不在商店首帧拉取）
+  if (!_shopSellMode) {
+    const tmBox = $('shopTmBox');
+    if (tmBox) import('./tm.js').then((m) => m.renderShopTmSection(tmBox, { onBought: refreshShopCandy, onDetail: showShopDetail }));
+    // 今日道具（放在招式机下面）
+    const evoBox = $('shopEvoBox');
+    if (evoBox) import('./items.js').then((m) => m.renderShopEvoSection(evoBox, { onBought: refreshShopCandy, onDetail: showShopDetail }));
+  }
   // 出售模式：标题栏显示「出售」，切回兑换模式时由 showView 恢复「商店」
   if (_shopSellMode) {
     const t = $('appTitle');
@@ -705,7 +789,7 @@ function showShopContextMenu(itemKey, x, y, mode = 'buy') {
         const ok = have >= q;
         return `<div class="shop-ctx-item${ok ? '' : ' disabled'}" data-item="${itemKey}" data-q="${q}">
       <span class="shop-ctx-qty">×${q}</span>
-      <span class="shop-ctx-cost"><img src="./items/candy.png" style="width:12px;height:12px;vertical-align:middle;image-rendering:pixelated;" /> ×${gain}</span>
+      <span class="shop-ctx-cost"><img src="./items/goods/candy.png" style="width:12px;height:12px;vertical-align:middle;image-rendering:pixelated;" /> ×${gain}</span>
     </div>`;
       }
       const cost = CANDY_EXCHANGE[itemKey];
@@ -713,7 +797,7 @@ function showShopContextMenu(itemKey, x, y, mode = 'buy') {
       const ok = candyNow >= total;
       return `<div class="shop-ctx-item${ok ? '' : ' disabled'}" data-item="${itemKey}" data-q="${q}">
       <span class="shop-ctx-qty">×${q}</span>
-      <span class="shop-ctx-cost"><img src="./items/candy.png" style="width:12px;height:12px;vertical-align:middle;image-rendering:pixelated;" /> ×${total}</span>
+      <span class="shop-ctx-cost"><img src="./items/goods/candy.png" style="width:12px;height:12px;vertical-align:middle;image-rendering:pixelated;" /> ×${total}</span>
     </div>`;
     }).join('');
   };
@@ -1382,7 +1466,7 @@ export function renderSettings(container, s) {
     let v = '';
     try { v = await window.__TAURI__?.app?.getVersion?.(); } catch (_) {}
     const el = container.querySelector('#settingsVersion');
-    if (el) el.textContent = v ? `v${v}` : 'v1.1.2';
+    if (el) el.textContent = v ? `v${v}` : 'v1.1.3';
   })();
   // 版权声明：跳转声明视图
   container.querySelector('#declarationBtn')?.addEventListener('click', () => showDeclarationView());
@@ -1652,17 +1736,32 @@ function tutorialTable(rows, headers, widths) {
   return `<table class="tutorial-table"><tr>${head}</tr>${body}</table>`;
 }
 
+// 随从九组增益表（主增益幅度固定、副增益按稀有度区间写；文案与结算页共用 config 里的表）
+const FOLLOWER_SUB_RANGE = `${Math.round(FOLLOWER_TIER_BOOST.N * 100)}~${Math.round(FOLLOWER_TIER_BOOST.UR * 100)}`;
+const FOLLOWER_TUTORIAL_ROWS = [
+  ['飞行、妖精', 'bike'], ['水', 'fishing'], ['草、虫', 'berry'], ['地面、岩石、钢', 'itemdrop'],
+  ['格斗、恶', 'battleexp'], ['一般、幽灵', 'catch'], ['电、冰', 'flee'], ['龙、火', 'hatch'],
+  ['毒、超能', 'trade'],
+].map(([types, g]) => {
+  const e = FOLLOWER_EFFECTS[g];
+  return [types, `主：[${e.tag}] ${e.main}<br>副：[${e.subTag}] ${e.sub(FOLLOWER_SUB_RANGE)}`];
+});
+
 // 道具掉落：按稀有度从低到高（常见→稀有）排序，配置变化自动同步（单位秒，1/X 秒掉落一个）
 const ITEM_DROP_ROWS = Object.entries(ITEM_RATES)
   .sort((a, b) => b[1] - a[1])
   .map(([k, rate]) => [ITEM_NAMES[k], `<b>1/${Math.round(1 / rate)}</b>`]);
 
-// 钓鱼收获道具的概率：按 ITEM_RATES 权重占比计算，配置变化自动同步
+// 钓鱼收获道具的概率：按 ITEM_RATES 权重占比计算，配置变化自动同步。
+// 小概率保留两位小数——直接取整会得到一串 0%
 const FISH_ITEM_ROWS = (() => {
   const total = Object.values(ITEM_RATES).reduce((a, b) => a + b, 0);
   return Object.entries(ITEM_RATES)
     .sort((a, b) => b[1] - a[1])
-    .map(([k, rate]) => [ITEM_NAMES[k], `<b>${Math.round((rate / total) * 100)}</b>%`]);
+    .map(([k, rate]) => {
+      const pct = (rate / total) * 100;
+      return [ITEM_NAMES[k], `<b>${pct >= 1 ? Math.round(pct) : pct.toFixed(2)}</b>%`];
+    });
 })();
 
 // 极稀有（稀有度≈1）出现权重相对无 buff 的倍率（公式与 items.js pickWeightedPokemon 一致）
@@ -1682,30 +1781,41 @@ const TUTORIAL_SECTIONS = [
   {
     title: '目标',
     html: `<p>挂机收集道具，捕捉宝可梦，完成全图鉴！</p>`
-      + `<p>重要说明：本作<b>无进化系统</b>，所有个体均可通过直接丢球捕获且<b>无需战斗</b>。</p>`,
   },
   {
     title: '道具',
     html: `<p>挂机时主角会拾取到道具，稀有度从低到高如下：</p>` + tutorialTable(ITEM_DROP_ROWS, ['道具', '概率（秒/个）'], [52, 'auto'])
-      + `<p>拾取<b>糖果</b>时还有概率一次获得更多：×2、×5、×50 甚至一次 <b>×100</b> 颗，倍率越大越稀有。</p>`
-      + `<p>除挂机自然掉落外还有特殊获取途径：骑完<b>自行车道</b>路段获得 <b>自行车</b>（详见「<b>自行车</b>」章节）；战胜 <b>NPC 训练家</b>概率掉落 <b>经验糖果</b>（普通 <b>${EXP_CANDY_DROP.novice * 100}</b>%、精英 <b>${EXP_CANDY_DROP.veteran * 100}</b>%、冠军 <b>${EXP_CANDY_DROP.champion * 100}</b>%，详见「<b>经验糖果</b>」章节）。</p>`,
+      + `<p>拾取<b>糖果</b>时还有概率一次获得更多：×2、×5、×50 甚至一次 <b>×100</b> 颗。</p>`
+      + `<p><b>球</b>（精灵球 / 高级球 / 大师球）与<b>增益</b>（甜甜蜜 / 闪耀护符）：挂机拾取、商店兑换、NPC 对战掉落。</p>`
+      + `<p><b>神秘蛋</b>挂机也能捡到；<b>自行车</b>骑完自行车道路段 +1；两者都能在商店兑换。</p>`
+      + `<p><b>糖果</b>是货币，<b>经验糖果</b>给宝可梦加经验，<b>招式机</b>永久解锁招式，<b>树果</b>来自农场——各自渠道见对应章节。</p>`
+      + `<p><b>进化道具</b>与<b>薄荷</b>不能在路上拾取，只有这几条渠道：</p>`
+      + tutorialTable([
+        ['今日道具', '每天一批，每件限买 1 个'],
+        ['悬赏', '中档给常见，高阶给稀有'],
+        ['派遣', '每槽额外 1 件，时长越长概率越高'],
+        ['钓鱼', '钓到道具时有概率改给 1 件'],
+        ['对战', '四档都有概率，越难越贵'],
+      ], ['渠道', '给什么'], [56, 'auto'])
+      + `<p>道具都是<b>一次性消耗品</b>；<b>道具盒</b>里能查看持有数与来源，用不上的可在商店回收：按<b>基础价的 40%</b> 折算糖果（进化道具、专属道具、薄荷都照此办理）。</p>`,
   },
   {
     title: '遭遇',
     html: `<p>每隔 <b>${Math.round(ENCOUNTER_MIN / 60)}~${Math.round(ENCOUNTER_MAX / 60)}</b> 分钟遇到一只当前地区的野生宝可梦。</p>`
-      + `<p>野生宝可梦的<b>等级在 ${1}~${WILD_LEVEL_MAX} 级</b>之间随机生成。</p>`
+      + `<p>野生宝可梦的<b>等级在 ${1}~${WILD_LEVEL_MAX} 级</b>之间随机生成，但不会到它自己的进化等级（免得一抓来就能进化）。</p>`
+      + `<p>每个地区每天还有几只<b>神兽 / 幻兽</b>混在野池里（数量随该地区神兽多少浮动，少的至少 1 只）：遇敌时约 <b>1/${Math.round(1 / LEGEND_ENCOUNTER_RATE)}</b> 的概率直接遇到，甜甜蜜 / 闪耀护符生效期间约 <b>1/${Math.round(1 / LEGEND_ENCOUNTER_RATE_BUFF)}</b>，现身等级固定 <b>${LEGEND_LEVEL}</b>。</p>`
+      + `<p>连着 <b>${LEGEND_PITY}</b> 次遇敌都没出过神兽的话，下一只必定是。</p>`
   },
   {
     title: '手机',
     html: `<p>点击标题栏的<b>手机</b>按钮进入，里面放着常用的应用（<b>导航</b>、<b>图鉴</b>、<b>孵蛋器</b>、<b>混合器</b>、<b>农场</b>、<b>交换</b>、<b>成就</b>、<b>统计</b>……），也可以查看当前系统时间。</p>`
-      + `<p>滚动滚轮或点击底部圆点可翻到<b>第二页</b>，那里放着<b>日志</b>、<b>饲育屋</b>、<b>训练</b>、<b>配队</b>、<b>对战</b>、<b>游戏厅</b>、<b>卡册</b>与<b>派遣</b>应用。科学的力量真伟大！</p>`
+      + `<p>滚动滚轮或点击底部圆点可翻到<b>第二页</b>，那里放着<b>日志</b>、<b>饲育屋</b>、<b>训练</b>、<b>配队</b>、<b>对战</b>、<b>游戏厅</b>、<b>卡册</b>、<b>道具盒</b>与<b>派遣</b>应用。科学的力量真伟大！</p>`
   },
   {
     title: '图鉴',
-    html: `<p>在<b>手机</b>页面打开<b>图鉴</b>应用，支持<b>搜索</b>（输入名称快速检索）与地区筛选。点击表头可按相应字段排序，再次点击同一表头切换升/降序。</p>`
-      + `<p>点击条目查看详情：未遇到过显示"？？？"且不可点击；遇到过未捕获显示基础信息+完整日志；已捕获额外解锁精确数值、种族值条、图鉴描述与爱吃的食物。</p>`
+    html: `<p>在<b>手机</b>页面打开<b>图鉴</b>应用，支持<b>搜索</b>（输入名称快速检索）与地区筛选，点表头可以按该字段排序。</p>`
+      + `<p>点进详情：遇到过能看到基础信息与完整日志，<b>获得后</b>解锁精确数值、种族值条与爱吃的食物。</p>`
   },
-
   {
     title: '统计',
     html: `<p>在<b>手机</b>页面打开<b>统计</b>应用可查看冒险数据：<b>欧非评定</b>按每次遭遇的稀有度与捕获运气综合评价称号；</p>`
@@ -1714,8 +1824,7 @@ const TUTORIAL_SECTIONS = [
   {
     title: '成就',
     html: `<p>在<b>手机</b>页面打开<b>成就</b>应用领取：每项累计统计达标<b>一级</b>即可领一次糖果。</p>`
-      + `<p>等级按 <b>1-2-5</b> 规整序列无限递进，未领的等级会一直累计；除「图鉴收藏家」到上限完结外，其余成就等级<b>无限</b>。</p>`
-      + `<p>有可领取的奖励时，<b>成就</b>应用图标与标题栏手机图标会亮起红点提醒。</p>`,
+      + `<p>等级按 <b>1-2-5</b> 规整序列无限递进，未领的等级会一直累计；除「图鉴收藏家」到上限完结外，其余成就等级<b>无限</b>。</p>`,
   },
   {
     title: '地区',
@@ -1724,7 +1833,7 @@ const TUTORIAL_SECTIONS = [
   },
   {
     title: '导航',
-    html: `<p>在<b>手机</b>页面打开<b>导航</b>应用或点击主界面右下角的位置文字：选择目的地即可手动导航。</p>`
+    html: `<p>在<b>手机</b>页面打开<b>导航</b>应用（或点主界面的位置文字）选目的地即可手动导航。</p>`
       + `<p>开启<b>漫游</b>后，没有目的地时会自动沿<b>环国路线</b>（合众→帕底亚→阿罗拉→丰缘→关都→城都→神奥→卡洛斯→伽勒尔→合众…循环）选择下一站。</p>`
       + `<p>到达目的地后导航结束（若开启<b>漫游</b>，会自动选择下一站）。</p>`
       + `<p>进度由主角实际移动驱动——跑步更快，遇敌或钓鱼时暂停（详见「<b>钓鱼</b>」章节）。</p>`
@@ -1737,25 +1846,26 @@ const TUTORIAL_SECTIONS = [
       + `<p>事件点是一个<b>点</b>而不是整条路：只有抵达事件点并停下才算进入事件区域，<b>途经该路段不算</b>；到达后（未开启漫游）会<b>自动停在事件点</b>。</p>`
       + `<p><b>大量出没</b>：每隔 <b>${MASS_GEN_MIN}~${MASS_GEN_MAX}</b> 分钟出现一次，<b>锁定该地区的一只宝可梦</b>大量出现，闪光率 <b>1/${Math.round(1 / MASS_SHINY_CHANCE)}</b>（不吃闪耀护符加成）。</p>`
       + `<p>使用<b>甜甜蜜</b>可让大量出没的下一只出现得更快（<b>${MASS_SPAWN_HONEY_MIN}~${MASS_SPAWN_HONEY_MAX}</b> 秒，普通 <b>${MASS_SPAWN_MIN}~${MASS_SPAWN_MAX}</b> 秒）。事件持续 <b>${MASS_DURATION}</b> 分钟，抓完剩余数量（<b>${MASS_COUNT_MIN}~${MASS_COUNT_MAX}</b> 只）或到期后结束。</p>`
-      + `<p><b>时空扭曲</b>：每隔 <b>${TWIST_GEN_MIN}~${TWIST_GEN_MAX}</b> 分钟出现一次，从<b>全地区（排除事件所在地）</b>的宝可梦中随机现身，每次遭遇都不同。</p>`
-      + `<p>时空扭曲的宝可梦<b>等级固定为 ${WILD_LEVEL_MAX} 级</b>，<b>个体值保底 ${TWIST_GUARANTEED_IVS}V</b>，闪光率 <b>1/${Math.round(1 / TWIST_SHINY_CHANCE)}</b>（不吃闪耀护符加成），有 <b>${Math.round(TWIST_RGB_CHANCE * 100)}%</b> 概率是 <b>RGB 分离</b>宝可梦、<b>${Math.round(TWIST_POLLUTED_CHANCE * 100)}%</b> 概率是<b>污染宝可梦</b>。</p>`
+      + `<p><b>时空扭曲</b>：每隔 <b>${TWIST_GEN_MIN}~${TWIST_GEN_MAX}</b> 分钟出现一次，从<b>全地区（排除事件所在地）</b>的宝可梦中随机现身，每次遭遇都不同；<b>超级进化 / 超极巨化</b>这类强化形态<b>不会现身</b>，它们只能靠进化获得。</p>`
+      + `<p>时空扭曲的宝可梦<b>个体值保底 ${TWIST_GUARANTEED_IVS}V</b>，闪光率 <b>1/${Math.round(1 / TWIST_SHINY_CHANCE)}</b>（不吃闪耀护符加成），有 <b>${Math.round(TWIST_RGB_CHANCE * 100)}%</b> 概率是 <b>RGB 分离</b>宝可梦、<b>${Math.round(TWIST_POLLUTED_CHANCE * 100)}%</b> 概率是<b>污染宝可梦</b>。</p>`
       + `<p>当这两类带有特效的宝可梦被<b>派遣</b>探险时，带回的糖果数量提升 <b>${Math.round(DISPATCH_VARIANT_CANDY_BONUS * 100)}%</b>（详见「<b>派遣</b>」章节）。</p>`
       + `<p>事件持续 <b>${TWIST_DURATION}</b> 分钟，抓完剩余数量（<b>${TWIST_COUNT_MIN}</b> 只）或到期后结束。</p>`,
   },
   {
     title: '悬赏',
-    html: `<p>每个地区每天<b>0</b> 点刷新<b>${BOUNTY_PER_REGION}</b> 条<b>地区悬赏</b>：指定宝可梦来自全国图鉴（可能不在该地区出没），悬赏糖果奖励 <b>${BOUNTY_CANDY_MIN}~${BOUNTY_CANDY_MAX}</b> 颗，越难捕获奖励越高。</p>`
+    html: `<p>每个地区每天<b>0</b> 点刷新<b>${BOUNTY_PER_REGION}</b> 条<b>地区悬赏</b>：指定宝可梦来自全国图鉴（可能不在该地区出没）。</p>`
       + `<p>今日到访过的地区才能看到悬赏内容；仓库中拥有指定宝可梦即可提交，但提交必须到达对应地区。</p>`
-      + `<p>标题右侧的纸飞机图标可将该地区设为<b>导航</b>目的地：自动跳到导航页并规划路线。</p>`
-      + `<p>右键点击提交按钮可选择将该悬赏忽略（忽略后不再红点提醒，随时可恢复/提交）。</p>`
+      + `<p>奖励按目标的<b>获取成本</b>分三档：容易的给<b>糖果</b>（<b>${BOUNTY_CANDY_MIN}~${BOUNTY_CANDY_MAX}</b> 颗），难一些给 <b>1 件进化道具</b>，再难就改成 <b>1 件稀有道具</b>（含形态专属道具、薄荷）或 <b>${BOUNTY_COMMON_QTY_MIN}~${BOUNTY_COMMON_QTY_MAX} 件</b>常见道具。</p>`
+      + `<p>纸飞机图标可将该地区设为<b>导航</b>目的地：自动规划路线。</p>`
+      + `<p>右键点击提交按钮可选择将该悬赏忽略（随时可恢复）。</p>`
   },
   {
     title: '交换',
-    html: `<p>在<b>手机</b>页面打开<b>交换</b>应用，NPC 挂出想要的宝可梦与愿意给的宝可梦，有 <b>${TRADE_SHINY_CHANCE * 100}</b>% 的概率给出闪光宝可梦。</p>`
+    html: `<p>在<b>手机</b>页面打开<b>交换</b>应用，NPC 挂出想要的宝可梦与愿意给的宝可梦，有 <b>1/${Math.round(1 / TRADE_SHINY_CHANCE)}</b> 的概率给出闪光宝可梦。</p>`
       + `<p>NPC 有 <b>${TRADE_LEVEL_CHANCE * 100}</b>% 的概率指定想要的宝可梦<b>等级下限</b>（<b>${TRADE_WANT_LEVEL_MIN}~${TRADE_WANT_LEVEL_MAX}</b> 级）：个体必须达到等级要求才能提交。孵化攒下的 1 级宝可梦可用<b>经验糖果</b>快速拉到等级线（详见「<b>经验糖果</b>」章节）。</p>`
       + `<p>仓库中有符合要求的个体即可与之互换，收到的宝可梦来源记为「<b>交换</b>」；每 <b>${TRADE_REFRESH_MS / 60000}</b> 分钟刷新一波。</p>`
-      + `<p>跟随<b>毒 / 超能</b>属性随从（增益「<b>交换闪光概率提升</b>」）时，会<b>强制刷新一波交易</b>，让新加成立即生效。</p>`
-      + `<p>右键可交换的条目可「<b>忽略</b>」：忽略后不再计入手机主页的红点提醒，但随时可右键恢复，忽略后仍可正常交换。</p>`,
+      + `<p>跟随<b>毒 / 超能</b>属性随从时，会<b>强制刷新一波交易</b>并多挂一个 NPC，让新加成立即生效。</p>`
+      + `<p>右键可交换的条目可「<b>忽略</b>」：忽略后随时可右键恢复，仍可正常交换。</p>`,
   },
   {
     title: '场景',
@@ -1766,11 +1876,11 @@ const TUTORIAL_SECTIONS = [
   {
     title: '自行车',
     html: `<p><b>自行车</b>是赶路道具：骑行速度 <b>${ROAD_SPEED_BIKE / ROAD_SPEED_WALK}×</b> 走路，期间<b>不遇敌、不钓鱼、不拾取道具</b>，适合快速跨地区赶路。</p>`
-      + `<p><b>获取</b>：随机<b>自行车道</b>骑行结束后背包 <b>+1</b>；（详见「<b>场景</b>」章节）也可在<b>商店</b>用糖果兑换（<b>${CANDY_EXCHANGE['bike']}</b> 颗）。</p>`
+      + `<p><b>获取</b>：随机<b>自行车道</b>骑行结束后背包 <b>+1</b>（详见「<b>场景</b>」章节），也可在<b>商店</b>用糖果兑换（<b>${CANDY_EXCHANGE['bike']}</b> 颗）。</p>`
       + `<p><b>使用</b>：背包<b>滚轮翻到第二页</b>，点击<b>自行车</b>停止当前导航并进入<b>导航页</b>；<b>选好骑行目的地才消耗 1 个</b>上车骑行。骑行中背包再点可<b>手动下车</b>（不结束导航）。</p>`
       + `<p><b>放弃骑行</b>：未选目的地时再点背包「自行车」，或在导航页点「<b>退出</b>」结束导航。</p>`
       + `<p><b>自动下车</b>：骑行到<b>导航目的地</b>自动下车（中途经过的地区节点<b>不停车</b>，连续骑行）；<b>手动结束导航</b>也会直接下车；抵达<b>大量出没 / 时空扭曲</b>事件点自动下车（骑行中不遇敌，下车后才能进战斗）。</p>`
-      + `<p><b>骑行中</b>：导航页漫游开关隐藏、<b>地图节点不可改选</b>，只能等到达自动下车、手动下车或退出导航。</p>`
+      + `<p><b>骑行中</b>不能改选目的地，只能等到达自动下车、手动下车或退出导航。</p>`
   },
   {
     title: '捕捉',
@@ -1791,23 +1901,26 @@ const TUTORIAL_SECTIONS = [
       + `<p>捕获后图鉴有特殊标记，并计入闪光统计。</p>`
       + `<p>使用<b>闪耀护符</b>可大幅提升遇闪概率（详见「<b>增益</b>」章节）。</p>`,
   },
-
   {
     title: '糖果',
-    html: `<p><b>糖果</b>是本游戏的唯一货币，通过挂机掉落、钓鱼、完成委托、完成悬赏、对战、成就、派遣等获得，能在手机里虚拟存储，用于解锁<b>孵蛋器</b>槽位、<b>农场</b>购买种子、解锁<b>派遣</b>格子，也可在<b>商店</b>兑换道具（详见「<b>商店</b>」章节）。</p>`
-      + `<p>注意区分道具<b>经验糖果</b>：它不是货币，而是给宝可梦直接加经验的消耗品，只能从 NPC 对战掉落获得（详见「<b>经验糖果</b>」章节）。</p>`
+    html: `<p><b>糖果</b>是本游戏的唯一货币，通过挂机掉落、钓鱼、完成委托、完成悬赏、对战、成就、派遣、出售道具等获得，能在手机里虚拟存储，用于解锁<b>孵蛋器</b>槽位、<b>农场</b>购买种子、解锁<b>派遣</b>格子，也可在<b>商店</b>兑换道具（详见「<b>商店</b>」章节）。</p>`
+      + `<p>注意区分道具<b>经验糖果</b>：它不是货币，而是给宝可梦直接加经验的消耗品，主要从 NPC 对战掉落、悬赏中档发放与放生返还的经验池产出（详见「<b>经验糖果</b>」章节）。</p>`
   },
   {
     title: '商店',
-    html: `<p>点击标题栏右侧区域的商店按钮者点击主界面左下角的糖果数量文字进入<b>商店</b>。可以消耗<b>糖果</b>兑换基础道具。</p>`
+    html: `<p>在标题栏点商店按钮（或点主界面的糖果数量）进入<b>商店</b>，消耗<b>糖果</b>兑换基础道具。</p>`
       + `<p>点击「兑换」买 1 个，<b>右键</b>可批量购买。</p>`
-      + `<p>点击左上角的「出售」进入出售模式，按 <b>40%</b> 价格卖出，点击卖 1 个，<b>右键</b>同样可批量出售。</p>`
+      + `<p>进入「出售」模式后：道具按<b>基础价的 40%</b> 回收成糖果（<b>大师球 / 闪耀护符 / 经验糖果</b>是固定回收价，不按 40%）；点击卖 1 个，<b>右键</b>可批量出售。</p>`
       + `<p>兑换价格（糖果）：</p>`
-      + tutorialTable(Object.entries(CANDY_EXCHANGE).map(([item, cost]) => [ITEM_NAMES[item], `<b>${cost}</b> 糖果`]), ['道具', '价格'], [52, 'auto']),
+      + tutorialTable(Object.entries(CANDY_EXCHANGE).map(([item, cost]) => [ITEM_NAMES[item], `<b>${cost}</b> 糖果`]), ['道具', '价格'], [52, 'auto'])
+      + `<p><b>今日招式机</b>：每天上架 <b>${TM_SHOP_DAILY}</b> 个还没有解锁的招式，价格按威力 <b>${TM_PRICE_TIERS[0].price}~${TM_PRICE_TIERS[TM_PRICE_TIERS.length - 1].price}</b> 糖果。</p>`
+      + `<p>招式机<b>解锁后永久有效</b>：仓库里能学会这招的宝可梦会直接学会（满 4 招的保留你自己配的，可以在配招页替换）。蛋招式不在这里卖——只有<b>孵蛋</b>得到的宝可梦能学，详见「<b>孵蛋</b>」章节。</p>`
+      + `<p><b>今日道具</b>：进化道具与薄荷每天换一批，每件限买 1 个。</p>`
   },
   {
     title: '增益',
     html: `<p><b>甜甜蜜</b>与<b>闪耀护符</b>都是 <b>${BUFF_DURATION}</b> 秒增益，使用后主角进入跑步姿态，跑图速度提升。</p>`
+      + `<p><b>闪耀护符</b>额外带保底：<b>使用后的下一只遭遇必定闪光</b>，之后这段时间内继续按提升后的概率判定。</p>`
       + `<p>骑行中速度以 <b>${ROAD_SPEED_BIKE / ROAD_SPEED_WALK}×</b> 优先，增益的跑步提速不生效（详见「<b>自行车</b>」章节）。</p>`
       + `<p>期间遇敌间隔从普通 <b>${Math.round(ENCOUNTER_MIN / 60)}~${Math.round(ENCOUNTER_MAX / 60)}</b> 分钟缩短到 <b>${BUFF_ENCOUNTER_MIN}~${BUFF_ENCOUNTER_MAX}</b> 秒。</p>`
       + `<p>倒计时仅在挂机等待时消耗，遇敌/钓鱼期间暂停。</p>`
@@ -1815,13 +1928,14 @@ const TUTORIAL_SECTIONS = [
         ['生效', `<b>${BUFF_DURATION}</b> 秒`, `<b>${BUFF_DURATION}</b> 秒`],
         ['遇敌', `<b>${BUFF_ENCOUNTER_MIN}~${BUFF_ENCOUNTER_MAX}</b> 秒`, `<b>${BUFF_ENCOUNTER_MIN}~${BUFF_ENCOUNTER_MAX}</b> 秒`],
         ['稀有', `极稀有出现权重 ×<b>${rarityWeightBoost(HONEY_RARITY_BOOST)}</b>`, `极稀有出现权重 ×<b>${rarityWeightBoost(CHARM_RARITY_BOOST)}</b>`],
-        ['闪光', '无加成', `<b>${Math.round(CHARM_SHINY_CHANCE * 100)}</b>% 闪光、<b>${Math.round((1 - CHARM_SHINY_CHANCE) * 100)}</b>% 未收录宝可梦`],
+        ['闪光', '无加成', `<b>${Math.round(CHARM_SHINY_CHANCE * 100)}</b>% 闪光、<b>${Math.round(CHARM_UNCAUGHT_CHANCE * 100)}</b>% 遇到还未解锁的野生宝可梦，其余走普通遇敌`],
         ['钓鱼', `钓到宝可梦概率提升至 <b>${Math.round(FISH_BUFF_POKEMON_CHANCE * 100)}</b>%`, `钓到宝可梦概率提升至 <b>${Math.round(FISH_BUFF_POKEMON_CHANCE * 100)}</b>%，闪光率 <b>${Math.round(CHARM_SHINY_CHANCE * 100)}</b>%`],
       ], ['特性', '甜甜蜜', '闪耀护符'], [32, '40%', 'auto']),
   },
   {
     title: '孵蛋',
     html: `<p>在<b>手机</b>主页打开<b>孵蛋器</b>应用，将背包里的<b>神秘蛋</b>或繁殖得到的<b>宝可梦蛋</b>放入空闲槽位开始<b>孵化</b>。</p>`
+      + `<p>孵蛋得到的宝可梦还能学会本物种的<b>蛋招式</b>（野外抓到的同类学不了），另有独立的个体值、性格与闪光判定。</p>`
       + `<p>孵化里程由宝可梦的体重和稀有度决定（<b>${HATCH_DIST_MIN / 1000}~${HATCH_DIST_MAX / 1000}</b> 公里）。</p>`
       + `<p>主角行走累计到所需里程即孵化完成——停下不走不推进，跑步/骑车走得更快。</p>`
       + `<p>不同移动方式的推进速度（走完 <b>1 公里</b>所需时间）：</p>`
@@ -1835,12 +1949,13 @@ const TUTORIAL_SECTIONS = [
   {
     title: '培育',
     html: `<p>在<b>手机</b>主页打开<b>饲育屋</b>：点<b>告示牌</b>放入两只宝可梦配对。普通配对要求<b>一雄一雌</b>且<b>至少共有一个蛋组</b>——只有<b>同蛋组</b>的宝可梦才能一起孵蛋。</p>`
-      + `<p><b>百变怪</b>可无视性别，与<b>任意非「未发现蛋组」</b>的宝可梦繁殖（后代为另一方的物种）；但神兽幻兽等<b>「未发现蛋组」</b>的宝可梦<b>不能</b>与百变怪配对。</p>`
+      + `<p><b>百变怪</b>可无视性别，与<b>任意非「未发现蛋组」</b>的宝可梦繁殖（后代按那一族的最低阶算）；但神兽幻兽等<b>「未发现蛋组」</b>的宝可梦<b>不能</b>与百变怪配对。</p>`
       + `<p>投喂它们爱吃的<b>树果</b>开始繁殖：先选择<b>连续繁殖轮数</b>（<b>1~10 轮</b>），树果按轮数 <b>×N</b> 一次性扣除；每轮 <b>5~10 分钟</b>产一枚蛋并<b>自动入库</b>、自动续下一轮，无需手动收蛋；一批完成后直接恢复轮数选择界面，可立即开始下一批。</p>`
       + `<p>繁殖期间取出亲本会<b>终止剩余轮次</b>（树果不退，已产蛋不丢）；产出的<b>宝可梦蛋</b>放入<b>孵蛋器</b>里孵化（详见「<b>孵蛋</b>」章节）。</p>`
       + `<p><b>个体值遗传</b>：<b>1 项</b>完全随机，<b>5 项</b>继承自双亲（默认 50% 随机取父或母）。可从这 5 项中<b>锁定一项</b>，指定该维固定继承父方或母方的数值。</p>`
       + `<p><b>如何培育 6V</b>：优先找两只高个体亲本繁殖，用后代中更优秀的替换亲本，反复迭代拉高双亲基础。遗传的 5 项中，双亲都到 31 的项必然还是 31（从双亲二选一，任意一方都是 31）；但唯一纯随机项完全随机（0~31），有 1/6 概率正好落在某一维——所以最终要赌的还是这 <b>1 个随机项</b>（出 31 的概率 1/32）。锁定功能可在关键维缺一只亲本时帮补短板。</p>`
-      + `<p>点左上角的<b>纸箱</b>可查看仓库中所有宝可梦蛋，支持搜索、按名称/个体值排序与丢弃。</p>`
+      + `<p>「<b>纸箱</b>」里可以查看仓库中所有宝可梦蛋。</p>`
+      + `<p>有的族要开「<b>熏香</b>」开关才产得出最低阶的幼体，不开就产中间阶。</p>`
   },
   {
     title: '钓鱼',
@@ -1852,11 +1967,12 @@ const TUTORIAL_SECTIONS = [
       ], ['情况', '概率'], [80, 'auto'])
       + `<p>钓到宝可梦的种类：</p>`
       + tutorialTable([
-        ['极稀有宝可梦', `<b>${Math.round(FISH_RARE_RATE * 100)}</b>%`],
-        ['水系宝可梦', `<b>${Math.round((1 - FISH_RARE_RATE) * 100)}</b>%`],
+        ['当地稀有宝可梦', `<b>${Math.round(FISH_RARE_RATE * 100)}</b>%`],
+        ['当地水系宝可梦', `<b>${Math.round((1 - FISH_RARE_RATE) * 100)}</b>%`],
       ], ['种类', '占比'], [80, 'auto'])
       + `<p>钓到道具时的种类概率（按掉率权重占比）：</p>`
       + tutorialTable(FISH_ITEM_ROWS, ['道具', '概率'], [52, 'auto'])
+      + `<p>此外有 <b>${Math.round(FISH_EVO_CHANCE * 100)}</b>% 的概率改钓到 <b>1 件进化道具</b>（含形态专属道具、薄荷）。</p>`
       + `<p>增益加成：护符期间钓到的宝可梦更容易<b>闪光</b>；等待上钩时间不计入增益时长。</p>`,
   },
   {
@@ -1871,14 +1987,14 @@ const TUTORIAL_SECTIONS = [
       + `<p>刚种下<b>湿度</b>为 <b>0</b>，点击<b>浇水</b>才会生长；湿度随时间下降（每 <b>${Math.round(1 / FARM_WATER_DROP)}</b> 秒降 <b>1</b> 点，满湿度可撑 <b>${Math.round(FARM_MAX_WATER / FARM_WATER_DROP / 60)}</b> 分钟），归 <b>0</b> 停止生长，需及时补浇。</p>`
       + `<p>历经刚种下→发芽→成长→开花结果后成熟（每棵 <b>${Math.round(FARM_MATURE_MIN / 60000)}~${Math.round(FARM_MATURE_MAX / 60000)}</b> 分钟随机），点击收获得 <b>${FARM_HARVEST_MIN}~${FARM_HARVEST_MAX}</b> 颗树果。</p>`
       + `<p>右键生长的植物可<b>铲除</b>，回收地块重新种植。</p>`
-      + `<p>收获的树果存入库存（点田地左上角库存箱查看）；库存的树果不能当种子，种地只能另买新种子。</p>`
+      + `<p>收获的树果存入库存；库存的树果不能当种子，种地只能另买新种子。</p>`
       + `<p>点田地右上角告示牌查看树果委托（每天刷新 <b>${FARM_BOARD_DEMANDS}</b> 条，其中 <b>1</b> 条为大量需求 <b>${FARM_BOARD_BIG_QTY_MIN}~${FARM_BOARD_BIG_QTY_MAX}</b> 颗、<b>1</b> 条为巨量需求 <b>${FARM_BOARD_MEGA_QTY_MIN}~${FARM_BOARD_MEGA_QTY_MAX}</b> 颗，需专门种植较久；需求越多报酬越高）。也可以在此面板招募帮手（详见「<b>招募帮手</b>」章节）。</p>`,
   },  
   {
     title: '宝可梦',
-    html: `<p>在<b>手机</b>页面打开<b>宝可梦</b>应用查看宝可梦仓库：每只捕获/孵化的宝可梦都是独立个体，支持搜索、来源筛选与表头排序。</p>`
+    html: `<p>在<b>手机</b>页面打开<b>宝可梦</b>应用查看宝可梦仓库：每只捕获/孵化的宝可梦都是独立个体。</p>`
       + `<p>每只个体带有随机<b>个体值</b>（HP/攻击/防御/特攻/特防/速度，各 <b>0~31</b>）与随机<b>性格</b>（共 <b>25</b> 种）。</p>`
-      + `<p>点击个体列表项即可查看详情：名字右侧的<b>编辑图标</b>可以重命名（最多 <b>5</b> 个字），改名后搜索中文可匹配昵称。</p>`
+      + `<p>点进详情可以重命名宝可梦（最多 <b>5</b> 个字），改名后搜索中文可匹配昵称。</p>`
       + `<p>详情页右上角的<b>放生</b>按钮可移除该个体（确定后不可恢复）同时返还（<b>${RELEASE_XP_RATE * 100}%</b>）经验（详见「<b>经验糖果</b>」章节）。</p>`
       + `<p>在仓库<b>列表页右键</b>可<b>批量放生</b>：勾选多只个体统一放生并返还总经验。</p>`
       + `<p>右键也可<b>高级筛选</b>（按名称、属性、等级等条件），方便批量处理。</p>`
@@ -1887,27 +2003,29 @@ const TUTORIAL_SECTIONS = [
   {
     title: '配队',
     html: `<p>在<b>手机</b>页面打开<b>配队</b>应用：一共可以保存 <b>6 组</b>队伍，每队最多 <b>${TEAM_MAX}</b> 只。进入后是<b>队伍列表</b>，每张卡片显示成员预览，点名称或笔图标可<b>改名</b>，点卡片进入<b>编辑</b>对应队伍。</p>`
-      + `<p>卡片右下可<b>设为上场</b>：标着「<b>上场中</b>」的队伍会用于<b>对战</b>出战与自动配招参考，切换上场队伍无需重新组建阵容。</p>`
+      + `<p><b>设为上场</b>的队伍会用于<b>对战</b>出战与自动配招参考，切换上场队伍无需重新组建阵容。</p>`
       + `<p>编辑队伍时点击<b>空位</b>从仓库选择宝可梦加入；点击<b>已有成员</b>弹出菜单：<b>查看</b>个体详情、<b>替换</b>（从仓库换一只到该位置）、<b>移除</b>（放回仓库）。</p>`
       + `<p><b>拖拽</b>可以对队伍中的宝可梦进行快速排序。<b>右键</b>空白处可<b>自动配队</b>或清空当前队伍。</p>`
-      + `<p><b>自动配队</b>：队伍为空或已满时，从仓库（排除训练中）挑选<b>等级差最小</b>的一组补满 6 只整队；队伍<b>未满</b>时<b>保留现有成员</b>，以队内最低等级为基准，从仓库挑等级最接近的个体<b>补满空位</b>。</p>`
+      + `<p><b>自动配队</b>：直接挑仓库里（排除训练中）<b>等级最高</b>的 6 只——同一等级有一批时从里面<b>随机入选</b>，入选后的<b>站位顺序也是随机</b>的；队伍<b>未满</b>时<b>保留现有成员</b>，空位用等级最高的补齐。</p>`
       + `<p>入队的宝可梦会从<b>训练</b>、<b>饲育屋</b>中自动撤下，训练/配对中的宝可梦也不能留在任何队伍里（三者<b>互斥</b>）。</p>`,
   },
   {
     title: '训练',
     html: `<p>在<b>手机</b>页面打开<b>训练</b>应用即可进入训练场。</p>`
-      + `<p>点场地上的<b>告示牌</b>打开管理面板：顶部 <b>${TRAIN_SLOTS}</b> 个槽位，点空位去仓库放入一只、再点已有取出；底部可查看每只的状态（名字前的灰色点代表在偷懒）。</p>`
-      + `<p>挂机自动获得经验 <b>${TRAIN_XP_PER_MIN}</b>/分钟，不消耗糖果；放入训练后自动从<b>队伍</b>中撤下（训练/队伍互斥）。</p>`
-      + `<p>训练会消耗<b>饱食度</b>（上限 <b>${TRAIN_SATIETY_MAX}</b>、每分钟降 <b>${TRAIN_SATIETY_DRAIN_PER_MIN}</b>）：降到 <b>${TRAIN_SATIETY_EAT_AT}</b> 时自动吃库存里它爱吃的树果补充 <b>${TRAIN_SATIETY_PER_BERRY}</b> 点，正好回满（<b>图鉴</b>可查爱吃的食物），没存货就会饿到<b>饱食度归零并一直偷懒</b>——点场地右上角的<b>纸箱</b>查看库存。</p>`
+      + `<p>点场地上的<b>告示牌</b>打开管理面板：共 <b>${TRAIN_SLOTS}</b> 个槽位，点空位去仓库放入一只、再点已有取出。</p>`
+      + `<p>挂机自动获得经验 <b>${TRAIN_XP_PER_MIN}</b>/分钟，不消耗糖果；</p>`
+      + `<p>训练会消耗<b>饱食度</b>（上限 <b>${TRAIN_SATIETY_MAX}</b>、每分钟降 <b>${TRAIN_SATIETY_DRAIN_PER_MIN}</b>）：降到 <b>${TRAIN_SATIETY_EAT_AT}</b> 时自动吃库存里它爱吃的树果补充 <b>${TRAIN_SATIETY_PER_BERRY}</b> 点，正好回满（<b>图鉴</b>可查爱吃的食物），没存货就会饿到<b>饱食度归零并一直偷懒</b>。</p>`
       + `<p>训练中偶尔会<b>偷懒</b>（约 <b>${Math.round(TRAIN_LAZY.chancePerMin * 100)}</b>%/分钟，暂停 <b>${TRAIN_LAZY.durationMin / 1000 / 60}~${TRAIN_LAZY.durationMax / 1000 / 60}</b> 分钟）；饱食度越低越容易偷懒，饱食度<b>归零</b>时会一直偷懒，直到吃上树果才恢复。</p>`
-      + `<p>偷懒的宝可梦会停止跳动，鼠标移上去点一下即可叫醒；</p>`,
+      + `<p>偷懒的宝可梦会睡觉，点击即可叫醒；</p>`,
   },
   {
     title: '对战',
-    html: `<p>在<b>手机</b>页面打开<b>对战</b>应用，向路过的训练家发起挑战（NPC 队伍分<b>普通 / 精英 / 冠军</b>三档，每 <b>${BATTLE_REFRESH_MS / 60000}</b> 分钟刷新一波）。</p>`
-      + `<p>NPC 的等级会<b>跟随你当前出战的队伍</b>：想练新宝可梦时只派<b>弱队</b>出战，NPC 也会跟着变弱，轻松取胜拿经验。</p>`
-      + `<p>战胜后经验只分给<b>上过场且存活</b>的宝可梦，并按<b>等级差</b>结算：NPC 等级跟随你的队伍生成，基本都是<b>同级或低打高</b>，经验倍率最高 <b>3 倍</b>。</p>`
-      + `<p>战胜后还有概率掉落<b>经验糖果</b>：普通 <b>${EXP_CANDY_DROP.novice * 100}</b>%、精英 <b>${EXP_CANDY_DROP.veteran * 100}</b>%、冠军 <b>${EXP_CANDY_DROP.champion * 100}</b>%（详见「<b>经验糖果</b>」章节）。</p>`
+    html: `<p>在<b>手机</b>页面打开<b>对战</b>应用，向路过的训练家发起挑战（NPC 队伍分<b>普通 / 精英 / 馆主 / 冠军</b>四档，每 <b>${BATTLE_REFRESH_MS / 60000}</b> 分钟刷新一波）。</p>`
+      + `<p>各档<b>等级区间固定</b>、<b>不随你的队伍变化</b>（普通 <b>Lv${BATTLE_TIER_BAND.novice[0]}~${BATTLE_TIER_BAND.novice[1]}</b>、精英 <b>Lv${BATTLE_TIER_BAND.veteran[0]}~${BATTLE_TIER_BAND.veteran[1]}</b>、馆主 <b>Lv${BATTLE_TIER_BAND.leader[0]}~${BATTLE_TIER_BAND.leader[1]}</b>、冠军 <b>Lv${BATTLE_TIER_BAND.champion[0]}~${BATTLE_TIER_BAND.champion[1]}</b>）：<b>练度决定你打得过哪一档</b>，练强了不会再被对手追平。</p>`
+      + `<p>所以开局抓来的宝可梦打不过普通档很正常——先在<b>训练场</b>养到十几级再回来（训练每分钟 <b>${TRAIN_XP_PER_MIN}</b> 经验）。</p>`
+      + `<p>战胜后经验只分给<b>上过场且存活</b>的宝可梦，并按<b>等级差</b>结算：打高等级最多 <b>3 倍</b>、打低等级最低 <b>0.2 倍</b>，回头刷低档几乎没经验，该往上打。</p>`
+      + `<p>各档胜利都会额外给<b>消耗品</b>（精灵球 → 高级球 / 甜甜蜜 / 神秘蛋，档位越高越好），并且都有概率掉 <b>1 件进化道具</b>或 <b>1 颗薄荷</b>——档位越高概率越大、道具越贵，<b>专属道具只有冠军档掉</b>。</p>`
+      + `<p>战胜后还有概率掉落<b>经验糖果</b>：普通 <b>${EXP_CANDY_DROP.novice * 100}</b>%、精英 <b>${EXP_CANDY_DROP.veteran * 100}</b>%、馆主 <b>${EXP_CANDY_DROP.leader * 100}</b>%、冠军 <b>${EXP_CANDY_DROP.champion * 100}</b>%（详见「<b>经验糖果</b>」章节）。</p>`
       + `<p>挑战失败可<b>再战一次</b>，随时都能重复挑战。</p>`
       + `<p>右键点击底部文字区域可查看实时<b>对战记录</b>。</p>`
       + `<p><b>伤害计算</b>（NPC 对战）：</p>`
@@ -1918,20 +2036,39 @@ const TUTORIAL_SECTIONS = [
   {
     title: '经验糖果',
     html: `<p>给宝可梦直接增加经验的消耗道具。获取方式：</p>`
-      + `<p>① 战胜<b>NPC 训练家</b>概率掉落（普通 <b>${EXP_CANDY_DROP.novice * 100}</b>%、精英 <b>${EXP_CANDY_DROP.veteran * 100}</b>%、冠军 <b>${EXP_CANDY_DROP.champion * 100}</b>%）。</p>`
-      + `<p>② 放生宝可梦返还 <b>${RELEASE_XP_RATE * 100}%</b> 的累计经验，存入「经验池」，攒满 <b>${EXP_CANDY_XP}</b> 经验自动产出 <b>1</b> 颗经验糖果并清零。</p>`
+      + `<p>① 战胜<b>NPC 训练家</b>概率掉落（普通 <b>${EXP_CANDY_DROP.novice * 100}</b>%、精英 <b>${EXP_CANDY_DROP.veteran * 100}</b>%、馆主 <b>${EXP_CANDY_DROP.leader * 100}</b>%、冠军 <b>${EXP_CANDY_DROP.champion * 100}</b>%）。</p>`
+      + `<p>② <b>悬赏</b>中档（"1 件常见道具"）里会随机给到。</p>`
+      + `<p>③ 放生宝可梦返还 <b>${RELEASE_XP_RATE * 100}%</b> 的累计经验，存入「经验池」，攒满 <b>${EXP_CANDY_XP}</b> 经验自动产出 <b>1</b> 颗经验糖果并清零。</p>`
       + `<p>背包第二页点击使用：选择宝可梦后调整数量（单颗 <b>${EXP_CANDY_XP}</b> 经验），确认后一次性结算。</p>`
       + `<p>满级宝可梦无法使用。</p>`,
   },
   {
+    title: '薄荷',
+    html: `<p>薄荷可以把宝可梦的<b>性格</b>改成对应性格。</p>`
+      + `<p>在<b>宝可梦详情页</b>点<b>性格</b>，选一颗薄荷吃掉就改好了——只有从宝可梦列表点进详情才能改。</p>`
+      + `<p>薄荷和<b>进化道具</b>走同一批渠道（详见「<b>道具</b>」章节）。</p>`,
+  },
+  {
+    title: '招式',
+    html: `<p>每只宝可梦最多携带 <b>4</b> 招；招式有<b>属性</b>、<b>类别</b>（物理 / 特殊 / 变化）、<b>威力</b>、<b>命中</b>和 <b>PP</b>，伤害按属性克制与本系加成结算（详见「<b>对战</b>」章节）。</p>`
+      + `<p>招式有四种来源：<b>等级招式</b>（等级到了就能配）、<b>招式机</b>、<b>蛋招式</b>（只有孵蛋得到的宝可梦能学）、<b>继承</b>（进化时从前形态带过来的，详见「<b>进化</b>」章节）。</p>`
+      + `<p>来源只决定能不能配：<b>招式机</b>要先在商店解锁，未解锁的配不了（详见「<b>商店</b>」章节）。少数原作招式暂未实装，不会出现在候选里。</p>`,
+  },
+  {
     title: '配招',
     html: `<p>在<b>宝可梦</b>仓库的个体详情页配置招式（最多 <b>4</b> 个）：<b>自动</b>按等级搭配；<b>手动</b>进入独立的配招页自由调整。</p>`
-      + `<p>配招页左侧是可学习的招式，点一下在右侧查看详细解释；点顶部空槽位就可以把这招放进去。</p>`
-      + `<p><b>拖拽</b>操作可以快速配招，<b>右键点击</b>招式列表可以进行排序。</p>`
+      + `<p>点招式可以查看详细解释，把招式拖进槽位即可装备；<b>右键点击</b>招式列表可以排序。</p>`
+  },
+  {
+    title: '进化',
+    html: `<p>在<b>宝可梦详情页</b>（从宝可梦仓库点进去）能看到这只的<b>进化链</b>：符合条件的点击按钮即可进化；图鉴里还没见过的形态显示 <b>？？？</b>（遇到过就显示名字，不用先抓到）。</p>`
+      + `<p>条件有等级、道具、招式、地区、性别几种（<b>招式看当前携带的 4 招</b>），<b>双道具要两件都够</b>；<b>超级进化 / 超极巨化</b>也在这里，消耗对应的专属道具。</p>`
+      + `<p>有的分支形态由<b>性格</b>或<b>性别</b>决定（比如毒电婴、妙喵）：这种不让你挑，进化链里只显示这只对应的那一条——性格不合可以改（见「<b>薄荷</b>」章节），性别改不了。</p>`
+      + `<p>进化来的宝可梦计进图鉴（不算捕获数）；进化道具在<b>道具盒</b>里能查看，获取渠道统一列在「<b>道具</b>」章节。</p>`,
   },
   {
     title: '混合器',
-    html: `<p>在<b>手机</b>主页打开<b>混合器</b>，从农场库存选 <b>1~4</b> 颗树果作为<b>配方</b>，确认后消耗它们制成<b>树果方块</b>（详见「<b>树果方块</b>」章节）。</p>`
+    html: `<p>在<b>手机</b>主页打开<b>混合器</b>，从农场库存选 <b>1~3</b> 颗树果作为<b>配方</b>，确认后消耗它们制成<b>树果方块</b>（详见「<b>树果方块</b>」章节）。</p>`
       + `<p>开始混合：确认后进入<b>转盘 QTE</b>——内指针旋转，内圈顶部有一段色带（中间完美、两侧良好），在内指针扫过色带中央的瞬间按下按钮，共 <b>5</b> 轮、速度渐快；按五轮总分评定方块品质（${Object.values(BLOCK_QUALITY).map(q => q.label).join(' / ')}）。</p>`,
   },
   {
@@ -1939,8 +2076,8 @@ const TUTORIAL_SECTIONS = [
     html: `<p><b>树果方块</b>是<b>混合器</b>的产物：用配方树果制成，用于吸引特定的宝可梦。</p>`
       + `<p><b>品质</b>决定效果：品质越高，遇敌时直接遇到目标宝可梦的概率越高（${Object.values(BLOCK_QUALITY).map(q => `${q.label} <b>${Math.round(q.chance * 100)}</b>%`).join(' / ')}）。</p>`
       + `<p>按行走里程计时：主角再走 <b>${BLOCK_DISTANCE}</b> 米没被吃掉则风干失效（停下不走不消耗），期间不改变正常遇敌节奏。</p>`
-      + `<p>配方在当前地区没有宝可梦爱吃则无效；对于已收服的宝可梦，可以在图鉴查看它爱吃的食物（配方）。</p>`
-      + `<p>注意：方块命中目标的那次遇敌，闪光按默认 <b>1/${Math.round(1 / SHINY_CHANCE)}</b> 判定，不享受闪耀护符加成；</p>`,
+      + `<p>配方在当前地区野外没有宝可梦爱吃则无效；方块只对<b>已经拥有</b>的宝可梦有效，可以在图鉴查看它爱吃的配方；<b>神兽与幻兽</b>不会被方块吸引。</p>`
+      + `<p>注意：方块命中目标的那次遇敌，闪光按默认 <b>1/${Math.round(1 / SHINY_CHANCE)}</b> 判定，不享受闪耀护符加成，也不计入闪耀护符的遭遇计数。</p>`,
   },
   {
     title: '招募帮手',
@@ -1988,33 +2125,24 @@ const TUTORIAL_SECTIONS = [
   {
     title: '随从',
     html: `<p>在<b>手机</b>第二页打开<b>随从</b>应用：消耗 <b>${FOLLOWER_DRAW_COST} 颗糖果</b>抽一只宝可梦当随从，跟随期间获得限时增益，<b>同时只能跟随 1 只</b>。</p>`
-      + `<p>稀有度概率：N <b>${Math.round(FOLLOWER_TIER_CHANCE.N * 100)}%</b> / R <b>${Math.round(FOLLOWER_TIER_CHANCE.R * 100)}%</b> / SR <b>${Math.round(FOLLOWER_TIER_CHANCE.SR * 100)}%</b> / UR <b>${Math.round(FOLLOWER_TIER_CHANCE.UR * 100)}%</b>；跟随时长：N <b>${FOLLOWER_TIER_DUR.N}</b> 分 / R <b>${FOLLOWER_TIER_DUR.R}</b> 分 / SR <b>${FOLLOWER_TIER_DUR.SR}</b> 分 / UR <b>${FOLLOWER_TIER_DUR.UR}</b> 分。</p>`
-      + `<p>随从按<b>属性</b>归入 <b>9</b> 大类，每类对应一种增益（按稀有度 <b>${Math.round(FOLLOWER_TIER_BOOST.N * 100)}% ~ ${Math.round(FOLLOWER_TIER_BOOST.UR * 100)}%</b> 递增），双属性跨类时两类增益<b>同时生效</b>：</p>`
-      + tutorialTable([
-          ['飞行、妖精', '自行车道路段概率提升'],
-          ['水', '钓鱼路段概率提升'],
-          ['草、虫', '树果成熟速度提升'],
-          ['地面、岩石、钢', '挂机道具掉落率提升'],
-          ['格斗、恶', '对战胜利经验提升'],
-          ['一般、幽灵', '精灵球捕捉率提升'],
-          ['电、冰', '宝可梦逃跑率降低'],
-          ['龙、火', '孵蛋所需里程降低'],
-          ['毒、超能', '交换时NPC闪光概率提升'],
-        ], ['属性', '增益'], ['auto', 'auto'])
+      + `<p>稀有度概率：N <b>${Math.round(FOLLOWER_TIER_CHANCE.N * 100)}%</b> / R <b>${Math.round(FOLLOWER_TIER_CHANCE.R * 100)}%</b> / SR <b>${Math.round(FOLLOWER_TIER_CHANCE.SR * 100)}%</b> / UR <b>${Math.round(FOLLOWER_TIER_CHANCE.UR * 100)}%</b>。稀有度只决定<b>副增益强度</b>，不影响跟随时长。</p>`
+      + `<p>跟随时长只看<b>星级</b>——★1~★5 依次 <b>${FOLLOWER_STAR_MIN.join(' / ')}</b> 分钟。</p>`
+      + `<p>随从按<b>属性</b>归入 <b>9</b> 大类：每类有一条<b>幅度固定</b>的主增益，外加一条按稀有度递增（<b>${FOLLOWER_SUB_RANGE}%</b>）的副增益；双属性跨类时两类<b>同时生效</b>：</p>`
+      + tutorialTable(FOLLOWER_TUTORIAL_ROWS, ['属性', '增益'], [46, 'auto'])
   },
   {
     title: '派遣',
     html: `<p>在<b>手机</b>第二页打开<b>派遣</b>应用：把仓库里的宝可梦派出去探险，带回<b>糖果</b>与道具。初始 <b>${DISPATCH_FREE_SLOTS}</b> 格，更多格子用<b>糖果</b>解锁。</p>`
-      + `<p>放入后槽位上点<b>配置</b>选时长、点<b>出发</b>才开始计时；速度越快的宝可梦完成得越早（耗时系数 <b>${DISPATCH_SPEED_MIN} ~ ${DISPATCH_SPEED_MAX}</b>）。糖果按所选时长结算（已含档位加成，结算时再随机浮动 <b>±${Math.round(DISPATCH_CANDY_JITTER * 100)}%</b>）：</p>`
+      + `<p>选好时长、点<b>出发</b>才开始计时；速度越快的宝可梦完成得越早。糖果按档位结算（已含档位加成，另有 <b>±${Math.round(DISPATCH_CANDY_JITTER * 100)}%</b> 浮动）：</p>`
       + tutorialTable(DISPATCH_DURATIONS.map((h, i) => [`<b>${h}</b> 小时`, `<b>${Math.round(h * DISPATCH_CANDY_PER_HOUR * DISPATCH_DUR_MULT[i])}</b> 颗`, `×<b>${DISPATCH_DUR_MULT[i]}</b>`]), ['时长', '糖果', '档位加成'], [56, 'auto', 'auto'])
-      + `<p>时空扭曲出没的 <b>RGB</b> / <b>污染</b> 宝可梦派遣时糖果收益额外 <b>+${Math.round(DISPATCH_VARIANT_CANDY_BONUS * 100)}%</b>（详见「<b>事件</b>」章节）。</p>`
-      + `<p>道具方面，每 <b>1 小时</b> 攒 <b>${DISPATCH_VALUE_PER_HOUR}</b> 价值预算（满档 24 小时共 <b>${DISPATCH_VALUE_PER_HOUR * 24}</b>，够换 <b>${Math.floor(DISPATCH_VALUE_PER_HOUR * 24 / DISPATCH_ITEM_VALUE['bike'])}</b> 辆自行车），按道具价值分配数量——便宜的堆数量、贵重的按预算给（大师球 / 闪耀护符各 <b>1</b> 个受限，其余不限）。大师球 / 闪耀护符<b>不设侧重</b>，各属性都有机会掉。各道具单件价值如下（数量 = 预算 ÷ 单价）：</p>`
-      + tutorialTable(Object.entries(DISPATCH_ITEM_VALUE).map(([k, v]) => [ITEM_NAMES[k] || k, `<b>${v}</b>`]), ['道具', '单件价值'], ['auto', 'auto'])
-      + `<p>不同<b>属性</b>带回的道具侧重不同（按<b>主属性</b>计算，双属性只看第一个，仅提高抽中概率、不影响数量）：</p>`
+      + `<p>道具方面：便宜的掉得多（精灵球一次能有 <b>10</b> 个），贵重的掉得少。</p>`
+      + `<p>派出的宝可梦按<b>主属性</b>侧重带回对应道具（双属性只看第一个）：</p>`
       + tutorialTable(Object.entries(Object.entries(DISPATCH_TYPE_BOOST).reduce((acc, [type, boost]) => {
         for (const k of Object.keys(boost)) (acc[k] ||= []).push(type);
         return acc;
       }, {})).map(([k, types]) => [ITEM_NAMES[k] || k, types.join('、')]), ['道具', '属性'], ['auto', 'auto'])
+      + `<p>此外每次结算另掷一次<b>进化道具或薄荷</b>：概率随档位上升（<b>1 小时 ${(DISPATCH_EVO_MAX_CHANCE / 24 * 100).toFixed(1)}%</b> → <b>24 小时 ${Math.round(DISPATCH_EVO_MAX_CHANCE * 100)}%</b>），命中随机带回 <b>1</b> 件。</p>`
+      + `<p>时空扭曲出没的 <b>RGB</b> / <b>污染</b> 宝可梦派遣时糖果额外 <b>+${Math.round(DISPATCH_VARIANT_CANDY_BONUS * 100)}%</b>（详见「<b>事件</b>」章节）。</p>`
       + `<p>派遣是<b>唯一的离线收益</b>：离线照常计时，完成后领取，宝可梦留在槽位可直接再出发。</p>`,
   },
   {
@@ -2030,7 +2158,7 @@ const TUTORIAL_SECTIONS = [
   },
   {
     title: '系统日志',
-    html: `<p>在<b>手机</b>第二页打开<b>日志</b>应用或点击主界面底部中间的状态文字即可查看记录最近的活动（获得道具、遇敌、捕捉等），最多存储 <b>50</b> 条记录。</p>`
+    html: `<p>打开<b>日志</b>应用即可查看最近的活动（获得道具、遇敌、捕捉等），最多存储 <b>50</b> 条记录。</p>`
   },
   {
     title: '宝可梦难度',
@@ -2057,7 +2185,7 @@ const TUTORIAL_REWARD = 30;
 const TUTORIAL_SUMMARIES = {
   '序章': '欢迎来到口袋挂机世界！',
   '目标': '我要成为宝可梦大师！',
-  '道具': '所有的道具都是一次性道具。',
+  '道具': '挂机来获得更多道具吧！',
   '遭遇': '野生宝可梦最高等级是20级。',
   '手机': '手机可以翻页到第二页。',
   '图鉴': '没有遇到过的宝可梦无法被搜索到。',
@@ -2076,7 +2204,7 @@ const TUTORIAL_SUMMARIES = {
   '商店': '鼠标悬停到商品上可以看简介，右键兑换按钮能批量买。',
   '增益': '闪耀护符有着甜甜蜜同样的增益。',
   '孵蛋': '拥有两种蛋的时候，需要二次点击选择放入蛋的种类。',
-  '培育': '只有同蛋组才能繁殖，百变怪配「未发现蛋组」无效。',
+  '培育': '只有同蛋组才能繁殖。',
   '钓鱼': '每个可钓鱼场景会自动进行一次钓鱼。',
   '树果': '树果用处很多，多囤树果。',
   '农场': '每日刷新的树果委托可以换到糖果。',
@@ -2085,7 +2213,10 @@ const TUTORIAL_SUMMARIES = {
   '训练': '挂机就长经验，别忘备够爱吃的树果。',
   '对战': 'NPC的等级受到队伍等级的影响。',
   '经验糖果': '经验糖果无法直接购买。',
+  '薄荷': '详情页点的性格就能吃薄荷改性格。',
+  '招式': '招式机买一次永久解锁，能学的宝可梦直接学会。',
   '配招': '出门前配好 4 招，自动配招不一定是最合适的。',
+  '进化': '条件齐了在详情页点一下就能进化。',
   '混合器': '混合好后确认到了对应地区再使用。',
   '树果方块': '方块引诱的宝可梦闪光率为默认值不受增益加成。',
   '招募帮手': '帮手也是会休息的。',
@@ -2159,7 +2290,7 @@ export function showTutorialView() {
     content.innerHTML = `<div class="tutorial-title-row"><p class="tutorial-title">${sec.title}</p>${
       r.claimed.includes(idx)
         ? ''
-        : `<button class="ach-btn ach-btn-ready tutorial-claim-btn" data-claim="${idx}"><img class="candy-icon" src="./items/candy.png" alt="">×${TUTORIAL_REWARD} 领取</button>`
+        : `<button class="ach-btn ach-btn-ready tutorial-claim-btn" data-claim="${idx}"><img class="candy-icon" src="./items/goods/candy.png" alt="">×${TUTORIAL_REWARD} 领取</button>`
     }</div>` + tutorialText(sec.html);
     list.querySelectorAll('.tutorial-nav-item').forEach((el) => el.classList.toggle('active', Number(el.dataset.i) === idx));
     // 点击领取：直接发糖果，弹章节总结，重绘当前章节（按钮消失），并移除左侧导航红点

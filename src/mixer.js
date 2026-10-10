@@ -2,13 +2,13 @@
 // 从农场库存选树果（1~RECIPE_MAX 颗）作配方，确认后制成树果方块：按配方颜色混合着色，
 // 优先吸引当前地区与配方一致的宝可梦，被吃掉或再走满 BLOCK_DISTANCE 米后结束。
 import { $, showView, tryLoadImage } from './ui.js';
-import { phase, gameData, blockBuffActive, blockRecipe, blockStartWalk, blockQuality, qteState, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, saveSessionState, setIdleMsgIdx, pushNav, addSystemLog, saveGame, randInt, getCurrentRegion } from './state.js';
+import { phase, gameData, blockBuffActive, blockRecipe, blockStartWalk, blockQuality, qteState, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, saveSessionState, setIdleMsgIdx, pushNav, addSystemLog, saveGame, randInt, getCurrentRegion, dexUnlocked } from './state.js';
 import { BERRY_ICONS, BERRY_NAMES, BERRY_COLORS, findBerryTarget } from './items.js';
 import { BLOCK_DISTANCE, PX_PER_METER, BLOCK_QUALITY } from './config.js';
 import { playObtained } from './audio.js';
 
-// 制作一个树果方块最多消耗的树果颗数（每种 1 颗）
-const RECIPE_MAX = 4;
+// 制作一个树果方块最多消耗的树果颗数（每种 1 颗）；配方只有 1/2/3 颗三档，选 4 颗没有物种能对上
+const RECIPE_MAX = 3;
 let _recipe = [];       // 已选树果下标（去重）
 let _lastRecipe = [];   // 最近成功制作的配方（决定颜色与吸引目标）
 let _pickOpen = false;  // 是否处于选择树果状态
@@ -334,7 +334,7 @@ function loadCubeBaseImage() {
     const img = new Image();
     img.onload = () => { _cubeBase = img; resolve(img); };
     img.onerror = reject;
-    fetch('./items/cube.png')
+    fetch('./items/goods/cube.png')
       .then(r => r.blob())
       .then(b => { img.src = URL.createObjectURL(b); })
       .catch(reject);
@@ -453,10 +453,10 @@ function tintCubeImage(color, onLoad) {
   };
   img.onerror = () => onLoad(null);
   // blob 同源数据源，canvas 不会被标记为跨源
-  fetch('./items/cube.png')
+  fetch('./items/goods/cube.png')
     .then(r => r.blob())
     .then(blob => { img.src = URL.createObjectURL(blob); })
-    .catch(() => { img.src = './items/cube.png'; }); // fetch 不可用时降级直接加载
+    .catch(() => { img.src = './items/goods/cube.png'; }); // fetch 不可用时降级直接加载
 }
 
 // 冷却页方块预览：按配方颜色染色
@@ -468,27 +468,27 @@ function tintBlockVisual() {
   });
 }
 
-// 目标宝可梦文案：已解锁图鉴 → 概率提示；配方正确但未见到过（图鉴未解锁）→ 调侃引导；无目标 → 当地没人吃
-function blockTargetText(target, targetCaught, quality) {
-  if (target && targetCaught) return `遇敌时 ${Math.round(quality.chance * 100)}% 概率直接遇到目标宝可梦！`;
-  if (target) return '图鉴没有解锁此宝可梦，配方无法生效';
-  return '当地没有宝可梦喜欢吃这个配方！';
+// 目标宝可梦文案：已经有了给概率提示，还没有 / 野外没这只给原因
+function blockTargetText(target, targetOwned, quality) {
+  if (target && targetOwned) return `遇敌时 ${Math.round(quality.chance * 100)}% 概率直接遇到目标宝可梦！`;
+  if (target) return '图鉴里还没有这只宝可梦，配方无法生效';
+  return '野外没有爱吃这个配方的宝可梦！';
 }
 
 function cooldownHtml() {
   const target = findBerryTarget(blockRecipe);
-  const targetCaught = !!(target && (gameData.pokedex?.[String(target.index)]?.caught || 0) > 0);
+  const targetOwned = !!(target && dexUnlocked(target.index));
   const quality = BLOCK_QUALITY[blockQuality] || BLOCK_QUALITY.good;
   // 布局与首页/结果页统一
   return `
     <div class="mixer-wrap mixer-cool">
       <div class="mixer-page-title">树果方块生效中</div>
       <div class="mixer-result-stage">
-        <img class="mixer-block-visual" id="mixerBlockVisual" src="./items/cube.png" alt="树果方块" />
+        <img class="mixer-block-visual" id="mixerBlockVisual" src="./items/goods/cube.png" alt="树果方块" />
         <div class="mixer-cool-quality ${blockQuality}">${quality.label}</div>
         <div class="mixer-cool-timer">剩余 <span id="mixerCoolMeters">${blockMetersRemaining()}</span> 米</div>
         <div class="mixer-result-target show">
-          ${blockTargetText(target, targetCaught, quality)}
+          ${blockTargetText(target, targetOwned, quality)}
         </div>
       </div>
       <button class="bottom-dock" id="mixerCancelBtn">取消使用</button>
@@ -755,17 +755,17 @@ function showResult() {
   startResultRegionWatch();
   const recipe = [..._lastRecipe].sort((a, b) => a - b);
   const target = findBerryTarget(recipe);
-  // 目标已捕获才算"有宝可梦吃"，否则不可领取
-  const targetCaught = !!(target && (gameData.pokedex?.[String(target.index)]?.caught || 0) > 0);
+  // 目标已在图鉴里才算"有宝可梦吃"，否则不可领取
+  const targetOwned = !!(target && dexUnlocked(target.index));
   const quality = BLOCK_QUALITY[_qteQuality] || BLOCK_QUALITY.good;
   el.innerHTML = `
     <div class="mixer-wrap mixer-result">
       <div class="mixer-page-title mixer-result-title">混合结果：<span class="${_qteQuality}">${quality.label}</span></div>
       <div class="mixer-result-stage" id="mixerResultStage">
-        <img class="mixer-block-visual" id="mixerResultCube" src="./items/cube.png" alt="树果方块" />
+        <img class="mixer-block-visual" id="mixerResultCube" src="./items/goods/cube.png" alt="树果方块" />
         <div class="mixer-result-berries">${berryImgsHtml(recipe)}</div>
         <div class="mixer-result-target" id="mixerResultTarget">
-          ${blockTargetText(target, targetCaught, quality)}
+          ${blockTargetText(target, targetOwned, quality)}
         </div>
       </div>
       <div class="mixer-result-actions">
@@ -797,7 +797,7 @@ function showResult() {
 }
 
 // 结果页（领取页）地区监听：冷却页已有里程轮询刷新，结果页同样需要跨地区即时切换
-// 三种文案（已解锁概率 / 未解锁调侃 / 当地无人吃）随地区变化即时更新。只更新文案元素，
+// 三种文案（概率提示 / 没抓到过 / 野外没有）随地区变化即时更新。只更新文案元素，
 // 不整页重渲染（避免重播飞入动画与获得音效）。
 function startResultRegionWatch() {
   clearResultRegionWatch();
@@ -811,10 +811,10 @@ function startResultRegionWatch() {
     _resultRegion = cur;
     const recipe = (Array.isArray(s.recipe) && s.recipe.length > 0) ? s.recipe : _lastRecipe;
     const target = findBerryTarget(recipe);
-    const targetCaught = !!(target && (gameData.pokedex?.[String(target.index)]?.caught || 0) > 0);
+    const targetOwned = !!(target && dexUnlocked(target.index));
     const quality = BLOCK_QUALITY[s.quality || 'good'] || BLOCK_QUALITY.good;
     const el = $('mixerResultTarget');
-    if (el) el.textContent = blockTargetText(target, targetCaught, quality);
+    if (el) el.textContent = blockTargetText(target, targetOwned, quality);
   }, 500);
 }
 
@@ -937,7 +937,7 @@ export function startBlockCountdown() {
     if (remain <= 0) { handleBlockExpired(); return; } // 走满里程自动结束
     updateBlockTimers(remain);
     // 冷却页打开期间跨地区：findBerryTarget 按当前地区动态查目标，
-    // 到达配方可生效地区后即时刷新「没有宝可梦喜欢吃」→「遇敌时 X% 概率…」文案
+    // 到达配方可生效地区后即时刷新「野外没有」→「遇敌时 X% 概率…」文案
     const cur = getCurrentRegion().name;
     if (cur !== _coolRegion) {
       const mv = $('mixerView');

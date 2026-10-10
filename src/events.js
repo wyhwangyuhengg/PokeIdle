@@ -7,22 +7,31 @@ import {
   MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION,
   MASS_COUNT_MIN, MASS_COUNT_MAX,
   MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX,
-  MASS_SHINY_CHANCE, REGION_CYCLE,
+  REGION_CYCLE,
   TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION,
   TWIST_COUNT_MIN, TWIST_COUNT_MAX,
   TWIST_SPAWN_MIN, TWIST_SPAWN_MAX,
-  TWIST_SHINY_CHANCE, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE,
+  TWIST_SHINY_CHANCE, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, massShinyChance,
 } from './config.js';
 import {
-  gameData, allPokemon, getPokemonByIndex, getMassOutbreak, getTwist, honeyBuffActive, phase,
-  randInt, rand, saveGame, addSystemLog, inMassZone, inTwistZone, normalizeMassRemainToEnd, _fishing,
+  gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, getMassOutbreak, getTwist, honeyBuffActive, phase,
+  randInt, rand, saveGame, addSystemLog, inMassZone, inTwistZone, normalizeMassRemainToEnd, _fishing, dexUnlocked,
 } from './state.js';
 import { $, tryLoadPokemonIcon, setIdleCharacter, isOnGameView, isIdleStageVisible } from './ui.js';
 import { endCycling } from './audio.js';
 import { MAP_EDGES, showGpsView } from './gps.js';
 import { startMassEncounter, startTwistEncounter, scheduleNextEncounter } from './battle.js';
 import { notifyMassStart, notifyMassEnd, massMsgTick, notifyTwistStart, notifyTwistEnd, twistMsgTick } from './messages.js';
-import { pickFamily } from './items.js';
+import { pickFamily, pickWeightedPokemon } from './items.js';
+
+// 扭曲池跨地区、条目多：均匀随机会让神兽过密（约占 7.5%），按稀有度加权后降到 2% 左右
+function pickTwistPoke(tw) {
+  const list = (tw?.pool || []).map(i => getPokemonByIndex(i)).filter(p => p && !isPowerForm(p));
+  if (!list.length) return null;
+  // 随从（一般/幽灵）主效果：扭曲池偏向图鉴未解锁的物种
+  const dexWeight = window.__followerBoostMechanic?.('twistDexWeight', 1) ?? 1;
+  return pickWeightedPokemon(0, list, dexWeight > 1 ? (p => (dexUnlocked(p.index) ? 1 : dexWeight)) : null) || list[0];
+}
 import * as road from './road.js';
 
 // ===== 生成 / 结束 =====
@@ -56,7 +65,7 @@ function spawnMassOutbreak() {
   // 事件宝可梦：从事件点归属地区随机选（t<0.5 归小号端地区，否则归大号端）
   const regionIdx = t < 0.5 ? Math.min(edge[0], edge[1]) : Math.max(edge[0], edge[1]);
   const regionName = REGION_CYCLE[regionIdx];
-  const pool = allPokemon.filter(p => p.region === regionName);
+  const pool = allPokemon.filter(p => p.region === regionName && !p.legend && !isPowerForm(p) && !isWildExcluded(p)); // 神兽与强化形态不进大量出没（一次事件十几只，会变成批发）
   if (pool.length === 0) {
     gameData.massNextGenAt = Date.now() + randInt(10, 30) * 60000; // 该地区无精灵则稍后重试
     return;
@@ -172,7 +181,7 @@ function spawnMassPoke() {
 
   // 闪光判定提前到生成时刻：滚动图标能像交换页面一样用星星标记闪光，
   // 碰到时复用同一判定，保证显示与战斗一致
-  _massPokeShiny = saved ? !!saved.shiny : Math.random() < MASS_SHINY_CHANCE;
+  _massPokeShiny = saved ? !!saved.shiny : Math.random() < massShinyChance();
   if (!saved) {
     mo.cur = { species: poke.index, shiny: _massPokeShiny };
     saveGame();
@@ -232,7 +241,7 @@ function backgroundHitMass() {
   const poke = mo ? getPokemonByIndex(mo.pokemon) : null;
   if (!poke) return;
   const saved = mo.cur;
-  const shiny = saved ? !!saved.shiny : Math.random() < MASS_SHINY_CHANCE;
+  const shiny = saved ? !!saved.shiny : Math.random() < massShinyChance();
   mo.cur = null;
   startMassEncounter(poke, shiny);
 }
@@ -327,7 +336,7 @@ function spawnTwist() {
   // 事件点归属地区（t<0.5 归小号端地区，否则归大号端）；池 = 该地区以外的全部宝可梦
   const regionIdx = t < 0.5 ? Math.min(edge[0], edge[1]) : Math.max(edge[0], edge[1]);
   const regionName = REGION_CYCLE[regionIdx];
-  const pool = allPokemon.filter(p => p.region !== regionName);
+  const pool = allPokemon.filter(p => p.region !== regionName && !isPowerForm(p));
   if (pool.length === 0) {
     gameData.twistNextGenAt = Date.now() + randInt(10, 30) * 60000; // 无可用池则稍后重试
     return;
@@ -462,7 +471,7 @@ function spawnTwistPoke() {
   const saved = tw.cur && tw.pool.includes(tw.cur.species) ? tw.cur : null;
   const poke = saved
     ? getPokemonByIndex(saved.species)
-    : getPokemonByIndex(tw.pool[randInt(0, tw.pool.length - 1)]);
+    : pickTwistPoke(tw);
   const screen = $('screen');
   const charEl = $('walkGif');
   if (!poke || !screen || !charEl) return;
@@ -473,8 +482,11 @@ function spawnTwistPoke() {
   } else {
     // 闪光与变体提前到生成时刻判定：滚动图标与应用与战斗一致
     _twistPokeShiny = Math.random() < TWIST_SHINY_CHANCE;
+    // 随从（一般/幽灵）辅效果：变体（RGB/污染）出现率按幅度提升
+    const rgbChance = window.__followerBoostMechanic?.('twistVariantRate', TWIST_RGB_CHANCE) ?? TWIST_RGB_CHANCE;
+    const pollutedChance = window.__followerBoostMechanic?.('twistVariantRate', TWIST_POLLUTED_CHANCE) ?? TWIST_POLLUTED_CHANCE;
     const r = Math.random();
-    _twistVariant = r < TWIST_RGB_CHANCE ? 'rgb' : (r < TWIST_RGB_CHANCE + TWIST_POLLUTED_CHANCE ? 'polluted' : null);
+    _twistVariant = r < rgbChance ? 'rgb' : (r < Math.min(1, rgbChance + pollutedChance) ? 'polluted' : null);
     tw.cur = { species: poke.index, shiny: _twistPokeShiny, variant: _twistVariant };
     saveGame();
   }
@@ -523,7 +535,7 @@ function despawnTwistPoke() {
 function hitTwistPoke() {
   const tw = gameData?.twist;
   if (!tw) { despawnTwistPoke(); return; }
-  const poke = _twistPoke || getPokemonByIndex(tw.pool[randInt(0, tw.pool.length - 1)]);
+  const poke = _twistPoke || pickTwistPoke(tw);
   const shiny = _twistPokeShiny;
   const variant = _twistVariant;
   despawnTwistPoke();
