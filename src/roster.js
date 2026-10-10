@@ -2,7 +2,7 @@
 // 查看当前拥有的每只宝可梦个体（个体值/闪光/来源/在仓状态），
 // 交互与图鉴对齐：搜索 / 来源筛选 / 表头排序 / 点击进入个体详情，详情页可返回列表。
 import { $, showView, getCurrentView, tryLoadImage, tryLoadPokemonImage, showConfirmBar, hideConfirmBar, updateBackpack, updateStats, logicViewport, viewportToLogic, popupBounds, isDualLayout, isStageView, closeAppArea } from './ui.js';
-import { gameData, allPokemon, getPokemonByIndex, isTmUnlocked, getNature, pushNav, resetNav, saveGame, addSystemLog, setPokedexInLogView, ensureGender, genderBadge, isPokemon, phase } from './state.js';
+import { gameData, allPokemon, getPokemonByIndex, isTmUnlocked, getNature, pushNav, resetNav, saveGame, addSystemLog, setPokedexInLogView, ensureGender, genderBadge, isPokemon, phase, dexUnlocked } from './state.js';
 import { TYPE_COLORS, typeIconColor, pokemonSourceBadge, itemIconSrc, MINT_KEYS } from './items.js';
 import { evolutionRows, applyEvolution, condItems, moveCondText, evoPreEvos, evolutionData, loadEvolution } from './evolution.js';
 import { playEvolution } from './evo-view.js';
@@ -1153,12 +1153,12 @@ function evoBlockHtml(p, rows) {
   const title = `<div class="roster-detail-title">进化</div>`;
   if (!rows.length) return `${title}<div class="evo-empty">该宝可梦没有进化形态</div>`;
   const rowsHtml = rows.map((r, i) => {
-    // 一行一个目标；没遇到过的用问号图占位
+    // 一行一个目标；没见过也没获得过的用问号图占位（进化得到的也算获得过）
     const tid = String(r.targets[0]);
     const tp = getPokemonByIndex(tid);
-    const seen = (gameData.pokedex?.[tid]?.seen || 0) > 0;
-    const name = seen && tp ? (tp.form || tp.name) : '？？？';
-    const iconId = seen ? tid : null;
+    const known = (gameData.pokedex?.[tid]?.seen || 0) > 0 || dexUnlocked(tid);
+    const name = known && tp ? (tp.form || tp.name) : '？？？';
+    const iconId = known ? tid : null;
     const conds = [];
     if (r.cond.lv) conds.push({ text: `Lv${r.cond.lv}`, ok: !r.unmet.lv });
     for (const it of condItems(r.cond)) conds.push({ text: it, ok: !r.unmet.items.has(it) });
@@ -1260,7 +1260,7 @@ function startEvolution(id, row) {
   const who = p.nickname || (from ? (from.form || from.name) : '这只宝可梦');
   const costText = costs.length ? `消耗 ${costs.join(' + ')}，` : '';
   // 目标没解锁就不点破名字，详情页里显示 ？？？
-  const seenTarget = (gameData.pokedex?.[to]?.seen || 0) > 0;
+  const seenTarget = (gameData.pokedex?.[to]?.seen || 0) > 0 || dexUnlocked(to);
   const ask = seenTarget
     ? `${costText}${who}进化为${target ? (target.form || target.name) : '新的形态'}？`
     : `${costText}确定进化${who}？`;
@@ -1316,9 +1316,16 @@ function openMintPanel() {
   if (!view || !entry) return;
   closeMintPanel();
   const owned = MINT_KEYS.filter((k) => (gameData.items[k] || 0) > 0 && MINT_NATURES[k] !== entry.nature);
+  // 每颗薄荷对应的性格修正（攻击↑ 防御↓）；认真这类无修正的直接写"无修正"
+  const mintEffect = (k) => {
+    const n = NATURES[MINT_NATURES[k]];
+    if (!n) return '<span class="mint-effect"><span class="mint-none">无修正</span></span>';
+    return `<span class="mint-effect"><span class="mint-up">${_NATURE_STAT_CN[n.up]}↑</span>`
+      + `<span class="mint-down">${_NATURE_STAT_CN[n.down]}↓</span></span>`;
+  };
   const rows = owned.length
     ? owned.map((k) => `<div class="mint-row" data-mint="${k}">
-        <img src="${itemIconSrc(k)}" alt="" /><span class="mint-name">${k}</span><em class="mint-qty">×${gameData.items[k]}</em></div>`).join('')
+        <img src="${itemIconSrc(k)}" alt="" /><span class="mint-name">${k}</span>${mintEffect(k)}<em class="mint-qty">×${gameData.items[k]}</em></div>`).join('')
     : '<div class="mint-empty">没有可用的薄荷</div>';
   const panel = document.createElement('div');
   panel.id = 'mintPanel';
@@ -1341,6 +1348,10 @@ function openMintPanel() {
       if (!applyMint(entry, key)) return;
       closeMintPanel();
       showRosterDetail(_detailId); // 就地刷新详情（性格与持有数量都变了）
+      // 用掉之后补一条结算提示（昵称 > 形态全名 > 物种名，跟详情页标题同口径）
+      const poke = getPokemonByIndex(entry.species);
+      const who = entry.nickname || (poke ? (poke.form || poke.name) : entry.species);
+      showConfirmBar(`${who}的性格变成${key.replace('薄荷', '')}了`, null, null, { singleButton: true });
     }, null, { overlay: true });
   };
   // 点面板外的空白也关掉（打开那次点击已在入口 stopPropagation，不会立刻触发）
@@ -1377,7 +1388,7 @@ function showRosterDetail(id) {
   if (!list) return;
   list.innerHTML = `
     <div style="font-size:13px;font-weight:700;padding:4px 5px 2px;display:flex;align-items:center;justify-content:space-between;">
-      <span><span id="rosterNickSpan">${rosterName(p)}</span><button class="roster-nick-btn" id="rosterNickBtn" title="改名"><svg t="1786243847045" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M138.666667 810.666667V213.333333c0-41.216 33.450667-74.666667 74.666666-74.666666h469.333334v64H213.333333a10.666667 10.666667 0 0 0-10.666666 10.666666v597.333334c0 5.888 4.778667 10.666667 10.666666 10.666666h597.333334a10.666667 10.666667 0 0 0 10.666666-10.666666V352h64V810.666667A74.666667 74.666667 0 0 1 810.666667 885.333333H213.333333A74.666667 74.666667 0 0 1 138.666667 810.666667z" fill="currentColor"></path><path d="M444.330667 540.032L856.362667 128l45.226666 45.226667-411.989333 412.032-45.226667-45.226667z" fill="currentColor"></path></svg></button>${p.shiny ? ' <svg class="roster-shiny" viewBox="0 0 1024 1024" width="14" height="14" style="flex-shrink:0;vertical-align:-2px;transform:translateY(-2px);"><use xlink:href="#icon-star"/></svg>' : ''}<span class="roster-detail-lv" id="rosterDetailLv">${dGSpan}Lv${p.level || 1}</span></span>
+      <span><span id="rosterNickSpan">${rosterName(p)}</span><button class="roster-nick-btn" id="rosterNickBtn" title="改名"><svg t="1786243847045" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M138.666667 810.666667V213.333333c0-41.216 33.450667-74.666667 74.666666-74.666666h469.333334v64H213.333333a10.666667 10.666667 0 0 0-10.666666 10.666666v597.333334c0 5.888 4.778667 10.666667 10.666666 10.666666h597.333334a10.666667 10.666667 0 0 0 10.666666-10.666666V352h64V810.666667A74.666667 74.666667 0 0 1 810.666667 885.333333H213.333333A74.666667 74.666667 0 0 1 138.666667 810.666667z" fill="currentColor"></path><path d="M444.330667 540.032L856.362667 128l45.226666 45.226667-411.989333 412.032-45.226667-45.226667z" fill="currentColor"></path></svg></button>${p.shiny ? ' <svg class="roster-shiny" viewBox="0 0 1024 1024" width="14" height="14" style="flex-shrink:0;vertical-align:-2px;transform:translateY(-2px);"><use xlink:href="#icon-star"/></svg>' : ''}<span class="roster-detail-lv${_detailEvoAllowed ? ' can-use' : ''}" id="rosterDetailLv"${_detailEvoAllowed ? ' data-exp-candy-open' : ''}>${dGSpan}Lv${p.level || 1}</span></span>
       <div style="display:flex;flex-direction:row;align-items:flex-end;gap:2px;flex-shrink:0;">
         <button class="roster-release" data-pokedex title="查看图鉴">图鉴</button>
         <button class="roster-release" data-release>放生</button>
@@ -1433,6 +1444,22 @@ function showRosterDetail(id) {
 
   // 性格行：只有从宝可梦列表进来的详情允许点开薄荷面板（挑一只来用的入口不给改）
   list.querySelector('[data-mint-open]')?.addEventListener('click', (e) => { e.stopPropagation(); openMintPanel(); });
+
+  // 等级：反着用经验糖果（正门是背包点糖果→挑宝可梦），与薄荷同一道门，只能从宝可梦列表进详情触发
+  list.querySelector('[data-exp-candy-open]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const entry = (gameData.roster || []).find(r => r.id === _detailId);
+    if (!entry) return;
+    const stock = gameData.items['exp-candy'] || 0;
+    const poke = getPokemonByIndex(String(entry.species));
+    const who = entry.nickname || (poke ? (poke.form || poke.name) : String(entry.species));
+    // 用不了的情况先说原因，别问完再拒绝
+    if (stock <= 0) { showConfirmBar('没有经验糖果可用', null, null, { singleButton: true }); return; }
+    if ((entry.level || 1) >= MAX_LEVEL) { showConfirmBar('该宝可梦已满级，无法使用经验糖果', null, null, { singleButton: true }); return; }
+    showConfirmBar(`要对${who}使用经验糖果吗？`, () => {
+      import('./exp-candy.js').then(m => m.useExpCandyOn(entry.id, true, 'rosterView'));
+    }, null, { overlay: true });
+  });
 
   // 改名按钮
   const nickBtn = $('rosterNickBtn');
