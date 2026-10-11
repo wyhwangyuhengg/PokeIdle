@@ -58,7 +58,7 @@ export const ITEM_ICONS = {
   '胆小薄荷': 'mints/mint_4.png', '急躁薄荷': 'mints/mint_4.png', '爽朗薄荷': 'mints/mint_4.png', '天真薄荷': 'mints/mint_4.png',
   '认真薄荷': 'mints/mint_5.png',
   // 王冠（极限特训）：在宝可梦详情页把个体值练满
-  '银色王冠': 'crowns/silver-crown.png', '金色王冠': 'crowns/golden-crown.png',
+  'silver-crown': 'crowns/silver-crown.png', 'golden-crown': 'crowns/golden-crown.png',
 };
 
 // 进化/专属道具图标：通用道具查 ITEM_ICONS，形态道具查 evolution.json 的 stoneIcons（中文名 → 英文文件名）
@@ -251,8 +251,10 @@ export async function renderShopEvoSection(box, { onBought, onDetail } = {}) {
       </div>
     </div>`;
   };
+  // 按价格升序摆（贵的排后面）；只排展示顺序，存档里的货架顺序不动
+  const shelf = [...shop.ids].sort((a, b) => evoBasePrice(a) - evoBasePrice(b));
   box.innerHTML = `<div class="shop-tm-head"><span>今日道具</span><span>每件限 1 个</span></div>`
-    + (shop.ids.length ? shop.ids.map(row).join('') : '<div class="rec-empty">今日没有新货</div>');
+    + (shelf.length ? shelf.map(row).join('') : '<div class="rec-empty">今日没有新货</div>');
 
   box.onclick = (e) => {
     const item = e.target.closest('.shop-item[data-evo]');

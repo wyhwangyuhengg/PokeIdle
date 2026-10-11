@@ -21,6 +21,8 @@ import { showShopView, showSettingsView, showSystemLogs, showAchievementView, re
 import { showPhoneView, updateTradeBadge, updateBerryBadge, updateAchievementBadge, updatePhoneBadge, updateNurseryBadge, showIncubatorView } from './phone.js';
 import { gpsAddDistance, showGpsView, setRoamEnabled, startBikeTarget, abandonBikeTarget } from './gps.js';
 import { initAudio, playRegion, playCycling, endCycling, stopVictory, stopCongratulation, setMusicEnabled, isMusicEnabled, setSplashLocked, setShowCardOnEncounterEnd, setBattleMusic, setSfxEnabled } from './audio.js';
+import { restoreMusicMode } from './music.js';
+import { startTelemetry } from './telemetry.js';
 import { ensureBounty, updateBountyBadge, isBountyInTrade, restoreBountyList } from './bounty.js';
 import { isNurseryPicking, leaveNurseryPick, isNurseryEggView, leaveNurseryEggView, showNurseryView } from './nursery.js';
 import { isTrainPicking, leaveTrainPick, showTrainView } from './train.js';
@@ -856,6 +858,8 @@ async function init() {
   }
   setMusicEnabled(gameData.settings?.musicEnabled !== false); // 音乐开关：沿用上次状态
   setBattleMusic(gameData.settings?.battleMusic !== false); // 战斗音乐开关：沿用上次状态
+  restoreMusicMode(); // 音乐点播：沿用上次选中的歌单（当前地区 / 某一世代 / 我的喜爱）
+  startTelemetry(); // 匿名在线统计
   setSfxEnabled(gameData.settings?.sfxEnabled !== false); // 音效开关：沿用上次状态
   ensureBounty();   // 生成/恢复当日地区悬赏
   ensureMassInitEvents(); // 大量出没事件：初始化下次生成时间

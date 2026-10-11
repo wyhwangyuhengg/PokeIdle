@@ -1,6 +1,7 @@
 // ===== 背景音乐管理 =====
 // 三条通道互斥发声：地区曲 / 覆盖曲（战斗、骑行）/ 瞬发音（胜利、孵蛋、道具）
-import { REGION_PLAYLISTS, SFX, INTRO_TRACK, TRACK_GAINS } from './regions.js';
+import { REGION_PLAYLISTS, REGION_GENS, SFX, INTRO_TRACK, TRACK_GAINS } from './regions.js';
+import { TRACK_META } from './audio-meta.js';
 import { showNowPlaying } from './ui.js';
 
 let _volume = 0.6;
@@ -20,8 +21,15 @@ let _casinoPrevOverlay = null; // 进游戏厅前的覆盖曲：退出时恢复�
 let _casinoWantBattle = false; // 游戏厅期间仍有未结束的遭遇：退出时直接接回战斗曲
 let _currentTitle = '';    // 当前地区曲标题（手机页展示用）
 let _currentArtist = '';
+// 点播模式（音乐页）：region=当前地区（默认）/ album=固定某一世代 / list=我的喜爱
+let _musicMode = 'region';
+let _musicAlbumGen = 3;
+let _customTracks = [];      // 我的喜爱曲目（音乐页传进来，存档那边自己存）
+let _currentRegionName = ''; // 最近一次 playRegion 的地区名：换歌单时当"当前地区"用
+let _pendingModeApply = false; // 游戏厅里改过模式：出场时补上
 
-const REGION_FADE_MS = 700; // 地区曲切歌淡入淡出时长
+const REGION_FADE_MS = 700; // 地区曲切歌淡入淡出时长（跨地区这种自动切换）
+const QUICK_FADE_MS = 150;  // 玩家点歌/换歌单：只够躲开爆音，听着是立刻切
 let _regionSwitchToken = 0; // 连续切歌只让最后一次生效
 let _currentRegionPath = ''; // 当前地区曲路径
 let _regionGainLinear = 1;   // 地区曲响度补偿目标
@@ -38,6 +46,7 @@ sfxAudio.preload = 'auto';
 let _actx = null;
 let _userGestured = false; // 是否已获得用户手势（浏览器 autoplay 解除后才创建 AudioContext）
 const _gainNodes = { region: null, overlay: null, sfx: null };
+const _trackGain = { region: 1, overlay: 1, sfx: 1 }; // 每路当前的响度补偿系数
 
 function ensureCtx() {
   // 无用户手势时浏览器禁止 AudioContext 启动，创建即输出 "not allowed to start" 且无法拦截：
@@ -65,11 +74,13 @@ function wireGain(el, key) {
 
 function applyTrackGain(key, path) {
   wireGain(key === 'region' ? regionAudio : key === 'overlay' ? overlayAudio : sfxAudio, key);
-  const g = _gainNodes[key];
-  if (!g) return;
   const db = TRACK_GAINS[path] ?? 0;
-  g.gain.value = Math.pow(10, db / 20);
-  if (key === 'region') _regionGainLinear = g.gain.value;
+  const comp = Math.pow(10, db / 20);
+  _trackGain[key] = comp;
+  if (key === 'region') _regionGainLinear = comp;
+  const g = _gainNodes[key];
+  if (g) g.gain.value = comp;
+  applyVolume(); // 元素音量按补偿重算：音量拉高时别让两者相乘超过 1
 }
 
 function regionFadeTo(value, ms) {
@@ -117,9 +128,17 @@ function tryPlay(el) {
 }
 
 function applyVolume() {
-  regionAudio.volume = _volume;
-  overlayAudio.volume = _volume;
-  sfxAudio.volume = _volume;
+  // 有增益节点：补偿走节点，元素音量只管"滑块 × 补偿 ≤ 1"防削波；
+  // 还没有节点（首次手势前没有 AudioContext）就把补偿折进元素音量，免得启动那首按原始音量响、比之后都大
+  const vol = (key, el) => {
+    const comp = _trackGain[key];
+    el.volume = _gainNodes[key]
+      ? Math.min(_volume, 1 / Math.max(comp, 1))
+      : Math.min(1, _volume * comp);
+  };
+  vol('region', regionAudio);
+  vol('overlay', overlayAudio);
+  vol('sfx', sfxAudio);
 }
 
 // 把该继续播放的曲目接回去：被系统挂起、或被自动播放策略拦下后调用
@@ -164,6 +183,31 @@ function installResumeListener() {
 }
 
 // ---------- 地区曲 ----------
+// 当前该放哪张歌单：点播模式决定，默认跟着地区
+function sourceTracks() {
+  if (_musicMode === 'album') {
+    const hit = REGION_GENS.find((it) => it.gen === _musicAlbumGen) || REGION_GENS[2];
+    return REGION_PLAYLISTS[hit.region] || [];
+  }
+  if (_musicMode === 'list') return _customTracks;
+  return REGION_PLAYLISTS[_currentRegionName] || [];
+}
+
+const sameTracks = (a, b) => a.length === b.length && a.every((p, i) => p === b[i]);
+
+// 换掉当前歌单并从它里面接着播（firstTrack 指定时先播那首）
+// keepCurrent：保留正在放的那首不切，播完再从新表接（改喜爱列表时用）
+function applyTracks(tracks, firstTrack = null, { keepCurrent = false, quick = false } = {}) {
+  // 目标歌单和当前这份一模一样：无缝，什么都不动（如人在卡洛斯、点过卡洛斯歌单再点「当前地区」）
+  if (!firstTrack && sameTracks(tracks, _regionTracks)) return;
+  _regionTracks = tracks;
+  _regionQueue = [];
+  _lastIdx = tracks.indexOf(_currentRegionPath); // 别一换歌单就重播正在放的那首
+  if (keepCurrent) return; // 保持正在放的那首（它不在新表里也照放，播完从新表接下一首）
+  if (_overlayActive) { prepareRegionTrack(firstTrack); return; }
+  playRegionTrack(firstTrack, quick ? QUICK_FADE_MS : REGION_FADE_MS);
+}
+
 function pickRegionTrack(first) {
   if (_regionTracks.length === 0) return -1;
   // 指定曲目优先（如开场未白镇），并作为新一轮序列的开头
@@ -200,8 +244,8 @@ function prepareRegionTrack(first) {
   _regionActive = true;
 }
 
-// 旧曲淡出后再淡入新曲；无旧曲播放时直接淡入
-function playRegionTrack(first) {
+// 旧曲淡出后再淡入新曲；无旧曲播放时直接淡入。fadeMs 见 QUICK_FADE_MS
+function playRegionTrack(first, fadeMs = REGION_FADE_MS) {
   const token = ++_regionSwitchToken;
   const doPlay = () => {
     if (token !== _regionSwitchToken) return; // 期间又切了歌，放弃本次
@@ -213,25 +257,47 @@ function playRegionTrack(first) {
     showNowPlayingFromMeta(_currentRegionPath); // 切歌提示
   };
   if (!regionAudio.paused && regionAudio.src) {
-    regionFadeTo(0.0001, REGION_FADE_MS);
-    setTimeout(doPlay, REGION_FADE_MS);
+    regionFadeTo(0.0001, fadeMs);
+    setTimeout(doPlay, fadeMs);
   } else {
     doPlay();
   }
 }
 
-// 切换地区歌单（firstTrack 可指定第一首）
+// 切换地区歌单（firstTrack 可指定第一首）；点播选了固定歌单时，地区不再影响播放内容
 export function playRegion(name, firstTrack) {
+  const sameRegion = name === _currentRegionName;
+  _currentRegionName = name;
   if (_casinoActive) return; // 游戏厅模式：不切换地区曲
-  _regionTracks = REGION_PLAYLISTS[name] || [];
-  _lastIdx = -1;
-  _regionQueue = []; // 换地区后重置洗牌序列
-  if (_overlayActive) {
-    // 覆盖曲播放中只备好地区曲，等覆盖曲结束再继续
-    prepareRegionTrack(firstTrack);
-    return;
+  if (_musicMode !== 'region') { // 固定歌单 / 我的喜爱：跨地区不插手
+    if (_regionTracks.length && _regionActive) return;
+  } else if (sameRegion && !firstTrack && _regionActive) {
+    return; // 同一地区被重复触发（启动时开场曲与漫游各叫一次）：别把正在放的这首重开
   }
-  playRegionTrack(firstTrack);
+  applyTracks(sourceTracks(), firstTrack); // 跨地区：走常规 0.7 秒交叉淡出
+}
+
+// 音乐页选歌单：mode = 'region' | 'album'（世代 1~9）| 'list'（我的喜爱）
+// 返回 false 表示这次没能切（游戏厅里/歌单为空），页面负责给提示
+export function setMusicMode(mode, { album = 0, playlist = null, keepCurrent = false } = {}) {
+  // 空歌单不切：切了就没曲目表可放（会静音），保留原来的播放
+  if (mode === 'list' && !(Array.isArray(playlist) && playlist.length)) return false;
+  _musicMode = (mode === 'album' || mode === 'list') ? mode : 'region';
+  if (_musicMode === 'album') _musicAlbumGen = Math.min(9, Math.max(1, Number(album) || 3));
+  if (_musicMode === 'list') _customTracks = playlist.slice();
+  if (_casinoActive) { _pendingModeApply = true; return false; } // 游戏厅里先记下，出场补
+  if (!_currentRegionName) return true; // 还没进过地区（开场前）：交给第一次 playRegion
+  applyTracks(sourceTracks(), null, { keepCurrent, quick: true }); // 玩家自己点的：立刻切
+  return true;
+}
+
+// 音乐页点某首：在当前歌单内立刻切过去，之后继续按这份歌单洗牌
+export function playTrack(path) {
+  if (_casinoActive) return false;
+  if (!path || !_regionTracks.includes(path)) return false;
+  _currentRegionPath = path; // 先记上：手机上那行高亮/频谱立刻跟手，不用等淡出完
+  playRegionTrack(path, QUICK_FADE_MS);
+  return true;
 }
 
 // ---------- 覆盖曲（战斗 / 骑行） ----------
@@ -317,6 +383,12 @@ export function endCasino() {
   }
   if (prev === 'cycling') {
     playOverlay('cycling', urlFor(SFX.cycling));
+    return;
+  }
+  // 游戏厅里改过点播模式：出场按新模式重开歌单（比接着放旧歌单更符合玩家预期）
+  if (_pendingModeApply) {
+    _pendingModeApply = false;
+    applyTracks(sourceTracks(), null, { quick: true });
     return;
   }
   // 恢复地区曲：endOverlay 因为 _regionActive=false 不会自动恢复，手动补播
@@ -438,6 +510,8 @@ const _metaCache = {}; // path -> { title, artist }
 
 async function readTrackMeta(path) {
   if (_metaCache[path]) return _metaCache[path];
+  // 离线标签表优先：省掉整首 mp3 的请求
+  if (TRACK_META[path]) { _metaCache[path] = TRACK_META[path]; return TRACK_META[path]; }
   try {
     const resp = await fetch(urlFor(path));
     const u8 = new Uint8Array(await resp.arrayBuffer());
@@ -556,6 +630,7 @@ export function getNowPlaying() {
   return {
     title: _currentTitle,
     artist: _currentArtist,
+    path: _currentRegionPath,
     playing: _regionActive && _currentRegionPath && !_splashLocked && !_bulkQuiet && _musicEnabled && _volume > 0 && !regionAudio.paused,
   };
 }

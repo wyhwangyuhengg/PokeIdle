@@ -308,7 +308,7 @@ function gapsOf(p, o) {
 }
 
 // 王冠总数：银色/金色都算，1 顶就能满足任何个体值下限（练满那一维就是 31 ≥ 20~31 的任何要求）
-const crownStockCount = () => (gameData.items['银色王冠'] || 0) + (gameData.items['金色王冠'] || 0);
+const crownStockCount = () => (gameData.items['silver-crown'] || 0) + (gameData.items['golden-crown'] || 0);
 
 // 可培养候选：物种/性别已经对上（这两项道具改不了），差的等级/个体值能用背包道具补——
 // 等级要经验糖果（升到要求等级要多少颗算得出），个体值要 1 顶王冠
@@ -327,21 +327,9 @@ function cultivable(o) {
   });
 }
 
-// 可培养提示：挑最省的那只算出要准备什么（经验糖果按颗数、王冠固定 1 顶）
+// 可培养提示：只说明"能补上来"，具体差多少、要什么道具交给玩家自己看需求
 export function cultivableHint(o) {
-  const list = cultivable(o);
-  if (!list.length) return '';
-  let best = null;
-  for (const p of list) {
-    const { lvGap, ivGap } = gapsOf(p, o);
-    const candy = lvGap ? candiesToReach(p, o.want.level) : 0;
-    const cost = candy + (ivGap ? 1 : 0);
-    if (!best || cost < best.cost) best = { cost, candy, ivGap };
-  }
-  const parts = [];
-  if (best.candy > 0) parts.push(`经验糖果 ×${best.candy}`);
-  if (best.ivGap) parts.push('王冠 ×1');
-  return parts.length ? `可培养：${parts.join('、')}` : '可培养';
+  return cultivable(o).length ? '可培养' : '';
 }
 
 // 是否有可交换的宝可梦（手机主页红点）：存在未交换、未忽略且仓库有符合要求个体或可培养个体的 offer

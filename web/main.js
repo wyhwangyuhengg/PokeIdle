@@ -841,6 +841,25 @@ function setupFarmHelper() {
 setupFarmHelper();
 
 // ============================================================
+//   当前在线人数：线上读同源接口，读不到就整格隐藏
+//   ============================================================ */
+(function setupOnlineStat() {
+  const box = document.getElementById('statOnline');
+  if (!box) return;
+  const num = box.querySelector('b');
+  const url = location.hostname === 'pokeidle.shiliu.space'
+    ? '/api/telemetry/stats'
+    : 'https://pokeidle.shiliu.space/api/telemetry/stats';
+  const load = () => fetch(url).then((r) => r.json()).then((d) => {
+    num.textContent = d.online;
+    box.title = `今日 ${d.today} · 累计 ${d.total}`;
+    box.hidden = false;
+  }).catch(() => { box.hidden = true; });
+  load();
+  setInterval(load, 30000);
+})();
+
+// ============================================================
 //   顶栏菜单：游戏教程 / 更新日志（均为独立页面跳转）
 //   ============================================================ */
 (function setupTopbarMenu() {

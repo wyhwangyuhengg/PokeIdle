@@ -6,7 +6,8 @@ import { hasTradableOffers, ensureTrades } from './trade.js';
 import { hasDryBerries } from './berry.js';
 import { hasClaimableAchievements } from './achievements.js';
 import { hasUnclaimedTutorialRewards } from './views.js';
-import { getNowPlaying } from './audio.js';
+import { getNowPlaying, isMusicEnabled } from './audio.js';
+import { showMusicView, refreshMusicViewIfOpen } from './music.js';
 
 const APPS = [
   { id: 'gps',  icon: 'icon-gps',  name: '导航' },
@@ -96,6 +97,14 @@ window.addEventListener('achievements-changed', () => { updateAchievementBadge()
 window.addEventListener('tutorial-rewards-changed', () => { updateTutorialBadge(); updatePhoneBadge(); });
 window.addEventListener('dispatch-changed', () => { updateDispatchBadge(); updatePhoneBadge(); });
 
+// 音乐栏整条可点：进音乐点播页（音乐关着时这条不展开，也就点不到）
+function installMusicEntry() {
+  const el = $('phoneMusic');
+  if (!el || el._wired) return;
+  el._wired = true;
+  el.addEventListener('click', () => showMusicView());
+}
+
 // 顶部系统时间，每秒刷新一次（仅启动一次）
 function startClock() {
   if (startClock._started) return;
@@ -110,6 +119,7 @@ function startClock() {
     if (dateEl) dateEl.textContent = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 星期${week}`;
     timeEl.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     updatePhoneMusic();
+    refreshMusicViewIfOpen(); // 音乐页开着时同步「正在播」标记（复用这个 1 秒 tick，不另起定时器）
   };
   tick();
   setInterval(tick, 1000);
@@ -123,7 +133,8 @@ function updatePhoneMusic() {
   const pv = $('phoneView');
   // 音乐栏常驻 flex，展开/收起由 has-music 控制（max-height+opacity 平滑过渡），与时钟放大/压缩互补保持总高度稳定
   el.style.display = 'flex';
-  if (!info.title || !info.playing) {
+  // 音乐开着就常驻这条（暂停时也能点进去换歌）；音乐总开关关掉、或还没播过曲子时收起
+  if (!isMusicEnabled() || !info.title) {
     if (pv) pv.classList.remove('has-music');
     return;
   }
@@ -151,6 +162,7 @@ export function showPhoneView() {
 export function showPhoneHome() {
   pushNav('phoneView');
   startClock();
+  installMusicEntry();
   const el = $('phoneContent');
   // 分页：每页 PAGE_SIZE 个 App，横排平移翻页
   const pages = [];

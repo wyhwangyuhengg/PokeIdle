@@ -1355,8 +1355,8 @@ function openMintPanel() {
 // ---------- 使用王冠（极限特训） ----------
 // 银色王冠练一维、金色王冠练六维：只改「有效值」——详情页/战斗/派遣按练满后的算，
 // 繁育（遗传、后代预览、配对筛选）永远读 ivs 原始值，所以练出来的个体值不会遗传
-const CROWN_SILVER = '银色王冠';
-const CROWN_GOLD = '金色王冠';
+const CROWN_SILVER = 'silver-crown';
+const CROWN_GOLD = 'golden-crown';
 
 // 这只个体被王冠练满的维度数（详情页标题后缀用）
 function crownedCount(p) {

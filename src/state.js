@@ -95,7 +95,39 @@ export let _lastRegionId = -1;
 export let _prevBagCounts = {};
 
 // ---------- Setter 函数（跨模块同步） ----------
-export function setGameData(d) { gameData = d; }
+// 旧档：王冠的道具 key 从中文改成英文（别的道具 key 不动）；存了道具 key 的地方都换一遍，进游戏读档就换好
+const CROWN_KEY_ALIAS = { '银色王冠': 'silver-crown', '金色王冠': 'golden-crown' };
+function migrateCrownKeys(g) {
+  const bag = (obj) => {
+    if (!obj || typeof obj !== 'object') return;
+    for (const [oldKey, newKey] of Object.entries(CROWN_KEY_ALIAS)) {
+      if (obj[oldKey] == null) continue;
+      obj[newKey] = (obj[newKey] || 0) + obj[oldKey];
+      delete obj[oldKey];
+    }
+  };
+  bag(g.items);
+  bag(g.stats && g.stats.totalItemsEarned);
+  for (const slot of (g.dispatch && g.dispatch.slots) || []) { // 派遣：没领取的奖励
+    for (const r of (slot && slot.rewards) || []) {
+      if (r && CROWN_KEY_ALIAS[r.key]) r.key = CROWN_KEY_ALIAS[r.key];
+    }
+  }
+  for (const arr of (g.bounty && g.bounty.rewards) || []) { // 悬赏：没领取的奖励
+    for (const b of arr || []) {
+      if (b && CROWN_KEY_ALIAS[b.item]) b.item = CROWN_KEY_ALIAS[b.item];
+    }
+  }
+  for (const list of [(g.evoShop && g.evoShop.ids), (g.evoShop && g.evoShop.sold)]) { // 商店今日货架
+    if (!Array.isArray(list)) continue;
+    list.forEach((k, i) => { if (CROWN_KEY_ALIAS[k]) list[i] = CROWN_KEY_ALIAS[k]; });
+  }
+}
+
+export function setGameData(d) {
+  gameData = d;
+  if (d && typeof d === 'object') migrateCrownKeys(d);
+}
 export function setPhase(p) { phase = p; }
 // 野池等级上限表（编号 → 最高等级）：evolution.js 读表后灌进来
 let _wildLevelCaps = null;
@@ -286,6 +318,7 @@ export function getDefaultSave() {
     bounty: null, // 地区悬赏：{ date: 'YYYY-MM-DD', rewards: [{ pokemon, candy, claimed }] }，由 bounty.js 管理
     tmUnlocked: {}, // 招式机解锁：{ 招式id: 解锁时间 }，由 tm.js 管理
     tmShop: null,   // 商店今日招式机货架：{ date, ids }，由 tm.js 管理
+    music: { mode: 'region', album: 3, playlist: [] }, // 音乐点播：当前地区 / 固定世代 / 我的喜爱（由 music.js 管理）
     legendPool: null, // 每日神兽池：{ date, byRegion: { 地区: [编号…] } }，由 items.js 管理
     legendPity: 0,    // 神兽池软保底计数：连着多少场遇敌没出神兽
     trades: null, // 交换广场：{ refreshedAt: Date.now(), offers: [{ npc, want, give, traded }] }，由 trade.js 管理

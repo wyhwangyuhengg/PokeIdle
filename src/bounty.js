@@ -83,8 +83,8 @@ const BOUNTY_RARE_ITEMS = ['心之石', '联系绳', '极巨汤', '奇异石'];
 function rollItemReward(big) {
   if (big && Math.random() < BOUNTY_BIG_RARE_CHANCE) {
     // 王冠最稀（金冠再压一档），排在薄荷之前判；两者都比薄荷难出
-    if (Math.random() < BOUNTY_GOLD_CROWN_CHANCE) return { item: '金色王冠', qty: 1 };
-    if (Math.random() < BOUNTY_CROWN_CHANCE) return { item: '银色王冠', qty: 1 };
+    if (Math.random() < BOUNTY_GOLD_CROWN_CHANCE) return { item: 'golden-crown', qty: 1 };
+    if (Math.random() < BOUNTY_CROWN_CHANCE) return { item: 'silver-crown', qty: 1 };
     if (Math.random() < BOUNTY_MINT_CHANCE) return { item: MINT_KEYS[randInt(0, MINT_KEYS.length - 1)], qty: 1 };
     const pool = evoExclusivePool();
     if (pool.length && Math.random() < BOUNTY_EXCLUSIVE_CHANCE) return { item: pool[randInt(0, pool.length - 1)], qty: 1 };

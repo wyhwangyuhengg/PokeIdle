@@ -25,7 +25,10 @@ ITEM_CN = {
     "candy": "糖果", "poke-ball": "精灵球", "ultra-ball": "超级球", "master-ball": "大师球",
     "sweet-honey": "甜甜蜜", "mystery-egg": "神秘蛋", "shiny-charm": "闪耀护符",
     "exp-candy": "经验糖果", "casinoCoin": "游戏币", "bike": "自行车",
+    "silver-crown": "银色王冠", "golden-crown": "金色王冠",
 }
+# 旧档里的王冠中文 key：进游戏读档时会自动换成英文 key
+LEGACY_CROWN_KEYS = ("银色王冠", "金色王冠")
 NATURE_CN = dict([
     ("hardy", "勤奋"), ("lonely", "怕寂寞"), ("adamant", "固执"), ("naughty", "顽皮"), ("brave", "勇敢"),
     ("bold", "大胆"), ("docile", "坦率"), ("impish", "淘气"), ("lax", "乐天"), ("relaxed", "悠闲"),
@@ -252,6 +255,9 @@ def run_checks(data, pokedex):
                 add(f"items.{k}", f"物品「{ITEM_CN.get(k, k)}」数量不是数值（{v!r}）")
             elif v < 0:
                 add(f"items.{k}", f"物品「{ITEM_CN.get(k, k)}」数量为负（{v}）")
+        for k in LEGACY_CROWN_KEYS:
+            if k in items:
+                add(f"items.{k}", f"旧王冠 key「{k}」：进游戏读档会自动换成英文 key")
 
     roster = data.get("roster")
     seen_ids = set()
@@ -307,6 +313,14 @@ def run_checks(data, pokedex):
             add(f"{p}.variant", f"未知外观变体「{m.get('variant')}」")
         if m.get("ivRandomKey") is not None and m.get("ivRandomKey") not in STAT_KEYS:
             add(f"{p}.ivRandomKey", f"随机遗传项不是六维之一（{m.get('ivRandomKey')}）")
+        crown = m.get("ivCrown")
+        if crown is not None:
+            if not isinstance(crown, dict):
+                add(f"{p}.ivCrown", f"王冠记录不是对象（{crown!r}）")
+            else:
+                for k in crown:
+                    if k not in STAT_KEYS:
+                        add(f"{p}.ivCrown.{k}", f"王冠项不是六维之一「{k}」")
         g = m.get("gender")
         if g is not None and g not in GENDER_SYMBOL:
             add(f"{p}.gender", f"未知性别「{g}」")
@@ -668,6 +682,7 @@ class SaveViewer:
             ("宝可梦", [("name", "名称", 100), ("num", "编号", 55), ("lv", "等级", 50), ("exp", "经验", 70),
                         ("gender", "性别", 45), ("shiny", "闪光", 45), ("nature", "性格", 60), ("src", "来源", 55),
                         ("inroster", "在仓库", 55), ("ivs", "个体值(HP/攻/防/特攻/特防/速)", 260),
+                        ("crown", "王冠(练满项)", 120),
                         ("evs", "努力值", 190), ("origin", "获得时物种", 110),
                         ("lineage", "进化", 150), ("variant", "变体", 75),
                         ("ivr", "随机遗传项", 85), ("id", "ID", 120)]),
@@ -759,19 +774,20 @@ class SaveViewer:
         t = self._tabs[0]
         t.delete(*t.get_children())
         items = self.data.get("items") or {}
-        for key, cn in ITEM_CN.items():
+        # 常见道具排前面，其余（进化道具 / 薄荷 / 王冠…）按 key 排在后面
+        keys = list(ITEM_CN.keys()) + sorted(k for k in items if k not in ITEM_CN)
+        for key in keys:
             v = items.get(key, 0)
             path = f"items.{key}"
             tags = ("issue",) if self._has_issue(path) else ()
-            t.insert("", "end", values=(cn, v), tags=tags)
+            t.insert("", "end", values=(ITEM_CN.get(key, key), v), tags=tags)
 
     def _render_roster(self):
         t = self._tabs[1]
         t.delete(*t.get_children())
         for i, m in enumerate(self.data.get("roster") or []):
             if not isinstance(m, dict):
-                t.insert("", "end", values=("?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""),
-                         tags=("issue",))
+                t.insert("", "end", values=("?",) + ("",) * 16, tags=("issue",))
                 continue
             sid = str(m.get("species", ""))
             name = self.pokedex.get(sid, f"?{sid}")
@@ -782,6 +798,8 @@ class SaveViewer:
             evs = m.get("evs") or {}
             iv_str = " ".join(str(ivs.get(k, 0)) for k in STAT_KEYS)
             ev_str = " ".join(str(evs.get(k, 0)) for k in STAT_KEYS)
+            crown = m.get("ivCrown") if isinstance(m.get("ivCrown"), dict) else {}
+            crown_str = " · ".join(STAT_KEY_CN.get(k, k) for k in STAT_KEYS if crown.get(k))
             gender = GENDER_SYMBOL.get(m.get("gender"), m.get("gender", "?"))
             osc = m.get("originSpecies")
             origin_str = self.pokedex.get(str(osc), str(osc)) if osc else ""
@@ -792,7 +810,7 @@ class SaveViewer:
                 name, sid, m.get("level", "?"), round(m.get("exp") or 0), gender, fmt_bool(m.get("shiny", False)),
                 NATURE_CN.get(m.get("nature"), m.get("nature", "?")),
                 SRC_CN.get(m.get("source"), m.get("source", "?")),
-                fmt_bool(m.get("inRoster", True)), iv_str, ev_str, origin_str, lin_str, var_str,
+                fmt_bool(m.get("inRoster", True)), iv_str, crown_str, ev_str, origin_str, lin_str, var_str,
                 m.get("ivRandomKey", "?"), m.get("id", "")), tags=tags)
 
     def _render_team(self):

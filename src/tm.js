@@ -129,7 +129,7 @@ export async function renderShopTmSection(box, { onBought, onDetail } = {}) {
   const pool = await ensurePool();
   const shop = ensureShop(pool);
   const unlockedCount = pool.filter((r) => isTmUnlocked(r.id)).length;
-  const shelf = shop.ids.map(rowOf).filter(Boolean);
+  const shelf = shop.ids.map(rowOf).filter(Boolean).sort((a, b) => a.price - b.price); // 便宜的排前面
   const candy = gameData.items['candy'] || 0;
   box.innerHTML = `
     <div class="shop-tm-head"><span>今日招式机</span><span>已解锁 ${unlockedCount}/${pool.length}</span></div>

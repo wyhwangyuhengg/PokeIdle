@@ -66,6 +66,13 @@ export const REGION_PLAYLISTS = {
   ],
 };
 
+// 世代 ↔ 地区（音乐页左侧按这个顺序排：cd1 = 关都 … cd9 = 帕底亚）
+export const REGION_GENS = [
+  { gen: 1, region: '关都' }, { gen: 2, region: '城都' }, { gen: 3, region: '丰缘' },
+  { gen: 4, region: '神奥' }, { gen: 5, region: '合众' }, { gen: 6, region: '卡洛斯' },
+  { gen: 7, region: '阿罗拉' }, { gen: 8, region: '伽勒尔' }, { gen: 9, region: '帕底亚' },
+];
+
 // 事件音效
 export const SFX = {
   battle: 'Battle.mp3',          // 进入战斗
