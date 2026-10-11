@@ -2,7 +2,7 @@
 // 页面为 tile 地图铺满 + 告示牌入口：点击告示牌弹出配置/数据面板
 // 训练中的宝可梦会以像素图标在场地上随机走动
 import { $, showView, tryLoadImage, setupFoodTooltip, showConfirmBar, logicToViewport, popupBounds } from './ui.js';
-import { gameData, getPokemonByIndex, saveGame, pushNav, addSystemLog, ensureGender, genderBadge } from './state.js';
+import { gameData, getPokemonByIndex, saveGame, pushNav, addSystemLog, ensureGender, genderBadge, effIvTotal, ivOf } from './state.js';
 import {
   TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, MAX_LEVEL,
   TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT,
@@ -918,13 +918,12 @@ function renderPickPage(box) {
 
 // 个体值总和
 function pickIvSum(p) {
-  if (!p.ivs) return 0;
-  return ['hp', 'atk', 'def', 'spa', 'spd', 'spe'].reduce((s, k) => s + (p.ivs[k] || 0), 0);
+  return effIvTotal(p);
 }
 // 个体值明细（hover 个体值单元格的 tooltip 显示；HP 用全角 ＨＰ，与中文标签同宽，数值自然对齐）
 function pickIvTip(p) {
   return [['ＨＰ', 'hp'], ['攻击', 'atk'], ['防御', 'def'], ['特攻', 'spa'], ['特防', 'spd'], ['速度', 'spe']]
-    .map(([label, k]) => `${label}  ${p.ivs ? (p.ivs[k] || 0) : 0}`)
+    .map(([label, k]) => `${label}  ${ivOf(p, k)}`)
     .join('\n');
 }
 // 放入列表来源筛选状态（供共享来源下拉读写）

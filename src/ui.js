@@ -428,6 +428,17 @@ export function isDualLayout() {
   return cl.contains('ui-mobile') || cl.contains('ui-dual');
 }
 
+// 触屏设备没有右键/滚轮/悬停：教程正文、章节总结、闲置轮播共用的措辞替换表（只维护这一套内容）。
+const TOUCH_TEXT_RULES = [
+  [/右键/g, '长按'],
+  [/滚动滚轮或点击底部圆点/g, '左右滑动或点击底部圆点'],
+  [/背包滚轮翻到第二页/g, '背包滑动翻到第二页'],
+];
+export function touchText(html) {
+  if (!matchMedia('(hover: none)').matches) return html; // 有鼠标的设备保持原措辞
+  return TOUCH_TEXT_RULES.reduce((t, [re, to]) => t.replace(re, to), html);
+}
+
 // 应用界面风格：切 html 上的类（布局由 CSS 决定），并通知布局层重算缩放
 export function applyUiMode(mode) {
   const m = mode === 'mobile' || mode === 'dual' ? mode : 'classic';

@@ -1,5 +1,5 @@
 // ===== 道具相关逻辑 =====
-import { ITEM_NAMES, ITEM_DESC, CANDY_EXCHANGE, ITEM_SELL_RATE, ITEM_SELL_OVERRIDE, CANDY_DROP_MULT, SHINY_CHANCE, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, PX_PER_METER, EVO_PRICES, EVO_EXCLUSIVE_PRICE, EVO_SHOP_DAILY, EVO_SHOP_WEIGHTS, EVO_SHOP_EXCLUSIVE_SLOTS, EVO_SHOP_EXCLUSIVE_WEIGHT, EVO_SHOP_MINT_WEIGHT, MINT_NATURES, MINT_PRICE, BREED_ONLY_IDS, LEGEND_POOL_DIVISOR, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, hatchSprite } from './config.js';
+import { ITEM_NAMES, ITEM_DESC, CANDY_EXCHANGE, ITEM_SELL_RATE, ITEM_SELL_OVERRIDE, CANDY_DROP_MULT, SHINY_CHANCE, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, PX_PER_METER, EVO_PRICES, EVO_EXCLUSIVE_PRICE, EVO_SHOP_DAILY, EVO_SHOP_WEIGHTS, EVO_SHOP_EXCLUSIVE_SLOTS, EVO_SHOP_EXCLUSIVE_WEIGHT, EVO_SHOP_MINT_WEIGHT, EVO_SHOP_CROWNS, RARE_DROP_WEIGHTS, MINT_NATURES, MINT_PRICE, BREED_ONLY_IDS, LEGEND_POOL_DIVISOR, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, hatchSprite } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, encounterMsg, setCurrentEncounter, setEncounterLevel, setEncounterBallsUsed, setCurrentEncounterBalls, setEncounterMsg, setCurrentIsShiny, setPhase, _itemDropActive, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, honeyCountdownInterval, charmCountdownInterval, honeyExpiryTimer, charmExpiryTimer, nextEncounterTimer, _charmEncounterCount, _eggHatching, saveGame, addSystemLog, addIncubatorLog, randInt, rand, getCurrentRegion, setNextEncounterTimer, setItemDropActive, setEggHatching, setIdleMsgIdx, setHoneyBuffActive, setHoneyCountdownEnd, setCharmBuffActive, setCharmGuaranteed, setCharmCountdownEnd, setHoneyPausedRemaining, setCharmPausedRemaining, setCharmEncounterCount, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, calcHatchDistance, getIncubatorUnlockCost, addRosterEntry, rarityLabel, setLastObtainedEntryId, getLastObtainedEntryId, isPokemon, rollGender, ensureGender, genderBadge, dexUnlocked, dexShinyOwned } from './state.js';
 import { $, updateTextBox, updateBackpack, updateStats, showView, isOnHatchView, isIdleStageVisible, isPageHidden, fitPokemonImage, tryLoadPokemonImage, setIdleCharacter, renderIncubatorView, updateIncubatorBadge, showConfirmBar, hideConfirmBar, isEvolutionShowActive } from './ui.js';
 import { showIdlePickup, showBuffExpired } from './messages.js';
@@ -57,6 +57,8 @@ export const ITEM_ICONS = {
   '温和薄荷': 'mints/mint_3.png', '温顺薄荷': 'mints/mint_3.png', '慎重薄荷': 'mints/mint_3.png', '自大薄荷': 'mints/mint_3.png',
   '胆小薄荷': 'mints/mint_4.png', '急躁薄荷': 'mints/mint_4.png', '爽朗薄荷': 'mints/mint_4.png', '天真薄荷': 'mints/mint_4.png',
   '认真薄荷': 'mints/mint_5.png',
+  // 王冠（极限特训）：在宝可梦详情页把个体值练满
+  '银色王冠': 'crowns/silver-crown.png', '金色王冠': 'crowns/golden-crown.png',
 };
 
 // 进化/专属道具图标：通用道具查 ITEM_ICONS，形态道具查 evolution.json 的 stoneIcons（中文名 → 英文文件名）
@@ -144,8 +146,19 @@ let _exclusiveNames = null; // 专属道具名单，由 ensureEvoMeta 异步注�
 // 通用道具有基础价，形态道具（专属道具）按整类权重平摊
 const exclusivePool = () => (_exclusiveNames || []).filter((n) => EVO_PRICES[n] == null);
 export const evoExclusivePool = () => exclusivePool();
-// 掉落池：派遣与钓鱼共用（通用进化道具 + 形态专属道具 + 薄荷）
+// 掉落池：派遣与钓鱼共用（通用进化道具 + 形态专属道具 + 薄荷 + 王冠）
 export const evoDropPool = () => [...Object.keys(EVO_PRICES), ...exclusivePool(), ...MINT_KEYS];
+// 从掉落池按 RARE_DROP_WEIGHTS 抽一件（表里没有的按 1 = 等概率，与原来一致）；三处渠道共用这一个入口
+export function pickEvoDrop() {
+  const pool = evoDropPool();
+  if (!pool.length) return null;
+  const weightOf = (k) => RARE_DROP_WEIGHTS[k] ?? 1;
+  let total = 0;
+  for (const k of pool) total += weightOf(k);
+  let r = Math.random() * total;
+  for (const k of pool) { r -= weightOf(k); if (r < 0) return k; }
+  return pool[pool.length - 1];
+}
 
 // 进化表只拉一次：注入图标名、形态编号、专属道具名单
 let _evoMeta = null;
@@ -161,7 +174,7 @@ export function ensureEvoMeta() {
   return _evoMeta;
 }
 
-// 货架抽池：通用道具（各自权重）+ 专属道具（整类权重）+ 薄荷（整类权重，21 种平分）
+// 货架抽池：通用道具（各自权重）+ 专属道具（整类权重）+ 薄荷（整类权重，21 种平分）+ 王冠（整类权重）
 function evoCandidates() {
   const list = Object.entries(EVO_SHOP_WEIGHTS).map(([id, w]) => [id, w]);
   const pool = exclusivePool();
@@ -171,6 +184,7 @@ function evoCandidates() {
   }
   const eachMint = EVO_SHOP_MINT_WEIGHT / MINT_KEYS.length;
   for (const n of MINT_KEYS) list.push([n, eachMint]);
+  for (const [n, w] of EVO_SHOP_CROWNS) list.push([n, w]);
   return list;
 }
 

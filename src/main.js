@@ -2,13 +2,13 @@
 // 禁用全局右键菜单（桌面端 webview 的原生右键菜单）
 document.addEventListener('contextmenu', e => e.preventDefault());
 import { CATCH_RATES, SAVE_INTERVAL, ITEM_RATES, ITEM_NAMES, ROAD_SPECIAL_CHANCE, ROAD_WIDTH_MIN, ROAD_WIDTH_MAX, ROAD_SWITCH_CYCLES, BIKE_RESTORE_MAX_GAP_MS, PX_PER_METER } from './config.js';
-import { allPokemon, gameData, phase, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, getPokemonByIndex, ensureGpsState, restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer } from './state.js';
+import { allPokemon, gameData, phase, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, getPokemonByIndex, ensureGpsState, restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer , setSimClock } from './state.js';
 import { migrateEncounterScores } from './scoring.js';
 import { massTick, ensureMassInit as ensureMassInitEvents, twistTick, ensureTwistInit } from './events.js';
 import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView } from './ui.js';
 import { spawnItemDrop, hasActiveDrop, activateHoney, activateShinyCharm, restoreHoneyRecord, restoreCharmRecord, grantItem, cancelItemDrop, rollCandyMult, ensureEvoMeta } from './items.js';
 import { syncBlockVisual, startBlockCountdown, clearBlockCountdown, showMixerView } from './mixer.js';
-import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, syncBattleMusic } from './battle.js';
+import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, setEncounterAt, syncBattleMusic } from './battle.js';
 import { startIdleRotation } from './messages.js';
 import { tryStartFishing, onRoadChanged, getFishingGuarantee, isFishingPending } from './fishing.js';
 import { helperTick, showBerryView, catchUpHelper } from './berry.js';
@@ -29,7 +29,7 @@ import { retreatBattle, isBattleActive, isBattleSettled, restoreBattleTier, clea
 import { backFromBattlePick, isBattlePicking, migrateTeams, isTeamEditing, closeTeamEdit, isTeamPicking, leaveTeamPick, showTeamView } from './team.js';
 import { showCasinoView } from './casino.js';
 import * as road from './road.js';
-import { initBackgroundCatchup, startBackgroundCatchup, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds } from './background-catchup.js';
+import { initBackgroundCatchup, startBackgroundCatchup, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds, bgPeekAccum } from './background-catchup.js';
 
 let ROAD_PRESETS = null;
 let ROAD_LAND = [];   // 普通陆地路段池（无垂钓点、非自行车道）
@@ -420,7 +420,15 @@ async function onGameTick() {
     }
   }
 
-  if (phase !== 'idle') { updateStats(); return; }
+  // 屏幕上这只遭遇若跨了停摆（切后台/离线时它就在），结算时间要记回"切走那一刻"：
+  // 否则系统日志/相遇日志里会写成回前台的时间，和相遇时刻差几十分钟
+  if (phase !== 'idle') {
+    const gap = bgPeekAccum();
+    if (gap > 0) setEncounterAt(Date.now() - gap * 1000);
+    updateStats();
+    return;
+  }
+  setEncounterAt(0); // 那只收完了：清掉跨界时间戳（之后补算自己会用模拟时钟）
 
   // 浏览器后台挂机补算：后台/最小化期间按当前速度折算里程直接入账，不播放动画；掉落按
   // "实际走路秒数 + 停摆秒数"折算。停摆秒数以 visibilitychange 记录的隐藏时长为主（农场等
@@ -523,7 +531,9 @@ async function onGameTick() {
           for (let i = 0; i < gained; i++) {
             gainedQty += (item === 'candy' ? rollCandyMult() : 1) + extraDropQty(item);
           }
+          setSimClock(Date.now() - idleAfkSec * 1000); // 补发的掉落记在停摆窗口起点，别挤在回前台那一秒
           grantItem(item, gainedQty);
+          setSimClock(0);
           gameData[key] -= gained;
           if (catchUpLog) { // 仅后台补发时汇总打印
             const label = ITEM_NAMES[item] || item;
@@ -1061,7 +1071,9 @@ async function init() {
   }
   // 主存档的待开战记录：按同一只继续，不给重摇机会
   if (gameData.wildEncounter && !sessionEncounterRestored) {
-    import('./battle.js').then(m => m.restoreWildEncounter(gameData.wildEncounter));
+    // 这只跨了离线：把它之后的记账时间钉在离线那一刻（pendingOfflineSec 稍后会被补算清零，这里先读）
+    const gapSecs = bgCatchupEnabled() ? (gameData.pendingOfflineSec || 0) : 0;
+    import('./battle.js').then(m => m.restoreWildEncounter(gameData.wildEncounter, gapSecs));
   }
   // 孵化器 badge 初始同步（无 session 时也要同步，数据在 gameData 持久存档中）
   updateIncubatorBadge();

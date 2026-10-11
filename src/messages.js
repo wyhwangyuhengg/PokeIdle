@@ -1,5 +1,5 @@
 // ===== 闲置轮播消息 + 地区文案 =====
-import { $, isIdleStageVisible } from './ui.js';
+import { $, isIdleStageVisible, touchText } from './ui.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, charmBuffActive, honeyBuffActive, blockBuffActive, getCurrentRegion, randInt, formatNum, _idleMsgs, _idleMsgIdx, _regionMsgInterval, _idleMsgTimer, setIdleMsgs, setIdleMsgIdx, setRegionMsgInterval, setIdleMsgTimer, _fishing, getMassOutbreak, inMassZone, getTwist, inTwistZone, getRoadNumForEdge } from './state.js';
 import { REGION_CYCLE } from './config.js';
 import { ACHIEVEMENTS, earnedTiers, claimedTiers } from './achievements.js';
@@ -237,6 +237,7 @@ export function buildIdleMessages() {
     '有的宝可梦要开启熏香才能繁育出幼体。',
     '有的宝可梦要使用特殊道具才能进化。',
     '薄荷能在宝可梦详情页使用改宝可梦的性格。',
+    '王冠能在详情页练满个体值，但不会遗传。',
     '在详情页面点击宝可梦图片可放大查看。',
     '招式机买一次所有宝可梦永久解锁这个招式。',
     '孵蛋得到的宝可梦才能解锁蛋招式。',
@@ -467,7 +468,8 @@ msgs.push(chatMsgs[randInt(0, chatMsgs.length - 1)]);
   msgs.push(chatMsgs[randInt(0, chatMsgs.length - 1)]);
 
   // 加入当前地区氛围文案（由 rotateIdleMessage 按间隔插入，此处不移入）
-  setIdleMsgs(msgs);
+  // 触屏设备上把「右键」这类桌面措辞换成触屏说法（与教程页面共用 ui.js 的替换表）
+  setIdleMsgs(msgs.map(touchText));
 }
 
 // buff 效果轮播文案（闪耀护符 / 树果方块 / 甜甜蜜）：

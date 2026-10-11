@@ -22,6 +22,9 @@ export function initBackgroundCatchup(d) {
   deps = d;
 }
 
+// 只读停摆累计秒数（不清零）：给"跨越停摆的遭遇"取切走时刻用
+export function bgPeekAccum() { return _bgSecAccum; }
+
 // 读取停摆累计秒数并清零
 export function bgTakeAccum() {
   const s = _bgSecAccum;

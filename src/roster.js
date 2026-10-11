@@ -2,7 +2,7 @@
 // 查看当前拥有的每只宝可梦个体（个体值/闪光/来源/在仓状态），
 // 交互与图鉴对齐：搜索 / 来源筛选 / 表头排序 / 点击进入个体详情，详情页可返回列表。
 import { $, showView, getCurrentView, tryLoadImage, tryLoadPokemonImage, showConfirmBar, hideConfirmBar, updateBackpack, updateStats, logicViewport, viewportToLogic, popupBounds, isDualLayout, isStageView, closeAppArea } from './ui.js';
-import { gameData, allPokemon, getPokemonByIndex, isTmUnlocked, getNature, pushNav, resetNav, saveGame, addSystemLog, setPokedexInLogView, ensureGender, genderBadge, isPokemon, phase, dexUnlocked } from './state.js';
+import { gameData, allPokemon, getPokemonByIndex, isTmUnlocked, getNature, pushNav, resetNav, saveGame, addSystemLog, setPokedexInLogView, ensureGender, genderBadge, isPokemon, phase, dexUnlocked, ivOf, effIvTotal, effPerfectCount, applyCrown, IV_STATS } from './state.js';
 import { TYPE_COLORS, typeIconColor, pokemonSourceBadge, itemIconSrc, MINT_KEYS } from './items.js';
 import { evolutionRows, applyEvolution, condItems, moveCondText, evoPreEvos, evolutionData, loadEvolution } from './evolution.js';
 import { playEvolution } from './evo-view.js';
@@ -58,7 +58,7 @@ function ivHexagon(p) {
   };
   const poly = ratio => IV_KEYS.map((_, i) => pt(i, ratio).map(n => n.toFixed(1)).join(',')).join(' ');
   const data = IV_KEYS.map(([k], i) => {
-    const v = p.ivs ? (p.ivs[k] ?? 0) : 0;
+    const v = ivOf(p, k);
     return pt(i, v / 31).map(n => n.toFixed(1)).join(',');
   }).join(' ');
   const axes = IV_KEYS.map((_, i) => {
@@ -70,7 +70,7 @@ function ivHexagon(p) {
     return `<text x="${x.toFixed(1)}" y="${(y + 2).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="var(--ui-color)">${label}</text>`;
   }).join('');
   const dots = IV_KEYS.map(([k], i) => {
-    const v = p.ivs ? (p.ivs[k] ?? 0) : 0;
+    const v = ivOf(p, k);
     const [x, y] = pt(i, v / 31);
     return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.7" fill="var(--ui-color)"/>`;
   }).join('');
@@ -103,17 +103,9 @@ let _picker = null; // 选取模式：配队/训练点击空位跳转仓库选�
 let _renderSeq = 0; // 列表分片渲染版本号：新一轮渲染作废旧一轮，避免快速切换筛选时乱序
 let _rosterIconObs = null; // 列表图标懒加载观察器：滚动进入视口（含预载带）才加载，避免大仓库并发请求打爆资源
 
-// 个体值总和
-function ivSum(p) {
-  if (!p.ivs) return 0;
-  return p.ivs.hp + p.ivs.atk + p.ivs.def + p.ivs.spa + p.ivs.spd + p.ivs.spe;
-}
-
-// V 数：个体值满项（31）个数
-function perfectIvCount(p) {
-  if (!p.ivs) return 0;
-  return IV_KEYS.filter(([k]) => (p.ivs[k] || 0) >= 31).length;
-}
+// 个体值总和 / V 数：都按有效值算（王冠练满的按 31，见 state.js ivOf）
+function ivSum(p) { return effIvTotal(p); }
+function perfectIvCount(p) { return effPerfectCount(p); }
 
 function srcName(s) { return SOURCE_NAMES[s] || s || '野生'; }
 
@@ -1359,6 +1351,140 @@ function openMintPanel() {
   document.addEventListener('click', _mintPanelDoc);
 }
 
+// ---------- 使用王冠（极限特训） ----------
+// 银色王冠练一维、金色王冠练六维：只改「有效值」——详情页/战斗/派遣按练满后的算，
+// 繁育（遗传、后代预览、配对筛选）永远读 ivs 原始值，所以练出来的个体值不会遗传
+const CROWN_SILVER = '银色王冠';
+const CROWN_GOLD = '金色王冠';
+
+// 这只个体被王冠练满的维度数（详情页标题后缀用）
+function crownedCount(p) {
+  return IV_STATS.filter(k => p.ivCrown && p.ivCrown[k]).length;
+}
+
+// 结算提示里的人名（昵称 > 形态全名 > 物种名，与详情页标题同口径）
+function crownWho(entry) {
+  const poke = getPokemonByIndex(String(entry.species));
+  return entry.nickname || (poke ? (poke.form || poke.name) : entry.species);
+}
+
+let _crownPanelDoc = null; // 点面板外关闭的文档监听：打开时挂、关闭时摘
+let _crownPanel = null;    // 面板元素：用掉王冠后**原地重绘**，不拆不重建——重建会重播上滑动画、还会丢滚动位置
+let _crownFlash = [];      // 刚练满的维度：重绘时闪一下，替代"用一次弹一次框"
+function closeCrownPanel() {
+  _crownPanel?.remove();
+  _crownPanel = null;
+  if (_crownPanelDoc) { document.removeEventListener('click', _crownPanelDoc); _crownPanelDoc = null; }
+  hideConfirmBar(); // 面板关了，挂在它上面的确认条一并作废（不然按了确定没面板可刷，还会用掉王冠）
+}
+
+// 用掉一顶王冠：silver 只练 stat 一维，gold 练六维；没有可练的维度（或没库存）返回 false
+function useCrown(entry, key, stat) {
+  if (!entry || (gameData.items[key] || 0) <= 0) return false;
+  const done = applyCrown(entry, key === CROWN_GOLD ? IV_STATS : [stat]);
+  if (!done.length) return false;
+  gameData.items[key]--;
+  saveGame();
+  updateBackpack(key);
+  updateStats();
+  window.dispatchEvent(new CustomEvent('roster-changed')); // 速度个体影响派遣耗时，相关界面要重算
+  return true;
+}
+
+// 面板内容：顶部持有数 + 每维一行（名字 / 进度条 / 数值 / 银色王冠按钮）+ 底部金色王冠按钮。
+// 已满维的银色按钮、六维全满的金色按钮都置灰
+function crownPanelHtml(entry) {
+  const flash = _crownFlash;
+  _crownFlash = [];
+  const silver = gameData.items[CROWN_SILVER] || 0;
+  const gold = gameData.items[CROWN_GOLD] || 0;
+  const rows = IV_KEYS.map(([k, label]) => {
+    const v = ivOf(entry, k);
+    const maxed = v >= 31;
+    const can = !maxed && silver > 0;
+    return `<div class="crown-row${flash.includes(k) ? ' just' : ''}">
+      <span class="crown-name">${label}</span>
+      <div class="roster-iv-bar"><div class="roster-iv-fill" style="width:${(v / 31 * 100).toFixed(0)}%"></div></div>
+      <span class="crown-val${maxed ? ' maxed' : ''}">${v}</span>
+      <button class="crown-btn" data-crown-stat="${k}" aria-label="使用银色王冠"${can ? '' : ' disabled'}><img src="${itemIconSrc(CROWN_SILVER)}" alt=""></button>
+    </div>`;
+  }).join('');
+  const allMaxed = IV_KEYS.every(([k]) => ivOf(entry, k) >= 31);
+  return `<div class="berry-picker-head">
+      <span class="berry-picker-title">使用王冠</span>
+      <div class="berry-picker-x" data-crown-close>✕</div>
+    </div>
+    <div class="berry-board-sections">
+      <div class="crown-have">
+        <span><img src="${itemIconSrc(CROWN_SILVER)}" alt="">×${silver}</span>
+        <span><img src="${itemIconSrc(CROWN_GOLD)}" alt="">×${gold}</span>
+      </div>
+      <div class="berry-board-section-title">个体值</div>
+      <div class="crown-list">${rows}</div>
+      <div class="crown-gold-row">
+        <button class="crown-btn crown-gold" data-crown-gold${(!allMaxed && gold > 0) ? '' : ' disabled'}><img src="${itemIconSrc(CROWN_GOLD)}" alt=""><span>使用金色王冠 · 六项练满</span></button>
+      </div>
+    </div>`;
+}
+
+// 原地重绘：滚动条在 .berry-board-sections 上，读出来再写回去，不然用一顶就跳回顶部
+function paintCrownPanel(entry) {
+  if (!_crownPanel?.isConnected) return; // 面板已被关掉：不画了，数值已落库、详情页自己会刷新
+  const scroller = _crownPanel.querySelector('.berry-board-sections');
+  const top = scroller ? scroller.scrollTop : 0;
+  _crownPanel.innerHTML = crownPanelHtml(entry);
+  const next = _crownPanel.querySelector('.berry-board-sections');
+  if (next) next.scrollTop = top;
+}
+
+// 王冠面板：用掉一顶后面板不关（常有连着练两维的需求），只原地重绘 + 闪一下刚变的那一行
+function openCrownPanel() {
+  const view = $('rosterView');
+  const entry = (gameData.roster || []).find(r => r.id === _detailId);
+  if (!view || !entry) return;
+  if (_crownPanel?.isConnected) { paintCrownPanel(entry); return; } // 已经开着：原地刷新，不重播动画
+  closeCrownPanel();
+  const panel = document.createElement('div');
+  panel.id = 'crownPanel';
+  panel.className = 'berry-picker berry-board'; // 复用告示牌/种子选择那套上浮框
+  _crownPanel = panel;
+  panel.innerHTML = crownPanelHtml(entry);
+  (view.closest('.screen') || view).appendChild(panel);
+  panel.onclick = (e) => {
+    if (e.target.closest('[data-crown-close]') || e.target === panel) { closeCrownPanel(); return; }
+    const row = e.target.closest('[data-crown-stat]');
+    if (row && !row.disabled) {
+      const k = row.dataset.crownStat;
+      const label = (IV_KEYS.find(([kk]) => kk === k) || [])[1] || k;
+      const who = crownWho(entry);
+      showConfirmBar(`用「${CROWN_SILVER}」，把${who}的${label}练到 31？`, () => {
+        if (!useCrown(entry, CROWN_SILVER, k)) return;
+        _crownFlash = [k];
+        showRosterDetail(_detailId); // 就地刷新详情（数值与持有数量都变了）
+        paintCrownPanel(entry); // 面板原地刷新，保留滚动位置
+      }, null, { overlay: true });
+      return;
+    }
+    const goldBtn = e.target.closest('[data-crown-gold]');
+    if (goldBtn && !goldBtn.disabled) {
+      const who = crownWho(entry);
+      showConfirmBar(`用「${CROWN_GOLD}」，把${who}的六项个体值全部练到 31？`, () => {
+        if (!useCrown(entry, CROWN_GOLD)) return;
+        _crownFlash = IV_STATS.slice();
+        showRosterDetail(_detailId);
+        paintCrownPanel(entry);
+      }, null, { overlay: true });
+    }
+  };
+  // 点面板外的空白也关掉（打开那次点击已在入口 stopPropagation，不会立刻触发）；
+  // 确认条弹出期间点哪都不收面板——那一下属于这次操作的流程，收了面板就只剩一个悬空的确认条
+  _crownPanelDoc = (ev) => {
+    if (document.getElementById('confirmBar')) return;
+    if (!panel.contains(ev.target)) closeCrownPanel();
+  };
+  document.addEventListener('click', _crownPanelDoc);
+}
+
 // ---------- 个体详情 ----------
 // 点击列表行进入；返回按钮（标题栏 back）→ restoreRosterList 回到列表
 function showRosterDetail(id) {
@@ -1408,12 +1534,12 @@ function showRosterDetail(id) {
       </div>
     </div>
     <div class="roster-detail-block">
-      <div class="roster-detail-title">个体值 <span style="opacity:0.6;">${ivSum(p)}/186</span></div>
+      <div class="roster-detail-title${_detailEvoAllowed ? ' can-use' : ''}"${_detailEvoAllowed ? ' data-crown-open' : ''}>个体值 <span style="opacity:0.6;">${ivSum(p)}/186${crownedCount(p) ? ` · 王冠 ${crownedCount(p)}` : ''}</span></div>
       <div class="roster-iv-flex">
         ${ivHexagon(p)}
         <div class="roster-iv-bars">
           ${IV_KEYS.map(([k, label]) => {
-            const v = p.ivs ? (p.ivs[k] ?? 0) : 0;
+            const v = ivOf(p, k);
             return `<div class="roster-iv-item"><span>${label}</span>
               <div class="roster-iv-bar"><div class="roster-iv-fill" style="width:${(v / 31 * 100).toFixed(0)}%"></div></div>
               <span>${v}</span></div>`;
@@ -1444,6 +1570,9 @@ function showRosterDetail(id) {
 
   // 性格行：只有从宝可梦列表进来的详情允许点开薄荷面板（挑一只来用的入口不给改）
   list.querySelector('[data-mint-open]')?.addEventListener('click', (e) => { e.stopPropagation(); openMintPanel(); });
+
+  // 个体值标题：同一道门，点开王冠面板（极限特训）
+  list.querySelector('[data-crown-open]')?.addEventListener('click', (e) => { e.stopPropagation(); openCrownPanel(); });
 
   // 等级：反着用经验糖果（正门是背包点糖果→挑宝可梦），与薄荷同一道门，只能从宝可梦列表进详情触发
   list.querySelector('[data-exp-candy-open]')?.addEventListener('click', (e) => {

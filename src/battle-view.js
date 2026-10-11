@@ -1,10 +1,10 @@
 // 流程：NPC 列表 → 自动编队（仓库中等级最高 6 只）→ 回合制战斗（动画）→ 结算（经验/糖果）
 // 与挂机主循环解耦：战斗只在手机 App 内进行，不影响地图/遇敌/离线
 import { $, showView, tryLoadPokemonImage, tryLoadPokemonIcon, updateStats, updateBackpack, logicViewport, popupBounds } from './ui.js';
-import { gameData, getPokemonByIndex, addSystemLog, saveGame, pushNav, setPhase, currentEncounter, phase, ensureGender, rollGender, genderBadge, isPokemon, randInt } from './state.js';
+import { gameData, getPokemonByIndex, addSystemLog, saveGame, pushNav, setPhase, currentEncounter, phase, ensureGender, rollGender, genderBadge, isPokemon, randInt, effIvs } from './state.js';
 import { createMon, useMove, preTurn, postTurn, aiMove, tickBattleTurns, transformMon } from './battle-core.js';
 import { typeMult } from './type-chart.js';
-import { grantItem, itemIconSrc, evoDropPool, MINT_KEYS, typeIconColor } from './items.js';
+import { grantItem, itemIconSrc, pickEvoDrop, MINT_KEYS, typeIconColor } from './items.js';
 import { chooseMoves } from './moves.js';
 import { ensureNpcs, refreshNpcs, buildNpcTeam, npcBaseLevel } from './npcs.js';
 import { BATTLE_REFRESH_MS, BATTLE_TIER_ITEMS, BATTLE_EVO_POOLS, MAX_LEVEL, SPECIAL_SPRITE_SCALE, ITEM_NAMES } from './config.js';
@@ -365,7 +365,7 @@ function buildPlayerTeam() {
         })
       : chooseMoves(_learnset[entry.species] || {}, entry.level, _data, { types: pd ? pd.types : [], includeTm: true, allowEgg: true }); // 对战对手不受玩家解锁限制
     return (() => {
-      const mon = createMon(pd, entry.level || 1, entry.ivs, entry.nature, moveIds);
+      const mon = createMon(pd, entry.level || 1, effIvs(entry), entry.nature, moveIds); // 王冠练过的个体值按有效值进战斗
       mon.shiny = !!entry.shiny; // 战斗大图按闪光贴图（_shiny 后缀）加载
       mon.variant = entry.variant || null; // 时空扭曲外观变体（RGB / 污染）：仅渲染特效
       mon.gender = ensureGender(entry); // 玩家个体性别（旧存档无 gender 字段则按物种比例补 roll 并写回）
@@ -2757,8 +2757,13 @@ export function rollTierDrops(tier) {
   const drops = [];
   for (const r of BATTLE_TIER_ITEMS[tier] || []) {
     if (r.chance != null && Math.random() >= r.chance) continue;
-    const pool = r.pool === 'mint' ? MINT_KEYS : r.pool === 'evoAll' ? evoDropPool() : BATTLE_EVO_POOLS[r.pool] || null;
-    const key = pool && pool.length ? pool[randInt(0, pool.length - 1)] : r.key;
+    let key = r.key;
+    if (r.pool === 'evoAll') {
+      key = pickEvoDrop() || r.key; // 全池走稀有度权重（王冠被压低）
+    } else if (r.pool) {
+      const pool = r.pool === 'mint' ? MINT_KEYS : BATTLE_EVO_POOLS[r.pool] || null;
+      if (pool && pool.length) key = pool[randInt(0, pool.length - 1)];
+    }
     if (key) drops.push({ key, qty: r.qty });
   }
   return drops;

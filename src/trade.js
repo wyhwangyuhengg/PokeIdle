@@ -3,7 +3,7 @@
 // 「愿意给的宝可梦（个体值/性格/闪光具体可见）」，玩家拿符合要求的在仓个体与其交换，
 // 得到的宝可梦来源记为「交换」。
 import { TRADE_COUNT, TRADE_REFRESH_MS, TRADE_GENDER_CHANCE, TRADE_IV_CHANCE, TRADE_IV_MIN, TRADE_SHINY_CHANCE, TRADE_IV_SUM_MIN, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, TRADE_GIVE_LEVEL_MAX, TRADE_VALUE_W, TRADE_VALUE_JITTER, TRADE_GIVE_LEVEL_NONE, TRADE_BASE_FORM_CHANCE, EXP_CANDY_XP, MAX_LEVEL, BREED_ONLY_IDS } from './config.js';
-import { gameData, allPokemon, getPokemonByIndex, isPowerForm, getNature, pushNav, saveGame, addSystemLog, randInt, rollIvs, rollLegendIvs, rollNature, rollGender, addRosterEntry, setLastObtainedEntryId, ensureGender, genderBadge, isPokemon } from './state.js';
+import { gameData, allPokemon, getPokemonByIndex, isPowerForm, getNature, pushNav, saveGame, addSystemLog, randInt, rollIvs, rollLegendIvs, rollNature, rollGender, addRosterEntry, setLastObtainedEntryId, ensureGender, genderBadge, isPokemon, ivOf, effIvTotal } from './state.js';
 import { $, showView, updateStats, tryLoadImage, tryLoadPokemonImage, logicViewport, popupBounds, showConfirmBar } from './ui.js';
 import { showGoodbyeConfirm, showTradeReceive, startShinySparkleOn, stopShinySparkleLoop } from './animation.js';
 import { TYPE_COLORS, pokemonSourceBadge } from './items.js';
@@ -288,7 +288,7 @@ function eligible(o) {
     && String(p.species) === o.want.species
     && (!o.want.gender || ensureGender(p) === o.want.gender)
     && (!o.want.level || (p.level || 1) >= o.want.level)
-    && (!o.want.iv || !p.ivs || (p.ivs[o.want.iv.stat] ?? 0) >= o.want.iv.min));
+    && (!o.want.iv || !p.ivs || ivOf(p, o.want.iv.stat) >= o.want.iv.min)); // 需求按有效值判：王冠练满也能交差
 }
 
 // 该个体用经验糖果升到目标等级需要的糖果数（升满级所需经验逐级累加，向上取整）
@@ -300,17 +300,48 @@ function candiesToReach(p, targetLv) {
   return Math.ceil(need / EXP_CANDY_XP);
 }
 
-// 可培养候选：物种/性别/个体值符合 offer 要求，但等级不足，
-// 且手中经验糖果数量足够将该个体升到 offer 要求等级
+// 这只个体离满足 offer 还差什么：等级 / 个体值（物种与性别道具补不了，不算在这一层）
+function gapsOf(p, o) {
+  const lvGap = !!o.want.level && (p.level || 1) < o.want.level;
+  const ivGap = !!o.want.iv && !!p.ivs && ivOf(p, o.want.iv.stat) < o.want.iv.min;
+  return { lvGap, ivGap };
+}
+
+// 王冠总数：银色/金色都算，1 顶就能满足任何个体值下限（练满那一维就是 31 ≥ 20~31 的任何要求）
+const crownStockCount = () => (gameData.items['银色王冠'] || 0) + (gameData.items['金色王冠'] || 0);
+
+// 可培养候选：物种/性别已经对上（这两项道具改不了），差的等级/个体值能用背包道具补——
+// 等级要经验糖果（升到要求等级要多少颗算得出），个体值要 1 顶王冠
 function cultivable(o) {
-  if (!o.want.level) return [];
-  const stock = gameData.items['exp-candy'] || 0;
-  return (gameData.roster || []).filter(p => p.inRoster && isPokemon(p)
-    && String(p.species) === o.want.species
-    && (!o.want.gender || ensureGender(p) === o.want.gender)
-    && (!o.want.iv || !p.ivs || (p.ivs[o.want.iv.stat] ?? 0) >= o.want.iv.min)
-    && (p.level || 1) < o.want.level
-    && candiesToReach(p, o.want.level) <= stock);
+  const candyStock = gameData.items['exp-candy'] || 0;
+  const crownStock = crownStockCount();
+  return (gameData.roster || []).filter(p => {
+    if (!p.inRoster || !isPokemon(p)) return false;
+    if (String(p.species) !== o.want.species) return false;
+    if (o.want.gender && ensureGender(p) !== o.want.gender) return false;
+    const { lvGap, ivGap } = gapsOf(p, o);
+    if (!lvGap && !ivGap) return false; // 本来就合格：走「交换」
+    if (lvGap && candiesToReach(p, o.want.level) > candyStock) return false;
+    if (ivGap && crownStock <= 0) return false;
+    return true;
+  });
+}
+
+// 可培养提示：挑最省的那只算出要准备什么（经验糖果按颗数、王冠固定 1 顶）
+export function cultivableHint(o) {
+  const list = cultivable(o);
+  if (!list.length) return '';
+  let best = null;
+  for (const p of list) {
+    const { lvGap, ivGap } = gapsOf(p, o);
+    const candy = lvGap ? candiesToReach(p, o.want.level) : 0;
+    const cost = candy + (ivGap ? 1 : 0);
+    if (!best || cost < best.cost) best = { cost, candy, ivGap };
+  }
+  const parts = [];
+  if (best.candy > 0) parts.push(`经验糖果 ×${best.candy}`);
+  if (best.ivGap) parts.push('王冠 ×1');
+  return parts.length ? `可培养：${parts.join('、')}` : '可培养';
 }
 
 // 是否有可交换的宝可梦（手机主页红点）：存在未交换、未忽略且仓库有符合要求个体或可培养个体的 offer
@@ -430,8 +461,9 @@ function offerCard(o) {
   const traded = !!o.traded;
   const ignored = !!o.ignored;
   const count = eligible(o).length;
-  // 无可直接交换个体时，若糖果足够把某只升到要求等级，按钮仅显示「可培养」（不可点击，只作提示）
-  const cultCount = cultivable(o).length;
+  // 无可直接交换个体时，若背包里的道具（经验糖果 / 王冠）够把某只补成合格，按钮只显示「可培养」（不可点击，只作提示）
+  const cultList = cultivable(o);
+  const cultHint = (count === 0 && cultList.length) ? cultivableHint(o) : '';
 
   // 需求连成一句话：想要 Lv30以上 ，攻击 ≥ 26 的雌性皮卡丘
   const wantParts = [
@@ -452,8 +484,8 @@ function offerCard(o) {
       <div class="trade-main">
         <div class="npc-sprite" style="${npcPos}"></div>
         <button class="trade-give" style="animation-delay:${jumpDelay}s" data-give-detail="${o.id}" title="查看${givePoke.form || givePoke.name}详情">${giveIcon}</button>
-        <div class="trade-text">${wantText}</div>
-        <button class="trade-btn${traded ? ' done' : (count === 0 && cultCount === 0) ? ' locked' : ''}" data-offer="${o.id}"${traded || count === 0 ? ' disabled' : ''}>${traded ? '已交换' : count > 0 ? '交换' : cultCount > 0 ? '可培养' : '未拥有'}</button>
+        <div class="trade-text">${wantText}${cultHint ? `<span class="trade-cult">${cultHint}</span>` : ''}</div>
+        <button class="trade-btn${traded ? ' done' : (count === 0 && !cultList.length) ? ' locked' : ''}" data-offer="${o.id}"${traded || count === 0 ? ' disabled' : ''}>${traded ? '已交换' : count > 0 ? '交换' : cultList.length ? '可培养' : '未拥有'}</button>
       </div>
       <div class="trade-footer">
         <span class="trade-npc-name">${npc.name}</span>
@@ -585,9 +617,8 @@ function renderSelect(content, offerId) {
   // 表头点击排序：个体值/等级（同物种候选按数值排）
   if (_tSortBy) {
     pool = [...pool].sort((a, b) => {
-      const ivSum = p => p.ivs ? p.ivs.hp + p.ivs.atk + p.ivs.def + p.ivs.spa + p.ivs.spd + p.ivs.spe : 0;
-      const va = _tSortBy === 'level' ? (a.level || 1) : ivSum(a);
-      const vb = _tSortBy === 'level' ? (b.level || 1) : ivSum(b);
+      const va = _tSortBy === 'level' ? (a.level || 1) : effIvTotal(a);
+      const vb = _tSortBy === 'level' ? (b.level || 1) : effIvTotal(b);
       return (va - vb) * _tSortDir;
     });
   }
@@ -596,7 +627,7 @@ function renderSelect(content, offerId) {
     : pool.map(p => {
         const ivStat = o.want.iv ? o.want.iv.stat : null;
         const ivsText = p.ivs ? IV_KEYS.map(k => {
-          const v = p.ivs[k] || 0;
+          const v = ivOf(p, k);
           return k === ivStat ? `<b class="roster-iv-hl">${v}</b>` : String(v);
         }).join('/') : '';
         return `

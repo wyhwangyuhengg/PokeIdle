@@ -1,8 +1,8 @@
 // ===== 地区悬赏 =====
 // 每天 0 点刷新：每地区指定若干只宝可梦（图鉴加权抽样），奖励糖果或道具。
 // 仓库里有该物种的在仓个体即可提交；只有今日到访过的地区能看到内容，提交必须到当地。
-import { REGION_CYCLE, ITEM_NAMES, BOUNTY_PER_REGION, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_JITTER, BOUNTY_RARE_WEIGHT, BOUNTY_COST_REF, BOUNTY_CANDY_CN, BOUNTY_BIG_CN, BOUNTY_BIG_RARE_CHANCE, BOUNTY_EXCLUSIVE_CHANCE, BOUNTY_MINT_CHANCE, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BOUNTY_EXP_CANDY_QTY, EVO_PRICES } from './config.js';
-import { gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, getCurrentRegion, pushNav, saveGame, addSystemLog, ensureGender, genderBadge, isPokemon, randInt } from './state.js';
+import { REGION_CYCLE, ITEM_NAMES, BOUNTY_PER_REGION, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_JITTER, BOUNTY_RARE_WEIGHT, BOUNTY_COST_REF, BOUNTY_CANDY_CN, BOUNTY_BIG_CN, BOUNTY_BIG_RARE_CHANCE, BOUNTY_EXCLUSIVE_CHANCE, BOUNTY_MINT_CHANCE, BOUNTY_CROWN_CHANCE, BOUNTY_GOLD_CROWN_CHANCE, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BOUNTY_EXP_CANDY_QTY, EVO_PRICES } from './config.js';
+import { gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, getCurrentRegion, pushNav, saveGame, addSystemLog, ensureGender, genderBadge, isPokemon, randInt, ivOf, effIvTotal } from './state.js';
 import { $, showView, updateStats, tryLoadImage, logicViewport, popupBounds, showConfirmBar } from './ui.js';
 import { showGoodbyeConfirm } from './animation.js';
 import { pickFamily, pokemonSourceBadge, grantItem, itemIconSrc, evoExclusivePool, MINT_KEYS } from './items.js';
@@ -82,6 +82,9 @@ const BOUNTY_COMMON_ITEMS = ['火之石', '水之石', '雷之石', '叶之石',
 const BOUNTY_RARE_ITEMS = ['心之石', '联系绳', '极巨汤', '奇异石'];
 function rollItemReward(big) {
   if (big && Math.random() < BOUNTY_BIG_RARE_CHANCE) {
+    // 王冠最稀（金冠再压一档），排在薄荷之前判；两者都比薄荷难出
+    if (Math.random() < BOUNTY_GOLD_CROWN_CHANCE) return { item: '金色王冠', qty: 1 };
+    if (Math.random() < BOUNTY_CROWN_CHANCE) return { item: '银色王冠', qty: 1 };
     if (Math.random() < BOUNTY_MINT_CHANCE) return { item: MINT_KEYS[randInt(0, MINT_KEYS.length - 1)], qty: 1 };
     const pool = evoExclusivePool();
     if (pool.length && Math.random() < BOUNTY_EXCLUSIVE_CHANCE) return { item: pool[randInt(0, pool.length - 1)], qty: 1 };
@@ -403,15 +406,15 @@ function renderBountyTrade(content, regionIdx, bi) {
   // 表头点击排序：个体值/等级（同物种候选按数值排）
   if (_bSortBy) {
     pool = [...pool].sort((a, b) => {
-      const va = _bSortBy === 'level' ? (a.level || 1) : (a.ivs ? a.ivs.hp + a.ivs.atk + a.ivs.def + a.ivs.spa + a.ivs.spd + a.ivs.spe : 0);
-      const vb = _bSortBy === 'level' ? (b.level || 1) : (b.ivs ? b.ivs.hp + b.ivs.atk + b.ivs.def + b.ivs.spa + b.ivs.spd + b.ivs.spe : 0);
+      const va = _bSortBy === 'level' ? (a.level || 1) : effIvTotal(a);
+      const vb = _bSortBy === 'level' ? (b.level || 1) : effIvTotal(b);
       return (va - vb) * _bSortDir;
     });
   }
   const rowsHtml = pool.length === 0
     ? '<div class="roster-trade-empty">仓库中没有该宝可梦，无法提交</div>'
     : pool.map(p => {
-        const ivsText = p.ivs ? ['hp', 'atk', 'def', 'spa', 'spd', 'spe'].map(k => p.ivs[k] || 0).join('/') : '';
+        const ivsText = p.ivs ? ['hp', 'atk', 'def', 'spa', 'spd', 'spe'].map(k => ivOf(p, k)).join('/') : '';
         const icon = poke?.icon ? '<img class="roster-icon-img" data-trade-icon alt="" />' : '';
         return `
         <div class="pokedex-entry roster-row bounty-trade-row" data-trade-view="${p.id}">

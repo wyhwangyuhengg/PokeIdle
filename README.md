@@ -87,6 +87,7 @@
 - **增益** — 甜甜蜜与闪耀护符，缩短遇敌间隔、提升稀有与闪光
 - **孵蛋** — 按行走里程孵化的孵蛋器，最多 8 个槽位
 - **培育** — 饲育屋配对繁殖，蛋回到族内最低阶
+- **培育修正** — 薄荷改性格、王冠练满个体值
 - **交换** — 交换广场：按对价换取宝可梦，计入图鉴
 - **宝可梦仓库** — 搜索、筛选、排序、详情与放生
 - **钓鱼** — 水域自动钓鱼，收获道具或宝可梦
@@ -138,11 +139,11 @@ npm run build        # 一次出 PC + 安卓两个包
 npm run build:pc     # 只出 PC（Tauri · NSIS 安装包）
 ```
 
-`npm run build` 依次构建 Windows 安装包与安卓签名 APK，两个产物统一收集到 `dist/`：`口袋挂机_<version>_x64-setup.exe`、`口袋挂机_<version>.apk`——dist/ 里只有这两个包，SHA-256 打在执行输出里（拷贝后逐字节校验，对不上直接报错）。只想出一端：`npm run build -- --skip-pc` / `-- --skip-android`。只出 PC 时中间产物仍在 `src-tauri/target/release/bundle/nsis/`。
+`npm run build` 依次构建 Windows 安装包与安卓签名 APK，两个产物统一收集到 `dist/`：`口袋挂机_<version>_x64-setup.exe`、`口袋挂机_<version>.apk`——dist/ 里只有这两个包，SHA-256 打在执行输出里（拷贝后逐字节校验，对不上直接报错）。只想出一端：`npm run build:pc`（只出 PC）/ `npm run android:build`（只出安卓）；跑 `npm run build` 时也可以加 `SKIP_PC=1` / `SKIP_ANDROID=1` 跳过某端（PowerShell 下 npm 不转发 `-- xxx` 参数，用环境变量更稳）。只出 PC 时中间产物仍在 `src-tauri/target/release/bundle/nsis/`。
 
 ### Android 版
 
-用 Capacitor 把同一份 `src/` 打包成离线 APK，命令与签名步骤见 [`docs/android-build.md`](docs/android-build.md)：
+用 Capacitor 把同一份 `src/` 打包成离线 APK（签名步骤、证书指纹与常见问题见 `docs/devdoc/android-build.md`——该目录含本机签名信息，不随仓库发布）：
 
 ```bash
 npm run android:build     # release APK（带签名）

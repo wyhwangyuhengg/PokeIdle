@@ -334,6 +334,36 @@ export function rollGuaranteedIvs(n) {
   return ivs;
 }
 
+// ---------- 个体值：原始值 / 有效值（王冠）----------
+// 存档里的 ivs 永远是「原始值」= 血统值：繁育遗传、后代预览、配对筛选、欧气评分都只认它。
+// 银色/金色王冠把个体练到 31 只改「有效值」（详情页、战斗、派遣、交换需求这些使用口径），
+// 记在条目的 ivCrown 里（{ hp: true, spe: true }，没用过王冠的个体没有这个字段）。
+export const IV_STATS = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
+
+export const ivOf = (p, k) => (p && p.ivCrown && p.ivCrown[k] ? 31 : (p?.ivs?.[k] ?? 0));
+export const effIvs = (p) => {
+  const out = {};
+  for (const k of IV_STATS) out[k] = ivOf(p, k);
+  return out;
+};
+export const effIvTotal = (p) => IV_STATS.reduce((s, k) => s + ivOf(p, k), 0);
+export const effPerfectCount = (p) => IV_STATS.filter((k) => ivOf(p, k) >= 31).length;
+
+// 极限特训：把 stats 里还不到 31 的维度练满，返回真正练上的维度（用于日志与提示）
+export function applyCrown(entry, stats) {
+  if (!entry || !entry.ivs) return [];
+  const done = [];
+  for (const k of stats) {
+    if (!IV_STATS.includes(k)) continue;
+    if ((entry.ivs[k] ?? 0) >= 31 || entry.ivCrown?.[k]) continue;
+    if (!entry.ivCrown) entry.ivCrown = {};
+    entry.ivCrown[k] = true;
+    done.push(k);
+  }
+  if (done.length) addSystemLog('crown_use', { pokemon: entry.species, stats: done });
+  return done;
+}
+
 // ---------- 性格 ----------
 // 25 种性格：key（存档用）→ 中文名（展示用）
 export const POKEMON_NATURES = [
@@ -424,7 +454,7 @@ export function dexShinyOwned(idx) {
 }
 
 // 把一只刚获得的宝可梦加入仓库（捕获/孵蛋/交换时调用）
-export function addRosterEntry({ species, shiny = false, source = 'normal', level = 1, gender, ivs, variant }) {
+export function addRosterEntry({ species, shiny = false, source = 'normal', level = 1, gender, ivs, variant, at = 0 }) {
   if (!gameData) return null;
   markDexOwned(species, !!shiny); // 任何来源获得即解锁图鉴
   if (!Array.isArray(gameData.roster)) gameData.roster = [];
@@ -444,7 +474,7 @@ export function addRosterEntry({ species, shiny = false, source = 'normal', leve
     nature: rollNature(),
     source,
     variant: variant || null, // 外观变体：'rgb' 污染等（仅外观，功能等同普通宝可梦）
-    obtainedAt: Date.now(),
+    obtainedAt: at || simNow(), // 显式时间优先；补算期间按模拟时刻写
     inRoster: true,
   };
   gameData.roster.push(entry);
@@ -468,9 +498,15 @@ export function getLastObtainedEntryId() { return _lastObtainedEntryId; }
 export function setLastObtainedEntryId(id) { _lastObtainedEntryId = id; }
 
 // ---------- 系统日志 ----------
-export function addSystemLog(type, details) {
+// 补算期间的"模拟时钟"：把补算产出的记录写成"挂机期间该发生的那一刻"，
+// 而不是回前台那一刻——否则系统日志里一串记录挤在同一秒，看着像凭空冒出来的
+let _simClock = 0;
+export function setSimClock(at) { _simClock = at > 0 ? at : 0; }
+export const simNow = () => _simClock || Date.now();
+
+export function addSystemLog(type, details, at = 0) {
   if (!gameData.systemLogs) gameData.systemLogs = [];
-  gameData.systemLogs.push({ time: Date.now(), type, details });
+  gameData.systemLogs.push({ time: at || simNow(), type, details });
   if (gameData.systemLogs.length > 50) {
     gameData.systemLogs = gameData.systemLogs.slice(-50);
   }

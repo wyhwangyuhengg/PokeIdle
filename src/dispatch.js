@@ -1,10 +1,10 @@
 // 派遣 App：把宝可梦派出去探险，按真实时间完成（唯一离线收益来源），完成后带回糖果与道具
 // 离线期间派遣照常计时：calcOffline 对派遣槽不做 startAt += ms 后移
 import { $, showView, tryLoadImage, showConfirmBar } from './ui.js';
-import { gameData, getPokemonByIndex, saveGame, pushNav, addSystemLog, ensureGender, genderBadge, getIncubatorUnlockCost } from './state.js';
+import { gameData, getPokemonByIndex, saveGame, pushNav, addSystemLog, ensureGender, genderBadge, getIncubatorUnlockCost, ivOf } from './state.js';
 import { DISPATCH_SLOTS, DISPATCH_FREE_SLOTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_EXTRA_CHANCE, DISPATCH_SPEED_REF, DISPATCH_SPEED_MIN, DISPATCH_SPEED_MAX, DISPATCH_SPEED_DECAY, DISPATCH_SPEED_FLAT, DISPATCH_BASE_WEIGHTS, DISPATCH_TYPE_BOOST, DISPATCH_ITEM_VALUE, DISPATCH_ITEM_CAP, DISPATCH_VALUE_PER_HOUR, DISPATCH_PICKS_MAX, DISPATCH_EVO_MAX_CHANCE, REGION_CYCLE, DISPATCH_BOOST_DISCOUNT, DISPATCH_CANDY_JITTER, DISPATCH_VARIANT_CANDY_BONUS } from './config.js';
 import { removePokemonFromAllTeams, isInAnyTeam } from './team.js';
-import { grantItem, TYPE_COLORS, itemIconSrc, ensureEvoMeta, evoDropPool, pokemonSourceBadge } from './items.js';
+import { grantItem, TYPE_COLORS, itemIconSrc, ensureEvoMeta, pickEvoDrop, pokemonSourceBadge } from './items.js';
 import { NATURES } from './battle-core.js';
 import { matchPinyinPartial } from './pokedex.js';
 import { setupSourceFilter, closeAllDropdowns, sourceFilterLabel } from './filters.js';
@@ -57,7 +57,7 @@ function speedOf(entry) {
   const poke = getPokemonByIndex(String(entry.species));
   const base = poke?.stats?.[5] || DISPATCH_SPEED_REF;
   const level = entry.level || 1;
-  const iv = entry.ivs?.spe ?? 31;
+  const iv = ivOf(entry, 'spe'); // 王冠练过的速度按有效值算，派遣耗时跟着缩短
   let mult = 1;
   const n = NATURES[entry.nature];
   if (n) { if (n.up === 5) mult = 1.1; if (n.down === 5) mult = 0.9; }
@@ -165,13 +165,13 @@ export function rollRewards(entry, durationMin) {
   return [...merged].map(([key, qty]) => ({ key, qty }));
 }
 
-// 进化道具/薄荷掉落：概率随档位线性上升（1h 2.5% → 24h 60%），命中就从全部池子里等概率抽一件
+// 进化道具/薄荷/王冠掉落：概率随档位线性上升（1h 2.5% → 24h 60%），命中就按稀有度权重抽一件
 function rollEvoDrop(durationMin) {
   const hours = durationMin / 60;
   const chance = Math.min(1, hours / 24) * DISPATCH_EVO_MAX_CHANCE;
   if (Math.random() >= chance) return null;
-  const pool = evoDropPool();
-  return { key: pool[Math.floor(Math.random() * pool.length)], qty: 1 };
+  const key = pickEvoDrop();
+  return key ? { key, qty: 1 } : null;
 }
 
 // 推进完成检测：到点未标记完成的槽置 done 并预计算奖励；放生的清空；返回本次新完成数

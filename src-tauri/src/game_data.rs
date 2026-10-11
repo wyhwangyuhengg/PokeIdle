@@ -28,7 +28,12 @@ pub fn export_save_data(_app: tauri::AppHandle, data: String) -> Result<String, 
         .pick_folder();
     match dir {
         Some(path) => {
-            let save_path = path.join("save.json");
+            // 文件名带毫秒时间戳后缀（与移动端 exportSave 同款）：连导两次不会互相覆盖，也一眼看得出导出时间
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
+            let save_path = path.join(format!("pokeidle-save-{}.json", stamp));
             std::fs::write(&save_path, &data).map_err(|e| e.to_string())?;
             Ok(save_path.to_string_lossy().to_string())
         }

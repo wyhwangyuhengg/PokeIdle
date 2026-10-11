@@ -52,6 +52,8 @@ html, body {
   height: 100%; width: 100%; overflow: hidden;
   font-family: 'Segoe UI', system-ui, sans-serif;
   font-size: 13px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   color: var(--color-text);
   background: var(--console-body);
 }
@@ -5259,6 +5261,62 @@ html.mobile-app #quitHide { display: none !important; }
   .mint-row:hover { background: rgba(var(--ui-color-rgb), 0.1); }
 }
 .mint-empty { padding: 10px 6px; font-size: 10px; color: var(--ui-color); opacity: 0.6; text-align: center; }
+
+/* 详情页「个体值」标题：与性格行同一道门，从宝可梦列表进来的详情可点开王冠面板 */
+.roster-detail-title.can-use { display: inline-block; padding: 0 2px; margin: 0 -2px; border-radius: 3px; cursor: pointer; }
+.roster-detail-title.can-use:hover { background: rgba(var(--ui-color-rgb), 0.14); }
+.roster-detail-title.can-use:active { transform: scale(0.98); }
+/* 使用王冠弹层：外形复用薄荷那套上浮框，行内是 名字 / 进度条 / 数值 / 银色王冠按钮 */
+/* 顶部持有数：只留图标 + 数字（图标与下面各行的按钮同款，一眼对得上）；按钮上不写数量，免得像"一次消耗两个" */
+.crown-have { display: flex; gap: 14px; padding: 2px 8px 4px; font-size: 10px; font-weight: 700; color: var(--ui-color); opacity: 0.85; }
+.crown-have span { display: inline-flex; align-items: center; gap: 3px; }
+.crown-have img { width: 14px; height: 14px; image-rendering: pixelated; }
+.crown-list { padding: 0 0 4px; }
+.crown-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 20px auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ui-color);
+}
+.crown-row .roster-iv-bar { height: 4px; }
+.crown-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crown-val { text-align: right; font-variant-numeric: tabular-nums; }
+.crown-val.maxed { color: #ff7b7b; }
+.crown-row.just .crown-val { animation: crownFlip 0.9s ease-out; }
+.crown-row.just .roster-iv-fill { animation: crownGlow 0.9s ease-out; }
+@keyframes crownFlip {
+  0% { transform: scale(1.7); opacity: 0.35; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes crownGlow {
+  0% { box-shadow: 0 0 7px var(--ui-color); }
+  100% { box-shadow: none; }
+}
+.crown-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(var(--ui-color-rgb), 0.35);
+  background: rgba(var(--ui-color-rgb), 0.08);
+  color: var(--ui-color);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.crown-btn img { width: 15px; height: 15px; image-rendering: pixelated; }
+.crown-btn:disabled { opacity: 0.32; cursor: default; }
+.crown-gold-row { padding: 6px 6px 2px; }
+.crown-gold { width: 100%; justify-content: center; padding: 5px 8px; }
+@media (hover: hover) {
+  .crown-btn:not(:disabled):hover { background: rgba(var(--ui-color-rgb), 0.16);border-color: var(--ui-color); }
+}
 .roster-detail-title {
   font-size: 10px;
   font-weight: 700;
@@ -5752,6 +5810,8 @@ html.mobile-app #quitHide { display: none !important; }
   line-height: 1.5;
   word-break: break-all;
 }
+/* 可培养提示：紧跟在需求下面一行，写明要准备什么道具（经验糖果 ×N / 王冠 ×1） */
+.trade-cult { display: block; font-size: 9px; opacity: 0.72; }
 /* 给出宝可梦入口：小图标，点击进入详情页 */
 .trade-give {
   flex: none;
@@ -10999,24 +11059,28 @@ html.ui-mobile .app-host {
   height: 100%;
 }
 /* 底部入口行：长条按钮，底色与背包格子一致 */
-html.ui-mobile .title-bar { padding: 1px 10px 0; }
+html.ui-mobile .title-bar { padding: 1px 6px 0; }
+html.ui-mobile .window-controls { gap: 2px; }
 html.ui-mobile .control-btn {
-  flex: 1;
+  flex: 1 1 0;
+  /* min-width:0：这一行放不下时让按钮自己压缩，而不是把标签顶成两行 */
+  min-width: 0;
   width: auto;
   height: 30px;
-  padding: 0 3px;
+  padding: 0 2px;
   flex-direction: row;
-  gap: 4px;
+  gap: 3px;
   border-radius: 4px;
   background: rgba(0,0,0,0.03);
   color: var(--ui-color);
-  font-size: 11px;
+  font-size: 10px;
 }
 [data-theme="dark"] html.ui-mobile .control-btn { background: var(--item-bg); }
 html.ui-mobile .control-btn.window-icon { opacity: 1; } /* 实底按钮不透明 */
-html.ui-mobile .control-btn svg { width: 14px; height: 14px; }
+html.ui-mobile .control-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
 html.ui-mobile .control-btn.active { background: rgba(var(--ui-color-rgb), 0.14); }
-html.ui-mobile .nav-label { display: inline; }
+/* 标签一律不换行：真的挤不下就省略号截断，绝不把这一行顶成两行 */
+html.ui-mobile .nav-label { display: inline; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* 下屏（应用屏）自己的文字框：手机 app 的提示/文案走这里，不再打到上屏的遭遇文字框。
    经典布局只有一个屏，app 文案仍走 #textBox，所以这里默认不显示 */

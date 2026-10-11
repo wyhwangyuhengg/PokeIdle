@@ -1,7 +1,7 @@
 // ===== 钓鱼系统 =====
 // 进入有垂钓点的路段后停下钓鱼一次：甩竿 → 等待上钩（随机6~30s）→ 上钩抖动 → 收获随机道具×1~10
 import { ITEM_NAMES, ITEM_RATES, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, FISH_RARE_TOP, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX } from './config.js';
-import { ITEM_ICONS, clearHoneyCountdown, clearCharmCountdown, startHoneyCountdown, startCharmCountdown, pickFamily, evoDropPool } from './items.js';
+import { ITEM_ICONS, clearHoneyCountdown, clearCharmCountdown, startHoneyCountdown, startCharmCountdown, pickFamily, pickEvoDrop } from './items.js';
 import { phase, gameData, nextEncounterTimer, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, honeyCountdownInterval, charmCountdownInterval, honeyPausedRemaining, charmPausedRemaining, honeyExpiryTimer, charmExpiryTimer, _itemDropActive, _fishing, gameTick, allPokemon, getCurrentRegion, isPowerForm, isWildExcluded, setFishing, setNextEncounterTimer, saveGame, addSystemLog, randInt, rand, setHoneyBuffActive, setCharmBuffActive, setHoneyCountdownEnd, setCharmCountdownEnd, setHoneyPausedRemaining, setCharmPausedRemaining, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval } from './state.js';
 import { $, setIdleCharacter, updateBackpack, updateStats, getCharPrefix } from './ui.js';
 import { showFishingWait, showFishingResult, showBuffExpired } from './messages.js';
@@ -290,11 +290,11 @@ function resumeBuffCountdown() {
   return false;
 }
 
-// 钓到道具：按掉率权重抽一种；另有 FISH_EVO_CHANCE 的概率改钓到一件进化道具/薄荷（只给 1 件）
+// 钓到道具：按掉率权重抽一种；另有 FISH_EVO_CHANCE 的概率改钓到一件进化道具/薄荷/王冠（只给 1 件）
 function pickFishingReward() {
   if (Math.random() < FISH_EVO_CHANCE) {
-    const pool = evoDropPool();
-    if (pool.length) return { key: pool[randInt(0, pool.length - 1)], qty: 1 };
+    const key = pickEvoDrop(); // 按稀有度权重抽（王冠被压低）
+    if (key) return { key, qty: 1 };
   }
   const entries = Object.entries(ITEM_RATES);
   const weights = entries.map(([, rate]) => rate);

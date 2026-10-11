@@ -1,5 +1,5 @@
 import { ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, BLOCK_TARGET_CHANCE, BLOCK_QUALITY, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, CHARM_RARITY_BOOST, ITEM_NAMES, CATCH_RATES, ULTRA_BALL_ADD, AUTO_FLEE_TIMEOUT, AUTO_FLEE_NO_BALL_DELAY, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, CANDY_EXCHANGE, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, LEGEND_LEVEL, massShinyChance } from './config.js';
-import { phase, gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, nextEncounterTimer, honeyBuffActive, charmBuffActive, charmGuaranteed, blockBuffActive, blockRecipe, blockQuality, honeyCountdownEnd, charmCountdownEnd, honeyPausedRemaining, charmPausedRemaining, honeyExpiryTimer, charmExpiryTimer, honeyCountdownInterval, charmCountdownInterval, _charmEncounterCount, _autoFleeTimer, _autoFleeStartTime, _autoFleeBarInterval, _autoCatching, _throwing, _fishing, _eggHatching, encounterMsg, encounterSource, encounterVariant, saveGame, addSystemLog, getCurrentRegion, hasAnyBall, rand, randInt, setSaveSuspended, inMassZone, inTwistZone, rollGuaranteedIvs, setPhase, setCurrentEncounter, setEncounterLevel, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setHoneyBuffActive, setCharmBuffActive, setCharmGuaranteed, setCharmEncounterCount, setHoneyPausedRemaining, setCharmPausedRemaining, setHoneyCountdownEnd, setCharmCountdownEnd, setNextEncounterTimer, setAutoCatching, setThrowing, setCatchConfirmStep, setAutoFleeTimer, setAutoFleeStartTime, setAutoFleeBarInterval, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, setEncounterMsg, addRosterEntry, setLastObtainedEntryId, rollGender, genderBadge, wildLevelCap, dexUnlocked, dexShinyOwned, setEncounterSource, setEncounterVariant } from './state.js';
+import { phase, gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, nextEncounterTimer, honeyBuffActive, charmBuffActive, charmGuaranteed, blockBuffActive, blockRecipe, blockQuality, honeyCountdownEnd, charmCountdownEnd, honeyPausedRemaining, charmPausedRemaining, honeyExpiryTimer, charmExpiryTimer, honeyCountdownInterval, charmCountdownInterval, _charmEncounterCount, _autoFleeTimer, _autoFleeStartTime, _autoFleeBarInterval, _autoCatching, _throwing, _fishing, _eggHatching, encounterMsg, encounterSource, encounterVariant, saveGame, addSystemLog, getCurrentRegion, hasAnyBall, rand, randInt, setSaveSuspended, inMassZone, inTwistZone, rollGuaranteedIvs, setPhase, setCurrentEncounter, setEncounterLevel, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setHoneyBuffActive, setCharmBuffActive, setCharmGuaranteed, setCharmEncounterCount, setHoneyPausedRemaining, setCharmPausedRemaining, setHoneyCountdownEnd, setCharmCountdownEnd, setNextEncounterTimer, setAutoCatching, setThrowing, setCatchConfirmStep, setAutoFleeTimer, setAutoFleeStartTime, setAutoFleeBarInterval, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, setEncounterMsg, addRosterEntry, setLastObtainedEntryId, rollGender, genderBadge, wildLevelCap, dexUnlocked, dexShinyOwned, setEncounterSource, setEncounterVariant, simNow, setSimClock } from './state.js';
 import { $, showView, updateTextBox, hideTextBox, setIdleCharacter, isOnGameView, isIdleStageVisible, isPageHidden, updateBackpack, updateStats, tryLoadPokemonImage, tryLoadPokemonIcon, isEvolutionShowActive } from './ui.js';
 import { getBountyTargetIndexes } from './bounty.js';
 import { pickRandomPokemon, pickWeightedPokemon, findBerryTarget, rollLegendEncounter, activateHoney, activateShinyCharm, clearCharmCountdown, clearHoneyCountdown, startCharmCountdown, startHoneyCountdown, handleHoneyExpired, handleCharmExpired, TYPE_COLORS, cancelSuspendedEncounterForEgg, pickFamily } from './items.js';
@@ -55,6 +55,11 @@ let _bgCatch = false;
 // 后台挂机补算标记：置位期间自动捕捉按"后台快速结算"处理（不播动画、不切视图），
 // 用于恢复前台时把后台停摆期间错过的遭遇批量补算
 let _bgCatchup = false;
+// 跨越切后台的那只遭遇：结算时间按"切走那一刻"记（10:00 遇到、10:00 收服）。
+// 它不是补算出来的，但也绝不能写成回前台的时间，否则相遇日志里会和相遇时刻差几十分钟
+let _encounterAt = 0;
+export function setEncounterAt(at) { _encounterAt = at > 0 ? at : 0; }
+const encounterStamp = () => _encounterAt || simNow();
 // 后台结算结果快照：最终判定已在后台落库，玩家切回游戏页时补播完整捕捉/逃跑动画
 let _bgResult = null;
 // 后台结果补播只是视觉回放，不允许再次参与真实遭遇结算。
@@ -590,8 +595,11 @@ export function isLegendEncounter() {
 }
 
 // 恢复待开战记录：同一只、同闪光/等级/来源；started=false 重新滚入，true 直接回战斗画面
-export function restoreWildEncounter(rec) {
+// gapSecs：这次启动/回前台跨越的停摆秒数（>0 说明这只遭遇跨了后台，
+// 它的结算时间要记回"切走那一刻"，不能记成回来后的时间）
+export function restoreWildEncounter(rec, gapSecs = 0) {
   if (!rec) return false;
+  if (gapSecs > 0) setEncounterAt(Date.now() - gapSecs * 1000);
   const poke = getPokemonByIndex(String(rec.index));
   if (!poke) {
     gameData.wildEncounter = null;
@@ -854,12 +862,13 @@ export async function throwBall(ballType) {
         level: encounterLevel, gender: _encounterGender,
         ivs: _encounterSource === 'twist' ? rollGuaranteedIvs(currentEncounter.legend ? 3 : TWIST_GUARANTEED_IVS) : undefined,
         variant: _encounterVariant,
+        at: _encounterAt, // 跨界遭遇：按切走时刻入档
       });
       setLastObtainedEntryId(entry.id);
       // 记录遭遇日志（score 含个体值加成，需先建档拿到 ivs）
       if (!gameData.encounterLogs[idx]) gameData.encounterLogs[idx] = [];
       gameData.encounterLogs[idx].push({
-        time: Date.now(), shiny: currentIsShiny, result: 'caught',
+        time: encounterStamp(), shiny: currentIsShiny, result: 'caught',
         balls: { ...currentEncounterBalls }, source: _encounterSource,
         charmBuff: charmBuffActive, // 该遭遇是否处于闪耀护符 buff（影响闪光率评分）
         score: computeObtainScore({
@@ -869,7 +878,7 @@ export async function throwBall(ballType) {
           guaranteedIvs: _encounterSource === 'twist' ? (currentEncounter.legend ? 3 : TWIST_GUARANTEED_IVS) : 0,
         }),
       });
-      addSystemLog('pokemon_caught', { pokemon: idx, shiny: currentIsShiny, ball: ballType, auto: _autoCatching });
+      addSystemLog('pokemon_caught', { pokemon: idx, shiny: currentIsShiny, ball: ballType, auto: _autoCatching }, encounterStamp());
     } else if (outcome === 'fled') {
       if (!_bgCatch) setPhase('fled'); // 立即阻止再次丢球/逃跑
       $('fleeBtn').style.display = 'none';
@@ -877,7 +886,7 @@ export async function throwBall(ballType) {
       gameData.stats.totalFlees++;
       if (!gameData.encounterLogs[idx]) gameData.encounterLogs[idx] = [];
       gameData.encounterLogs[idx].push({
-        time: Date.now(), shiny: currentIsShiny, result: 'fled',
+        time: encounterStamp(), shiny: currentIsShiny, result: 'fled',
         balls: { ...currentEncounterBalls }, source: _encounterSource,
         charmBuff: charmBuffActive,
         // 未获得宝可梦：score 记"相遇欧气分"（遇到稀有本身也值得加分，无 buff 更高）
@@ -886,7 +895,7 @@ export async function throwBall(ballType) {
           charmBuff: charmBuffActive, honeyBuff: honeyBuffActive,
         }),
       });
-      addSystemLog('pokemon_escaped', { pokemon: idx, shiny: currentIsShiny, auto: _autoCatching });
+      addSystemLog('pokemon_escaped', { pokemon: idx, shiny: currentIsShiny, auto: _autoCatching }, encounterStamp());
     }
     // 判定已落库就把待开战记录一起作废：否则存档里既有捕获结果、又留着"未结算的这只"，重启会重复入账。
     gameData.wildEncounter = null;
@@ -995,7 +1004,7 @@ export async function fleeEncounter(isAutoFlee) {
   if (!gameData.encounterLogs) gameData.encounterLogs = {};
   if (!gameData.encounterLogs[idx]) gameData.encounterLogs[idx] = [];
   const logEntry = {
-    time: Date.now(), shiny: currentIsShiny, result: 'fled',
+    time: encounterStamp(), shiny: currentIsShiny, result: 'fled',
     balls: { ...currentEncounterBalls }, source: _encounterSource,
     charmBuff: charmBuffActive,
     // 主动逃跑（手动 / 佛系自动）属于玩家策略选择，不参与欧气评定
@@ -1009,7 +1018,7 @@ export async function fleeEncounter(isAutoFlee) {
   if (!isAutoFlee) logEntry.manual = true;
   gameData.encounterLogs[idx].push(logEntry);
   // 自动/手动逃跑都是玩家主动离开：放走宝可梦，不发生精灵逃走动画
-  addSystemLog('player_fled', { pokemon: idx, shiny: currentIsShiny, auto: !!isAutoFlee });
+  addSystemLog('player_fled', { pokemon: idx, shiny: currentIsShiny, auto: !!isAutoFlee }, encounterStamp());
   if (isOnGameView() && !_bgCatchup) updateTextBox('你逃走了！', false);
   await saveGame();
   updateStats();
@@ -1340,10 +1349,10 @@ export async function autoCatch() {
       if (!_bgCatch && phase !== 'encounter') { setAutoCatching(false); return; }
       if (!_bgCatch) setPhase('fled');
       const idx = String(currentEncounter.index);
-      addSystemLog('player_fled', { pokemon: idx, shiny: currentIsShiny, auto: true });
+      addSystemLog('player_fled', { pokemon: idx, shiny: currentIsShiny, auto: true }, encounterStamp());
       if (!gameData.encounterLogs[idx]) gameData.encounterLogs[idx] = [];
       gameData.encounterLogs[idx].push({
-        time: Date.now(), shiny: currentIsShiny, result: 'fled',
+        time: encounterStamp(), shiny: currentIsShiny, result: 'fled',
         balls: { ...currentEncounterBalls }, manual: false, source: _encounterSource,
         charmBuff: charmBuffActive,
         // 无球自动逃跑属于自动操作策略，不参与欧气评定
@@ -1429,9 +1438,13 @@ export async function catchUpEncounters(secs, buffRemainingMs) {
   setSaveSuspended(true);
   let done = 0, balls = 0, shinies = 0;
   const caught = []; // 补算期间捕获成功的宝可梦（含形态名），随汇总日志打印便于核对
+  // 把 total 场按停摆窗口均匀铺开：每场的日志/获得时间写成"当时"，日志页就是一条连续时间线
+  const startAt = Date.now() - secs * 1000;
+  const stepMs = total > 0 ? (secs * 1000) / total : 0;
   try {
     for (let i = 0; i < total; i++) {
       if (phase !== 'idle') break; // 玩家切走/进入战斗等其他流程：中止剩余补算
+      setSimClock(startAt + Math.round(i * stepMs));
       const poke = resolveEncounterPoke();
       if (!poke) break;
       const ballsBefore = gameData.stats.totalBallsUsed;
@@ -1458,7 +1471,7 @@ export async function catchUpEncounters(secs, buffRemainingMs) {
     console.error('[挂机补发] 遇敌补算异常:', e);
   } finally {
     _bgCatchup = false;
-    setSaveSuspended(false);
+    setSimClock(0);
     resumeEncounterFlow(); // 补算结束统一恢复 buff 倒计时与遇敌调度
     setBulkQuiet(false); // 恢复背景曲（补算期间的闪光提示音在此一并补播）
     saveGame();

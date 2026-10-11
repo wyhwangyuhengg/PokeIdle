@@ -1,5 +1,5 @@
 import { $, showView, tryLoadImage, showConfirmBar, viewportToLogic } from './ui.js';
-import { gameData, getPokemonByIndex, saveGame, pushNav, ensureGender, genderBadge, isPokemon } from './state.js';
+import { gameData, getPokemonByIndex, saveGame, pushNav, ensureGender, genderBadge, isPokemon, ivOf, effIvTotal } from './state.js';
 import { matchPinyinPartial } from './pokedex.js';
 import { TYPE_COLORS, pokemonSourceBadge } from './items.js';
 import { REGION_CYCLE } from './config.js';
@@ -451,13 +451,12 @@ function renderTeamPick(box) {
 
 // 个体值总和
 function pickIvSum(p) {
-  if (!p.ivs) return 0;
-  return ['hp', 'atk', 'def', 'spa', 'spd', 'spe'].reduce((s, k) => s + (p.ivs[k] || 0), 0);
+  return effIvTotal(p);
 }
 // 个体值明细（hover 个体值单元格的 tooltip 显示；HP 用全角 ＨＰ，与中文标签同宽，数值自然对齐）
 function pickIvTip(p) {
   return [['ＨＰ', 'hp'], ['攻击', 'atk'], ['防御', 'def'], ['特攻', 'spa'], ['特防', 'spd'], ['速度', 'spe']]
-    .map(([label, k]) => `${label}  ${p.ivs ? (p.ivs[k] || 0) : 0}`)
+    .map(([label, k]) => `${label}  ${ivOf(p, k)}`)
     .join('\n');
 }
 
