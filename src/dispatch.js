@@ -15,8 +15,8 @@ let _timer = null;
 let _pickSlot = null;          // 当前放入槽位；null = 不在放入页
 let _pickPreset = null;        // 替换场景带入的原槽位时长（分钟），放入时沿用
 let _pickSearch = '';
-let _pickSortBy = null;
-let _pickSortDir = 1;
+let _pickSortBy = null;      // 放入列表排序列：null=默认按获得时间倒序（与仓库列表同口径）| name | speed | level
+let _pickSortDir = -1;         // 1 升序 / -1 降序（默认时间倒序，与仓库列表一致）
 let _pickTypeFilter = '';
 let _pickRegionFilter = '';
 let _pickSrc = '';
@@ -1050,14 +1050,8 @@ function pickCandidates() {
       } else if (_pickSortBy === 'level') {
         va = a.level || 1; vb = b.level || 1;
       } else {
-        const ai = String(a.species), bi = String(b.species);
-        const an = Number(ai), bn = Number(bi);
-        if (Number.isFinite(an) && Number.isFinite(bn)) {
-          va = an * 1000 + (a.level || 1);
-          vb = bn * 1000 + (b.level || 1);
-        } else {
-          va = ai; vb = bi;
-        }
+        // 默认与仓库列表同口径：按获得时间倒序，最新拿到的排最上面
+        va = a.obtainedAt || 0; vb = b.obtainedAt || 0;
       }
       if (typeof va === 'string') return va.localeCompare(vb) * _pickSortDir;
       return (va - vb) * _pickSortDir;
@@ -1172,7 +1166,7 @@ function bindPickPersistent(root) {
       const field = el.dataset.sort;
       if (_pickSortBy === field) {
         if (_pickSortDir === 1) _pickSortDir = -1;
-        else { _pickSortBy = null; _pickSortDir = 1; }
+        else { _pickSortBy = null; _pickSortDir = -1; } // 降序 → 回到默认时间倒序
       } else { _pickSortBy = field; _pickSortDir = 1; }
       refreshPickList();
     });

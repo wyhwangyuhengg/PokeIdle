@@ -1910,7 +1910,8 @@ html.mobile-app #quitHide { display: none !important; }
 #quitDialog.open { display: flex; }
 
 #quitDialog .dialog-box,
-#gpsDestDialog .dialog-box {
+#gpsDestDialog .dialog-box,
+#importCmpDialog .dialog-box {
   position: relative;
   background: var(--console-body);
   border: 2px solid var(--ui-color);
@@ -1920,7 +1921,8 @@ html.mobile-app #quitHide { display: none !important; }
   min-width: 160px;
 }
 #quitDialog .dialog-title,
-#gpsDestDialog .dialog-title {
+#gpsDestDialog .dialog-title,
+#importCmpDialog .dialog-title {
   font-size: 12px;
   font-weight: 700;
   color: var(--ui-color);
@@ -1929,7 +1931,8 @@ html.mobile-app #quitHide { display: none !important; }
 }
 /* 右上角关闭叉 */
 #quitDialog .quit-close,
-#gpsDestDialog .quit-close {
+#gpsDestDialog .quit-close,
+#importCmpDialog .quit-close {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -1948,10 +1951,12 @@ html.mobile-app #quitHide { display: none !important; }
 }
 @media (hover: hover) {
   #quitDialog .quit-close:hover,
-  #gpsDestDialog .quit-close:hover { opacity: 1; }
+  #gpsDestDialog .quit-close:hover,
+  #importCmpDialog .quit-close:hover { opacity: 1; }
 }
 #quitDialog .quit-close svg,
-#gpsDestDialog .quit-close svg { width: 11px; height: 11px; fill: currentColor; }
+#gpsDestDialog .quit-close svg,
+#importCmpDialog .quit-close svg { width: 11px; height: 11px; fill: currentColor; }
 #quitDialog .dialog-opt,
 #gpsDestDialog .dialog-opt {
   display: block;
@@ -1990,6 +1995,85 @@ html.mobile-app #quitHide { display: none !important; }
 }
 #gpsDestDialog.open { display: flex; }
 #gpsDestDialog .dialog-box { min-width: 210px; }
+
+/* ===== 导入存档对比框：左右两列摆两份档，中间箭头表示覆盖方向 ===== */
+#importCmpDialog {
+  position: absolute;
+  inset: 0;
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.25);
+}
+/* 弹框比 quitDialog 更窄更紧，又不能顶到屏幕边框 */
+#importCmpDialog .dialog-box {
+  box-sizing: border-box;
+  max-width: calc(100% - 16px);
+  padding: 10px 10px 12px;
+  color: var(--ui-color);
+}
+/* 会丢内容时的警示行 */
+#importCmpDialog .cmp-warn {
+  font-size: 10px;
+  font-weight: 700;
+  color: #e74c3c;
+  margin-bottom: 4px;
+}
+#importCmpDialog .cmp-grid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+#importCmpDialog .cmp-col {
+  width: 92px;
+  border: 1px solid var(--console-border);
+  border-radius: 4px;
+  padding: 3px 5px;
+  text-align: left;
+}
+#importCmpDialog .cmp-head {
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  border-bottom: 1px solid var(--console-border);
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+#importCmpDialog .cmp-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  line-height: 1.45;
+}
+#importCmpDialog .cmp-arrow {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+#importCmpDialog .cmp-btns {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+#importCmpDialog .cmp-btn {
+  padding: 5px 12px;
+  border: 2px solid var(--ui-color);
+  border-radius: 6px;
+  background: var(--screen-bg);
+  color: var(--ui-color);
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.85;
+  cursor: pointer;
+  user-select: none;
+}
+#importCmpDialog .cmp-btn:active { transform: translateY(2px); }
+@media (hover: hover) {
+  #importCmpDialog .cmp-btn:hover { opacity: 1; }
+}
 .gps-dest-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

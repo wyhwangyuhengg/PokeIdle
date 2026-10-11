@@ -1,8 +1,8 @@
 // 流程：NPC 列表 → 自动编队（仓库中等级最高 6 只）→ 回合制战斗（动画）→ 结算（经验/糖果）
 // 与挂机主循环解耦：战斗只在手机 App 内进行，不影响地图/遇敌/离线
-import { $, showView, tryLoadPokemonImage, tryLoadPokemonIcon, updateStats, updateBackpack, logicViewport, popupBounds } from './ui.js';
+import { $, showView, tryLoadPokemonImage, tryLoadPokemonIcon, updateStats, updateBackpack, logicViewport, popupBounds, watchOutsidePress } from './ui.js';
 import { gameData, getPokemonByIndex, addSystemLog, saveGame, pushNav, setPhase, currentEncounter, phase, ensureGender, rollGender, genderBadge, isPokemon, randInt, effIvs } from './state.js';
-import { createMon, useMove, preTurn, postTurn, aiMove, tickBattleTurns, transformMon } from './battle-core.js';
+import { createMon, useMove, preTurn, postTurn, aiMove, tickBattleTurns, transformMon, STRUGGLE_ID } from './battle-core.js';
 import { typeMult } from './type-chart.js';
 import { grantItem, itemIconSrc, pickEvoDrop, MINT_KEYS, typeIconColor } from './items.js';
 import { chooseMoves } from './moves.js';
@@ -88,6 +88,21 @@ function resetCounter(mon) {
 }
 
 // 战斗是否进行中（标题栏返回判断）
+// 调试：把当前对战双方所有宝可梦的 PP 清空（用来快速验证「挣扎」兜底）
+export function debugClearPp() {
+  const b = _activeBattle;
+  if (!b) return 0;
+  let n = 0;
+  for (const side of ['pTeam', 'eTeam']) {
+    for (const x of (b[side] || [])) {
+      if (!x || !x.mon || !Array.isArray(x.mon.pp)) continue;
+      x.mon.pp = x.mon.pp.map(() => 0);
+      n++;
+    }
+  }
+  return n;
+}
+
 export function isBattleActive() {
   return !!_activeBattle;
 }
@@ -180,6 +195,12 @@ const battleSleep = (ms) => new Promise((res, rej) => {
   }, ms);
 });
 
+// 挣扎：四招全没 PP 时的兜底招式（无属性=不被免疫也不吃克制，必中；按伤害的 1/4 反伤）
+const STRUGGLE_MOVE = {
+  id: STRUGGLE_ID, name: '挣扎', type: '无', category: '物理', power: 50, accuracy: 0, pp: null,
+  effect: { kind: 'recoil', ratio: 0.25, cat: 'phys', power: 50 },
+};
+
 async function ensureData() {
   if (_data && _learnset) return;
   const [d, l] = await Promise.all([
@@ -187,6 +208,7 @@ async function ensureData() {
     fetch('./pokemon-data/learnset.json').then((r) => r.json()),
   ]);
   _data = d;
+  _data.moves[STRUGGLE_ID] = STRUGGLE_MOVE; // 数据表里没有挣扎，进战斗前补一条
   _learnset = l;
 }
 
@@ -351,7 +373,7 @@ function firstUsableMove(mon) {
     if (m == null) return false;
     const pi = mon.moves.indexOf(m);
     return !Array.isArray(mon.pp) || mon.pp[pi] == null || mon.pp[pi] > 0;
-  }) ?? null;
+  }) ?? STRUGGLE_ID; // 一招都用不了 → 挣扎
 }
 
 function buildPlayerTeam() {
@@ -476,6 +498,11 @@ function applyEntryHazards(battle, side, events) {
     d = Math.max(1, Math.floor(d));
     const before = mon.hp;
     mon.hp = Math.max(1, mon.hp - d); // 保底 1 HP，防止钉子直接击倒
+    if (mon.hp === before) {
+      // 只剩 1 HP 时保底生效：这时别再报"受到 0 点伤害"，给一句说得通的话（不然看着像锁血）
+      events.push({ t: 'msg', text: `${mon.name}撑住了，钉子没有造成伤害！` });
+      return;
+    }
     events.push({ t: 'dmg', who: mon.name, uid: mon.uid, amount: before - mon.hp, from: before, to: mon.hp, text });
   };
   let stepped = false; // 是否实际踩中钉子（隐形岩被免疫/毒菱免疫时不触发碎片高亮）
@@ -929,18 +956,20 @@ function showLogMenu(x, y) {
   const b = popupBounds(); // 夹紧在机身内：手游双屏下机身只占屏幕中间一块
   menu.style.left = Math.max(b.left, Math.min(lx - 24, b.right - mw - 4)) + 'px';
   menu.style.top = Math.max(b.top, Math.min(ly, b.bottom - mh - 4)) + 'px';
-  menu.addEventListener('pointerdown', (e) => e.stopPropagation());
   menu.onclick = (e) => {
     if (!e.target.closest('.shop-ctx-item')) return;
     hideLogMenu();
     showBattleLogs();
   };
-  document.addEventListener('pointerdown', hideLogMenu);
+  _logMenuUnwatch?.();
+  _logMenuUnwatch = watchOutsidePress(menu, hideLogMenu);
 }
+let _logMenuUnwatch = null;
 function hideLogMenu() {
   const menu = _logMenu;
   if (menu) menu.style.display = 'none';
-  document.removeEventListener('pointerdown', hideLogMenu);
+  _logMenuUnwatch?.();
+  _logMenuUnwatch = null;
 }
 
 // 记录页承载容器：战斗页为 .battle-fight，结算页回顾为 .battle-result
@@ -1958,7 +1987,7 @@ function askPlayerMove(battle) {
       $('b-text').style.display = 'none'; // 选招时左栏全给技能，节省空间
       showRight(); // 选招态：右栏显示招式详情 + 返回
       $('b-right-info').style.display = 'none'; // 选招态隐藏 NPC 名 + 回合数
-      cmd.innerHTML = moves.map((m) => {
+      const slotHtml = moves.map((m) => {
         const mv = m != null ? _data.moves[m] : null;
         const ef = mv && mv.effect;
         // 当前 PP（与 moves 对齐），用于按钮显示与耗尽判定
@@ -1971,13 +2000,22 @@ function askPlayerMove(battle) {
         else if (pMon.disabledMove != null && String(m) === pMon.disabledMove) { dis = ' disabled'; tip = '招式被封印'; }
         else if (pMon.tauntTurns > 0 && moveCat(mv) === 'status') { dis = ' disabled'; tip = '被挑衅，只能使用攻击招式'; }
         else if (curPp === 0) { dis = ' disabled'; tip = 'PP 不足'; }
-        return `<button class="b-move${dis}" data-move="${m}" title="${tip}"${dis ? ' disabled' : ''}>
-          <span class="b-move-name">${mv ? mv.name : '—'}</span>
-          ${mv ? `<span class="b-move-type" style="background:${TYPE_COLORS[mv.type]};color:${typeIconColor(mv.type)}">
+        const badge = mv && mv.type !== '无' // 挣扎是无属性的伪招式，没有配色与图标
+          ? `<span class="b-move-type" style="background:${TYPE_COLORS[mv.type]};color:${typeIconColor(mv.type)}">
             <svg class="b-move-type-icon"><use xlink:href="#icon-type-${mv.type}"></use></svg>
-          </span>` : ''}
-        </button>`;
-      }).join('');
+          </span>` : '';
+        return { dis: !!dis, html: `<button class="b-move${dis}" data-move="${m}" title="${tip}"${dis ? ' disabled' : ''}>
+          <span class="b-move-name">${mv ? mv.name : '—'}</span>
+          ${badge}
+        </button>` };
+      });
+      // 四招全都不可用（PP 耗尽 / 被封印 / 被挑衅…）时补一个「挣扎」：否则玩家只剩撤退一条路
+      if (slotHtml.every((x) => x.dis)) {
+        slotHtml.push({ dis: false, html: `<button class="b-move" data-move="${STRUGGLE_ID}" title="没有可用的招式了">
+          <span class="b-move-name">挣扎</span>
+        </button>` });
+      }
+      cmd.innerHTML = slotHtml.map((x) => x.html).join('');
       cmd.querySelectorAll('.b-move').forEach((btn) => {
         btn.addEventListener('mouseenter', () => {
           showMoveDetail(btn.dataset.move);

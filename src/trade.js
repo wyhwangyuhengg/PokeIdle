@@ -4,7 +4,7 @@
 // 得到的宝可梦来源记为「交换」。
 import { TRADE_COUNT, TRADE_REFRESH_MS, TRADE_GENDER_CHANCE, TRADE_IV_CHANCE, TRADE_IV_MIN, TRADE_SHINY_CHANCE, TRADE_IV_SUM_MIN, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, TRADE_GIVE_LEVEL_MAX, TRADE_VALUE_W, TRADE_VALUE_JITTER, TRADE_GIVE_LEVEL_NONE, TRADE_BASE_FORM_CHANCE, EXP_CANDY_XP, MAX_LEVEL, BREED_ONLY_IDS } from './config.js';
 import { gameData, allPokemon, getPokemonByIndex, isPowerForm, getNature, pushNav, saveGame, addSystemLog, randInt, rollIvs, rollLegendIvs, rollNature, rollGender, addRosterEntry, setLastObtainedEntryId, ensureGender, genderBadge, isPokemon, ivOf, effIvTotal } from './state.js';
-import { $, showView, updateStats, tryLoadImage, tryLoadPokemonImage, logicViewport, popupBounds, showConfirmBar } from './ui.js';
+import { $, showView, updateStats, tryLoadImage, tryLoadPokemonImage, logicViewport, popupBounds, showConfirmBar, watchOutsidePress } from './ui.js';
 import { showGoodbyeConfirm, showTradeReceive, startShinySparkleOn, stopShinySparkleLoop } from './animation.js';
 import { TYPE_COLORS, pokemonSourceBadge } from './items.js';
 import { isInAnyTeam } from './team.js';
@@ -854,21 +854,21 @@ function showTradeContextMenu(ignored, offerId, x, y) {
   const b = popupBounds(); // 夹紧在机身内：手游双屏下机身只占屏幕中间一块
   menu.style.left = Math.max(b.left, Math.min(lx - 24, b.right - mw - 4)) + 'px';
   menu.style.top = Math.max(b.top, Math.min(ly, b.bottom - mh - 4)) + 'px';
-  // 菜单内点击不触发外部关闭；点击外部任意位置关闭
-  menu.addEventListener('pointerdown', (e) => e.stopPropagation());
   menu.onclick = (e) => {
     const opt = e.target.closest('.shop-ctx-item');
     if (!opt) return;
     hideTradeContextMenu();
     toggleIgnoreOffer(opt.dataset.ctxOffer);
   };
-  document.addEventListener('pointerdown', hideTradeContextMenu);
+  _tradeMenuUnwatch = watchOutsidePress(menu, hideTradeContextMenu);
 }
 
+let _tradeMenuUnwatch = null;
 function hideTradeContextMenu() {
+  _tradeMenuUnwatch?.();
+  _tradeMenuUnwatch = null;
   const menu = $('tradeCtxMenu');
   if (menu) menu.style.display = 'none';
-  document.removeEventListener('pointerdown', hideTradeContextMenu);
 }
 
 // 切换 offer「忽略」状态：忽略后不再计入手机主页红点与托盘可交换计数，但随时可恢复/正常交换

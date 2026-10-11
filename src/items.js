@@ -1385,6 +1385,7 @@ export function activateHoney() {
   console.log('[续杯] activateHoney 被调用', { autoBuffHoney: gameData.settings?.autoBuffHoney, autoBuffCharm: gameData.settings?.autoBuffCharm, battlePhase: phase });
   gameData.items['sweet-honey']--;
   addSystemLog('item_use', { item: 'sweet-honey' });
+  refillBuffIfEmpty('sweet-honey'); // 用掉最后一个就补上
   setHoneyBuffActive(true);
   setIdleCharacter('walk');
   particles.stop();
@@ -1437,6 +1438,7 @@ export function activateShinyCharm() {
   gameData.items['shiny-charm']--;
   setCharmEncounterCount(0);
   addSystemLog('item_use', { item: 'shiny-charm' });
+  refillBuffIfEmpty('shiny-charm'); // 用掉最后一个就补上
   setCharmBuffActive(true);
   setCharmGuaranteed(true); // 保底：下一只遭遇必定闪光（不然 60 秒里遇不到闪会像白花钱）
   setIdleCharacter('walk');
@@ -1464,17 +1466,41 @@ export function activateShinyCharm() {
 }
 
 // ===== Buff 到期公共回调 =====
+// 自动补增益道具：该道具的补货开关开着、库存见底时，按商店价用糖果补 1 个（规则与自动补球一致）。
+// 只管把背包补上，要不要自动用掉是「自动使用增益道具」的事
+export function refillBuffIfEmpty(item) {
+  const on = item === 'sweet-honey' ? gameData.settings?.autoRefillHoney : gameData.settings?.autoRefillCharm;
+  if (!on) return false;
+  if ((gameData.items[item] || 0) > 0) return false;
+  const price = CANDY_EXCHANGE[item];
+  if (!price || (gameData.items.candy || 0) < price) return false;
+  gameData.items.candy -= price;
+  gameData.items[item] = 1;
+  gameData.stats.totalItemsEarned[item] = (gameData.stats.totalItemsEarned[item] || 0) + 1;
+  addSystemLog('auto_refill', { item, cost: price });
+  updateBackpack(item);
+  return true;
+}
+
+// 续杯取用：开了「自动使用」才自动用；库存见底时，开着补货就先补一个再用
+export function takeBuffForRenew(item) {
+  const useKey = item === 'sweet-honey' ? 'autoBuffHoney' : 'autoBuffCharm';
+  if (!gameData.settings?.[useKey]) return false;
+  if ((gameData.items[item] || 0) <= 0 && !refillBuffIfEmpty(item)) return false;
+  return (gameData.items[item] || 0) > 0;
+}
+
 export function handleHoneyExpired() {
   setHoneyBuffActive(false);
   setHoneyCountdownEnd(0);
   clearHoneyCountdown();
   $('idleText').textContent = '✦ 甜蜜蜜的效果渐渐褪去了';
-  if (gameData.settings?.autoBuffHoney && (gameData.items['sweet-honey']||0) > 0) {
+  if (!charmBuffActive && takeBuffForRenew('sweet-honey')) {
     setHoneyExpiryTimer(null);
     activateHoney();
     return;
   }
-  if (gameData.settings?.autoBuffCharm && (gameData.items['shiny-charm']||0) > 0 && !charmBuffActive) {
+  if (!charmBuffActive && takeBuffForRenew('shiny-charm')) {
     setHoneyExpiryTimer(null);
     activateShinyCharm();
     return;
@@ -1492,12 +1518,12 @@ export function handleCharmExpired() {
   setCharmCountdownEnd(0);
   clearCharmCountdown();
   showBuffExpired('charm');
-  if (gameData.settings?.autoBuffHoney && (gameData.items['sweet-honey']||0) > 0) {
+  if (takeBuffForRenew('sweet-honey')) {
     setCharmExpiryTimer(null);
     activateHoney();
     return;
   }
-  if (gameData.settings?.autoBuffCharm && (gameData.items['shiny-charm']||0) > 0) {
+  if (takeBuffForRenew('shiny-charm')) {
     setCharmExpiryTimer(null);
     activateShinyCharm();
     return;

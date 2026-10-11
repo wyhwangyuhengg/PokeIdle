@@ -110,9 +110,22 @@ export function getAppChannelView() {
   return null;
 }
 
-export function showView(id) {
-  // 切换视图即关闭残留确认框（如游戏币不足提示），避免离开页面后再次进入仍显示
+// 切视图时收掉残留确认框（如游戏币不足提示），但**只管这次切换影响的那块屏**：
+// 双屏下手游模式上屏遇敌会走 showView('encounterView')，不能把下屏商店里的确认框一起收掉
+function dismissConfirmBarForView(id) {
+  const bar = document.getElementById('confirmBar');
+  if (!bar) return;
+  if (isDualLayout()) {
+    const host = $(id)?.closest('.screen');
+    if (host && !host.contains(bar)) return; // 这条确认框挂在另一块屏上，留着
+  }
   hideConfirmBar();
+}
+
+export function showView(id) {
+  dismissConfirmBarForView(id);
+  // 导入存档的对比框只属于设置页：切走时收掉，别浮在新页面上
+  if (id !== 'settingsView') document.getElementById('importCmpDialog')?.remove();
   if (id === 'idleView' && phase === 'encounter') {
     id = 'encounterView';
   }
@@ -167,7 +180,9 @@ export function showView(id) {
   }
   // 孵蛋结果确认页离开游戏页时：若期间挂起过野生遭遇则恢复该遭遇，
   // 否则按原流程回到空闲，避免 phase 停留在 eggResult。
-  if (wasOnGameView && phase === 'eggResult' && !_eggHatching && id !== 'encounterView') {
+  // 同理只看舞台通道：双屏下切下屏 app 不该把上屏的孵蛋结果结算掉
+  const stageSwitch = !mobileDual || targetStage;
+  if (stageSwitch && wasOnGameView && phase === 'eggResult' && !_eggHatching && id !== 'encounterView') {
     import('./items.js').then(m => m.finalizeEggResultContext());
   }
   // 离开游戏页收尾只在单屏布局下按"当前页"判断：双屏下切下屏 app 时上屏还在遭遇里，
@@ -1455,6 +1470,15 @@ function consoleBox() {
   const r = el?.getClientRects?.()[0];
   const w = el?.offsetWidth, h = el?.offsetHeight;
   return r && w && h ? { r, w, h } : null;
+}
+
+// 浮层菜单通用关闭：捕获阶段的 pointerdown。
+// 用冒泡监听会被 stopPropagation 的控件（筛选下拉按钮这类）挡掉，菜单就赖在屏幕上并压住下拉；
+// 捕获阶段先于目标控件触发，挡不住。返回解绑函数，菜单收起时记得调用
+export function watchOutsidePress(el, close) {
+  const onDown = (e) => { if (!el.contains(e.target)) close(); };
+  document.addEventListener('pointerdown', onDown, true);
+  return () => document.removeEventListener('pointerdown', onDown, true);
 }
 
 // 浮层边界：手游夹在机身内，经典布局即整页视口

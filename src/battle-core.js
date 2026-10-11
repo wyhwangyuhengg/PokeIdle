@@ -1,5 +1,8 @@
 // 回合制战斗引擎（第一版原语子集）：
 // 伤害（物理/特殊/多段/固定/吸血/反伤）+ 概率附加状态 + 能力升降 + 回复 + 常见异常状态
+// 挣扎：所有招式 PP 耗尽/全被封时的兜底招式。数据表里没有它，
+// 由 battle-view 在进战斗前注入同 id 的条目（无属性=不被免疫也不吃克制、必中、按伤害 1/4 反伤）
+export const STRUGGLE_ID = 9999;
 import { typeMult } from './type-chart.js';
 
 // ---------- 性格（25 种，英文 key 与存档一致；statIndex: 0攻 1防 2特攻 3特防 4速） ----------
@@ -919,7 +922,7 @@ export function aiMove(actor, enemy, data) {
     if (Array.isArray(actor.pp) && actor.pp[pi] != null && actor.pp[pi] <= 0) return false;
     return true;
   });
-  if (!usable.length) return null;
+  if (!usable.length) return STRUGGLE_ID; // 一招都用不了 → 挣扎（不然双方会互相干瞪眼）
   // 当前最高打击倍率：打不动对方时更倾向用辅助招（降敌能力/自强化）
   const maxMult = usable.reduce((mx, m) => {
     const ef = data.moves[m].effect;

@@ -224,10 +224,10 @@ function typeItems(placeholder) {
 
 // 树果图标：12 格横向雪碧图（web/public/berries.png，格序与游戏 BERRY_ICONS 一致）
 const BERRY_SPRITE = './berries.png';
-function berryIconHtml(i) {
+function berryIconHtml(i, size = 18) {
   if (!BERRY_NAMES[i]) return '';
-  const bg = `url('${BERRY_SPRITE}') -${i * 18}px 0/216px 18px no-repeat`;
-  return `<span class="berry-ico" title="${BERRY_NAMES[i]}" style="background:${bg};"></span>`;
+  const bg = `url('${BERRY_SPRITE}') -${i * size}px 0/${12 * size}px ${size}px no-repeat`;
+  return `<span class="berry-ico" title="${BERRY_NAMES[i]}" style="width:${size}px;height:${size}px;background:${bg};"></span>`;
 }
 
 // 宝可梦图标：雪碧图 + 位置表（tools/build-icon-sprite.mjs 生成）。元素尺寸 = 图标显示尺寸，外框只负责居中
@@ -443,12 +443,12 @@ function methodDetail(p, m, type) {
     return `在 <b>${p.region || '本地'}</b> 地区的野外遇到（普通遇敌 / 大量出没 / 钓鱼）`;
   }
   if (type === 'tree') {
-    const foods = (p.foods || []).map((i) => berryIconHtml(i)).join('');
-    return `用配方一致的树果方块吸引（需先拥有过它）${foods ? `<span class="pk-recipe">配方 ${foods}</span>` : ''}`;
+    const foods = (p.foods || []).map((i) => berryIconHtml(i, 14)).join(''); // 行内跟正文走，比列表里的 18px 小一档
+    return `解锁图鉴后，制作树果方块吸引${foods ? `<span class="pk-recipe">配方 ${foods}</span>` : ''}`;
   }
   if (type === 'twist') {
     const own = p.region ? `${p.region}以外` : '它所在地区以外';
-    return `在<b>${own}</b>的地区触发时空扭曲时出现`;
+    return `在<b>${own}</b>的地区触发时空扭曲时有概率出现`;
   }
   if (type === 'trade') {
     const c = tradeChance(p.index);

@@ -4,10 +4,10 @@
 import { $, showView, tryLoadImage, setupFoodTooltip, showConfirmBar, hideConfirmBar } from './ui.js';
 import { gameData, getPokemonByIndex, isPokemon, saveGame, pushNav, ensureGender, genderBadge, rollGender, rollNature, rollSexForm, addSystemLog } from './state.js';
 import { matchPinyinPartial } from './pokedex.js';
-import { BERRY_ICONS, BERRY_NAMES, TYPE_COLORS, pokemonSourceBadge } from './items.js';
+import { BERRY_ICONS, BERRY_NAMES, pokemonSourceBadge } from './items.js';
 import { ensureBerryFarm } from './berry.js';
 import { removePokemonFromAllTeams } from './team.js';
-import { REGION_CYCLE, eggSprite } from './config.js';
+import { eggSprite } from './config.js';
 import { familyRoot } from './evolution.js';
 
 const BERRY_DIR = './items/berries/';
@@ -71,13 +71,16 @@ const _walkerPos = new Map(); // id -> 上次位置 {c,r,facing}（页面重绘�
 let _leaderId = null;         // 当前"被跟随"的宝可梦 id（A 跟一会儿 B，B 跟一会儿 A）
 let _leaderSwitchAt = 0;      // 下一次切换被跟随者的时间戳
 let _pickSlot = null;         // 非 null 时告示牌显示"放入宝可梦"列表（点击空槽后）
-let _pickSortBy = null;   // 放入列表排序列：null=默认按编号+等级 | name | iv | level
-let _pickSortDir = 1;     // 1 升序 / -1 降序
+let _pickSortBy = null;   // 放入列表排序列：null=默认按获得时间倒序（与仓库列表同口径）| name | iv | level
+let _pickSortDir = -1;    // 1 升序 / -1 降序（默认时间倒序，与仓库列表一致）
 let _pickSearch = '';         // 放入列表搜索词
 let _pickListScroll = 0;      // 进入个体详情前记住放入列表滚动位置，返回后恢复
 let _pickRenderSeq = 0;       // 放入列表渲染序号：新一轮分片渲染取代旧轮
-let _pickTypeFilter = '';     // 放入列表属性筛选
-let _pickRegionFilter = '';   // 放入列表地区筛选
+// 放入列表的筛选表：性别 / 蛋组（蛋组顺序按官方图鉴惯例排，方便扫）
+const PICK_GENDERS = [['male', '雄性'], ['female', '雌性'], ['genderless', '无性别']].map(([key, label]) => ({ key, label }));
+const EGG_GROUPS = ['怪兽群', '水中1群', '水中2群', '水中3群', '虫群', '飞行群', '妖精群', '植物群', '人型群', '陆上群', '不定形群', '矿物群', '龙群', '百变怪群'];
+let _pickGenderFilter = '';   // 放入列表性别筛选（male / female / genderless）
+let _pickEggFilter = '';      // 放入列表蛋组筛选
 let _pickIvSel = [];        // 放入列表个体值多选：[{stat,min}]，全部条件需同时满足（AND）
 let _eggView = false;         // 蛋仓库视图
 let _confirmTakeSlot = -1;    // 双击取出：第一次点击进入待确认的槽位（-1=无）
@@ -171,8 +174,8 @@ export function showNurseryView() {
   pushNav('nurseryView');
   _pickSlot = null; // 重新进入饲育屋时退出选取页
   _pickSearch = '';
-  _pickTypeFilter = '';
-  _pickRegionFilter = '';
+  _pickGenderFilter = '';
+  _pickEggFilter = '';
   _pickIvSel = [];
   // 先结算离开期间产出的蛋（自动入库），再进入页面；有新蛋时底部弹出提示
   const produced = settleBreeding();
@@ -313,19 +316,19 @@ function renderPickPage(box) {
               <svg><use xlink:href="#icon-close"></use></svg>
             </button>
           </div>
-          <div id="nurseryPickTypeFilter" class="pokedex-region-select" tabindex="0" title="按属性筛选">
-            <span id="nurseryPickTypeFilterLabel">${_pickTypeFilter ? _pickTypeFilter : '属性'}</span>
+          <div id="nurseryPickGenderFilter" class="pokedex-region-select" tabindex="0" title="按性别筛选">
+            <span id="nurseryPickGenderFilterLabel">${(PICK_GENDERS.find(g => g.key === _pickGenderFilter) || {}).label || '性别'}</span>
             <svg class="region-arrow" viewBox="0 0 8 6" width="8" height="6">
               <path d="M0,1 L4,5 L8,1" stroke="currentColor" fill="none" stroke-width="1.2" />
             </svg>
-            <div id="nurseryPickTypeFilterDropdown" class="region-dropdown" style="display:none;"></div>
+            <div id="nurseryPickGenderFilterDropdown" class="region-dropdown" style="display:none;"></div>
           </div>
-          <div id="nurseryPickRegionFilter" class="pokedex-region-select" tabindex="0" title="按地区筛选">
-            <span id="nurseryPickRegionFilterLabel">${_pickRegionFilter || '地区'}</span>
+          <div id="nurseryPickEggFilter" class="pokedex-region-select" tabindex="0" title="按蛋组筛选">
+            <span id="nurseryPickEggFilterLabel">${_pickEggFilter || '蛋组'}</span>
             <svg class="region-arrow" viewBox="0 0 8 6" width="8" height="6">
               <path d="M0,1 L4,5 L8,1" stroke="currentColor" fill="none" stroke-width="1.2" />
             </svg>
-            <div id="nurseryPickRegionFilterDropdown" class="region-dropdown" style="display:none;"></div>
+            <div id="nurseryPickEggFilterDropdown" class="region-dropdown" style="display:none;"></div>
           </div>
           <div id="nurseryPickIvFilter" class="pokedex-region-select" tabindex="0" title="按个体值筛选">
             <span id="nurseryPickIvFilterLabel">${pickIvFilterLabel()}</span>
@@ -391,64 +394,61 @@ function renderPickPage(box) {
 
 // 筛选下拉菜单绑定（只在 renderPickPage 时调用一次，避免 refreshPickList 重复绑定）
 function bindPickFilters(root) {
-  // 属性筛选下拉
-  const typeTrigger = root.querySelector('#nurseryPickTypeFilter');
-  const typeLabel = root.querySelector('#nurseryPickTypeFilterLabel');
-  const typeDd = root.querySelector('#nurseryPickTypeFilterDropdown');
-  if (typeTrigger && typeLabel && typeDd) {
-    const typeList = Object.keys(TYPE_COLORS);
-    function buildTypeOptions() {
-      typeDd.innerHTML = `<div class="region-dropdown-item${!_pickTypeFilter ? ' active' : ''}" data-type="">全部</div>`
-        + typeList.map(t => `<div class="region-dropdown-item${t === _pickTypeFilter ? ' active' : ''}" data-type="${t}"><span class="roster-type-dot" style="background:${TYPE_COLORS[t]}"></span>${t}</div>`).join('');
-      typeDd.querySelectorAll('.region-dropdown-item').forEach(el => {
+  // 性别筛选下拉：配种先按性别挑（雄/雌/无性别）
+  const genderTrigger = root.querySelector('#nurseryPickGenderFilter');
+  const genderLabel = root.querySelector('#nurseryPickGenderFilterLabel');
+  const genderDd = root.querySelector('#nurseryPickGenderFilterDropdown');
+  if (genderTrigger && genderLabel && genderDd) {
+    function buildGenderOptions() {
+      genderDd.innerHTML = `<div class="region-dropdown-item${!_pickGenderFilter ? ' active' : ''}" data-gender="">全部</div>`
+        + PICK_GENDERS.map(g => `<div class="region-dropdown-item${g.key === _pickGenderFilter ? ' active' : ''}" data-gender="${g.key}">${genderBadge(g.key)}${g.label}</div>`).join('');
+      genderDd.querySelectorAll('.region-dropdown-item').forEach(el => {
         el.addEventListener('click', (e) => {
           e.stopPropagation();
-          _pickTypeFilter = el.dataset.type || '';
-          typeLabel.innerHTML = _pickTypeFilter
-            ? `<span class="roster-type-dot" style="background:${TYPE_COLORS[_pickTypeFilter]}"></span>${_pickTypeFilter}`
-            : '属性';
-          typeDd.style.display = 'none';
-          typeTrigger.classList.remove('open');
+          _pickGenderFilter = el.dataset.gender || '';
+          genderLabel.innerHTML = (PICK_GENDERS.find(g => g.key === _pickGenderFilter) || {}).label || '性别';
+          genderDd.style.display = 'none';
+          genderTrigger.classList.remove('open');
           refreshPickList();
         });
       });
     }
-    typeTrigger.addEventListener('click', (e) => {
+    genderTrigger.addEventListener('click', (e) => {
       e.stopPropagation();
-      const open = typeDd.style.display !== 'none';
+      const open = genderDd.style.display !== 'none';
       root.querySelectorAll('.region-dropdown').forEach(d => d.style.display = 'none');
       root.querySelectorAll('.pokedex-region-select').forEach(s => s.classList.remove('open'));
-      if (!open) { buildTypeOptions(); typeDd.style.display = ''; typeTrigger.classList.add('open'); }
+      if (!open) { buildGenderOptions(); genderDd.style.display = ''; genderTrigger.classList.add('open'); }
     });
-    document.addEventListener('click', () => { typeDd.style.display = 'none'; typeTrigger.classList.remove('open'); });
+    document.addEventListener('click', () => { genderDd.style.display = 'none'; genderTrigger.classList.remove('open'); });
   }
-  // 地区筛选下拉
-  const regionTrigger = root.querySelector('#nurseryPickRegionFilter');
-  const regionLabel = root.querySelector('#nurseryPickRegionFilterLabel');
-  const regionDd = root.querySelector('#nurseryPickRegionFilterDropdown');
-  if (regionTrigger && regionLabel && regionDd) {
-    function buildRegionOptions() {
-      regionDd.innerHTML = `<div class="region-dropdown-item${!_pickRegionFilter ? ' active' : ''}" data-region="">全部</div>`
-        + REGION_CYCLE.map(r => `<div class="region-dropdown-item${r === _pickRegionFilter ? ' active' : ''}" data-region="${r}">${r}</div>`).join('');
-      regionDd.querySelectorAll('.region-dropdown-item').forEach(el => {
+  // 蛋组筛选下拉：能不能配、后代是谁都看蛋组，按蛋组挑比按地区挑对路
+  const eggTrigger = root.querySelector('#nurseryPickEggFilter');
+  const eggLabel = root.querySelector('#nurseryPickEggFilterLabel');
+  const eggDd = root.querySelector('#nurseryPickEggFilterDropdown');
+  if (eggTrigger && eggLabel && eggDd) {
+    function buildEggOptions() {
+      eggDd.innerHTML = `<div class="region-dropdown-item${!_pickEggFilter ? ' active' : ''}" data-egg="">全部</div>`
+        + EGG_GROUPS.map(g => `<div class="region-dropdown-item${g === _pickEggFilter ? ' active' : ''}" data-egg="${g}">${g}</div>`).join('');
+      eggDd.querySelectorAll('.region-dropdown-item').forEach(el => {
         el.addEventListener('click', (e) => {
           e.stopPropagation();
-          _pickRegionFilter = el.dataset.region || '';
-          regionLabel.textContent = _pickRegionFilter || '地区';
-          regionDd.style.display = 'none';
-          regionTrigger.classList.remove('open');
+          _pickEggFilter = el.dataset.egg || '';
+          eggLabel.textContent = _pickEggFilter || '蛋组';
+          eggDd.style.display = 'none';
+          eggTrigger.classList.remove('open');
           refreshPickList();
         });
       });
     }
-    regionTrigger.addEventListener('click', (e) => {
+    eggTrigger.addEventListener('click', (e) => {
       e.stopPropagation();
-      const open = regionDd.style.display !== 'none';
+      const open = eggDd.style.display !== 'none';
       root.querySelectorAll('.region-dropdown').forEach(d => d.style.display = 'none');
       root.querySelectorAll('.pokedex-region-select').forEach(s => s.classList.remove('open'));
-      if (!open) { buildRegionOptions(); regionDd.style.display = ''; regionTrigger.classList.add('open'); }
+      if (!open) { buildEggOptions(); eggDd.style.display = ''; eggTrigger.classList.add('open'); }
     });
-    document.addEventListener('click', () => { regionDd.style.display = 'none'; regionTrigger.classList.remove('open'); });
+    document.addEventListener('click', () => { eggDd.style.display = 'none'; eggTrigger.classList.remove('open'); });
   }
   // 个体值筛选面板：6 项个体值各带档位，可多选（AND），选中后面板保持打开，点击空白关闭
   const ivTrigger = root.querySelector('#nurseryPickIvFilter');
@@ -530,8 +530,8 @@ export function leaveNurseryPick() {
   if (_pickSlot == null) return;
   _pickSlot = null;
   _pickSearch = '';
-  _pickTypeFilter = '';
-  _pickRegionFilter = '';
+  _pickGenderFilter = '';
+  _pickEggFilter = '';
   _pickIvSel = [];
   render();
   // 恢复标题栏
@@ -936,17 +936,16 @@ function pickPickRows() {
       return poke && !poke.noEggGroup;
     })
     .filter(p => !otherEntry || checkPairing(otherEntry, p).ok)
-    // 属性筛选
+    // 性别筛选（没存性别的条目按 ensureGender 的口径补掷后再比）
     .filter(p => {
-      if (!_pickTypeFilter) return true;
-      const poke = getPokemonByIndex(String(p.species));
-      return poke?.types?.includes(_pickTypeFilter);
+      if (!_pickGenderFilter) return true;
+      return ensureGender(p) === _pickGenderFilter;
     })
-    // 地区筛选
+    // 蛋组筛选：物种的蛋组里含所选群即可（未发现群的个体本来就不在这份列表里）
     .filter(p => {
-      if (!_pickRegionFilter) return true;
+      if (!_pickEggFilter) return true;
       const poke = getPokemonByIndex(String(p.species));
-      return poke?.region === _pickRegionFilter;
+      return !!(poke?.eggGroup || []).includes(_pickEggFilter);
     })
     // 个体值筛选：多选条件需全部满足（如攻≥25 且 速≥31）
     .filter(p => {
@@ -978,15 +977,8 @@ function pickPickRows() {
       } else if (_pickSortBy === 'level') {
         va = a.level || 1; vb = b.level || 1;
       } else {
-        // 默认按编号排序：纯数字保持"编号+等级"语义，扩展编号（变体）按字符串比较
-        const ai = String(a.species), bi = String(b.species);
-        const an = Number(ai), bn = Number(bi);
-        if (Number.isFinite(an) && Number.isFinite(bn)) {
-          va = an * 1000 + (a.level || 1);
-          vb = bn * 1000 + (b.level || 1);
-        } else {
-          va = ai; vb = bi;
-        }
+        // 默认与仓库列表同口径：按获得时间倒序，最新拿到的排最上面
+        va = a.obtainedAt || 0; vb = b.obtainedAt || 0;
       }
       if (typeof va === 'string') return va.localeCompare(vb) * _pickSortDir;
       return (va - vb) * _pickSortDir;
@@ -1620,7 +1612,7 @@ function bindPickPersistent(root) {
       const field = el.dataset.sort;
       if (_pickSortBy === field) {
         if (_pickSortDir === 1) _pickSortDir = -1;
-        else { _pickSortBy = null; _pickSortDir = 1; }
+        else { _pickSortBy = null; _pickSortDir = -1; } // 降序 → 回到默认时间倒序
       } else { _pickSortBy = field; _pickSortDir = 1; }
       refreshPickList();
     });

@@ -1,4 +1,4 @@
-import { $, showView, tryLoadImage, showConfirmBar, viewportToLogic } from './ui.js';
+import { $, showView, tryLoadImage, showConfirmBar, viewportToLogic, watchOutsidePress } from './ui.js';
 import { gameData, getPokemonByIndex, saveGame, pushNav, ensureGender, genderBadge, isPokemon, ivOf, effIvTotal } from './state.js';
 import { matchPinyinPartial } from './pokedex.js';
 import { TYPE_COLORS, pokemonSourceBadge } from './items.js';
@@ -123,8 +123,8 @@ let _battleCanCancel = false; // 战斗中替换是否可取消：主动替换�
 // "加入队伍"放入页状态（空槽点击进入，与训练/饲育屋放入页一致的样式与交互）
 let _pickSlot = null;        // 目标槽位（非空 = 处于放入页）
 let _pickSearch = '';
-let _pickSortBy = null;
-let _pickSortDir = 1;
+let _pickSortBy = null;      // 放入列表排序列：null=默认按获得时间倒序（与仓库列表同口径）| name | iv | level
+let _pickSortDir = -1;         // 1 升序 / -1 降序（默认时间倒序，与仓库列表一致）
 let _pickTypeFilter = '';
 let _pickRegionFilter = '';
 let _pickSrc = '';
@@ -532,15 +532,8 @@ function teamPickRows() {
       } else if (_pickSortBy === 'level') {
         va = a.level || 1; vb = b.level || 1;
       } else {
-        // 默认按编号排序：纯数字保持"编号+等级"语义，扩展编号（变体）按字符串比较
-        const ai = String(a.species), bi = String(b.species);
-        const an = Number(ai), bn = Number(bi);
-        if (Number.isFinite(an) && Number.isFinite(bn)) {
-          va = an * 1000 + (a.level || 1);
-          vb = bn * 1000 + (b.level || 1);
-        } else {
-          va = ai; vb = bi;
-        }
+        // 默认与仓库列表同口径：按获得时间倒序，最新拿到的排最上面
+        va = a.obtainedAt || 0; vb = b.obtainedAt || 0;
       }
       if (typeof va === 'string') return va.localeCompare(vb) * _pickSortDir;
       return (va - vb) * _pickSortDir;
@@ -641,7 +634,7 @@ function bindTeamPickPersistent(root) {
       const field = el.dataset.sort;
       if (_pickSortBy === field) {
         if (_pickSortDir === 1) _pickSortDir = -1;
-        else { _pickSortBy = null; _pickSortDir = 1; }
+        else { _pickSortBy = null; _pickSortDir = -1; } // 降序 → 回到默认时间倒序
       } else { _pickSortBy = field; _pickSortDir = 1; }
       refreshTeamPick();
     });
@@ -861,6 +854,8 @@ function openTeamCtxMenu(e) {
   menu.style.left = `${Math.max(0, Math.min(lx - r.left, r.width - mw - 4))}px`;
   menu.style.top = `${Math.max(0, Math.min(ly - r.top, r.height - mh - 4))}px`;
   _menuEl = menu;
+  _teamMenuUnwatch?.();
+  _teamMenuUnwatch = watchOutsidePress(menu, closeTeamMenu);
 }
 
 // 随机配队：取等级最高的一批（并列的随机入选），组内顺序随机打散。
@@ -979,10 +974,13 @@ let _menuEl = null;
 let _menuSlot = -1;
 let _menuSlotEl = null;
 
+let _teamMenuUnwatch = null; // 点外面收菜单的解绑函数（每次弹出重新挂）
 function closeTeamMenu() {
   if (_menuEl) { _menuEl.remove(); _menuEl = null; }
   if (_menuSlotEl) { _menuSlotEl.classList.remove('menu-open'); _menuSlotEl = null; }
   _menuSlot = -1;
+  _teamMenuUnwatch?.();
+  _teamMenuUnwatch = null;
 }
 
 function openTeamMenu(e, i, p) {
@@ -1025,10 +1023,10 @@ function openTeamMenu(e, i, p) {
   menu.style.left = `${Math.max(0, Math.min(left, r.width - mw - 4))}px`;
   menu.style.top = `${Math.max(0, Math.min(top, r.height - mh - 4))}px`;
   _menuEl = menu;
+  _teamMenuUnwatch?.();
+  _teamMenuUnwatch = watchOutsidePress(menu, closeTeamMenu);
 }
 
-// 点击菜单外空白处关闭菜单（槽位/菜单点击均已 stopPropagation）
-document.addEventListener('click', () => { closeTeamMenu(); });
 // 右键隐藏菜单（同时屏蔽配队页的原生右键菜单）
 document.addEventListener('contextmenu', (e) => {
   if ($('teamView')?.style.display !== 'none') e.preventDefault();

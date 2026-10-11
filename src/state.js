@@ -299,7 +299,7 @@ export function getDefaultSave() {
     collectedCards: {}, // 卡牌收集：{ filename: { tier, cnName, enName, obtainedAt } }，由 gacha.js 管理
     gachaLogs: {}, // 抽卡记录：{ pool1: [{ time, card, tier, cnName, isNew }], pool2: [...] }，由 gacha.js 管理
     introDone: false, // 是否已完成开场剧情（首次进入必须看完才能开始挂机）
-    settings: { autoCatch: false, autoFlee: true, windowPinned: true, autoCatchBalls: { 'poke-ball': true, 'ultra-ball': true, 'master-ball': false }, shinyStop: false, legendStop: false, autoBuffHoney: false, autoBuffCharm: false, autoRefill: false, autoRefillBalls: { 'poke-ball': true, 'ultra-ball': false, 'master-ball': false }, autoRefillOrder: ['poke-ball', 'ultra-ball', 'master-ball'], catchFilter: { rows: { normal: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, normalShiny: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, legend: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, legendShiny: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false } } }, gender: 'brendan', musicVolume: 0.6, musicEnabled: true },
+    settings: { autoCatch: false, autoFlee: true, windowPinned: true, autoCatchBalls: { 'poke-ball': true, 'ultra-ball': true, 'master-ball': false }, shinyStop: false, legendStop: false, autoBuffHoney: false, autoBuffCharm: false, autoRefill: false, autoRefillHoney: false, autoRefillCharm: false, autoRefillBalls: { 'poke-ball': true, 'ultra-ball': false, 'master-ball': false }, autoRefillOrder: ['poke-ball', 'ultra-ball', 'master-ball'], catchFilter: { rows: { normal: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, normalShiny: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, legend: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, legendShiny: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false } } }, gender: 'brendan', musicVolume: 0.6, musicEnabled: true },
   };
 }
 
@@ -542,6 +542,22 @@ function syncBuffRecord() {
   gameData.buffs = (rec.honey || rec.charm) ? rec : null;
 }
 
+// 写盘健康度：主通道（手机文件 / 桌面数据目录 / 网页 localStorage）写失败时说明这次存档没落盘，
+// 玩家继续玩只会越丢越多，必须吼一声。弹框交给 ui（动态 import，避免 state ↔ ui 静态循环）
+let _saveFailStreak = 0;   // 连续失败次数：回到成功才清零
+let _saveFailWarnAt = 0;   // 上次弹提示的时间：坏着的时候最多 5 分钟提醒一次
+function reportSaveResult(ok) {
+  if (ok) { _saveFailStreak = 0; return; }
+  _saveFailStreak++;
+  if (_saveFailStreak === 1) addSystemLog('save_failed', {});
+  if (Date.now() - _saveFailWarnAt < 5 * 60 * 1000) return;
+  _saveFailWarnAt = Date.now();
+  import('./ui.js').then((m) => m.showConfirmBar(
+    '存档写入失败，之后的进度可能会丢。请清理存储空间或重启游戏再试；也可以先去设置里导出存档。',
+    null, null, { singleButton: true },
+  )).catch(() => {});
+}
+
 export async function saveGame() {
   if (!gameData) return;
   if (_saveSuspended) return;
@@ -549,11 +565,18 @@ export async function saveGame() {
   syncBuffRecord();
   syncGpsPosition();
   const s = JSON.stringify(gameData);
-  if (window.__TAURI__?.core?.invoke) {
-    try { await window.__TAURI__.core.invoke('save_game_data', { data: s }); } catch (_) {}
+  // 按平台定主通道：手机端写应用文件、桌面端写应用数据目录、网页端只有 localStorage。
+  // 另外两条通道照写当兜底（启动时按 lastSaveTime 取最新），主通道失败才提醒
+  const mobile = window.__POKEIDLE_MOBILE__;
+  let primaryOk = null;
+  if (mobile?.writeSave) {
+    try { await mobile.writeSave(s); primaryOk = true; } catch (_) { primaryOk = false; }
+  } else if (window.__TAURI__?.core?.invoke) {
+    try { await window.__TAURI__.core.invoke('save_game_data', { data: s }); primaryOk = true; } catch (_) { primaryOk = false; }
   }
-  try { localStorage.setItem('pokemon_idle_save', s); } catch (_) {}
-  try { await window.__POKEIDLE_MOBILE__?.writeSave(s); } catch (_) {}
+  let lsOk = false;
+  try { localStorage.setItem('pokemon_idle_save', s); lsOk = true; } catch (_) {}
+  reportSaveResult(primaryOk === null ? lsOk : primaryOk);
 }
 
 // 当前遭遇的自定义文案（如钓鱼"上钩了"），写入会话状态以便刷新后沿用

@@ -1,6 +1,6 @@
 // ===== 农场 =====
 // 6 块田地按真实时间生长；生长/湿度由 Date.now() 折算并随存档持久化（gameData.berryFarm）
-import { $, showView, tryLoadImage, getCharPrefix, updateStats, logicToViewport, popupBounds } from './ui.js';
+import { $, showView, tryLoadImage, getCharPrefix, updateStats, logicToViewport, popupBounds, watchOutsidePress } from './ui.js';
 import { gameData, pushNav, saveGame, randInt, addSystemLog } from './state.js';
 import { BERRY_ICONS, BERRY_NAMES } from './items.js';
 import { setupFoodTooltip } from './ui.js';
@@ -402,16 +402,20 @@ function showUprootMenu(plotEl) {
       notifyBerryChanged();
     }
   };
-  // 点击其它位置或再次右键时关闭
-  setTimeout(() => document.addEventListener('click', closeUprootMenu, { once: true }), 0);
+  // 点其它位置（含被 stopPropagation 的筛选/下拉按钮）或再次右键时关闭
+  _uprootUnwatch?.();
+  _uprootUnwatch = watchOutsidePress(menu, closeUprootMenu);
   document.addEventListener('contextmenu', closeUprootMenu, { once: true });
 }
 
+let _uprootUnwatch = null;
 function closeUprootMenu() {
   if (_uprootMenu) {
     _uprootMenu.remove();
     _uprootMenu = null;
   }
+  _uprootUnwatch?.();
+  _uprootUnwatch = null;
 }
 
 function bindEvents(el) {

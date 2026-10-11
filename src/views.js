@@ -1,7 +1,7 @@
 import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, honeyBuffActive, charmBuffActive, saveGame, formatNum, pad, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing } from './state.js';
-import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform, touchText } from './ui.js';
-import { doCandyExchange, doSellBall, activateHoney, activateShinyCharm, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf } from './items.js';
+import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform, touchText, watchOutsidePress } from './ui.js';
+import { doCandyExchange, doSellBall, activateHoney, activateShinyCharm, refillBuffIfEmpty, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf } from './items.js';
 import { formatLogTime } from './pokedex.js';
 import { stopAutoFleeTimer, startAutoFleeTimer, autoCatch } from './battle.js';
 import { setVolume, setBattleMusic, setMusicEnabled, setSfxEnabled, playBattle, endBattle } from './audio.js';
@@ -402,6 +402,9 @@ export function renderSystemLogs() {
           ? `完成地区悬赏，获得${ITEM_NAMES[log.details.item] || log.details.item} ×${log.details.qty || 1}`
           : `完成地区悬赏，获得糖果 ×${log.details.candy}`;
         break;
+      case 'save_failed':
+        desc = '存档写入失败，该进度可能没能保存';
+        break;
       case 'crown_use': {
         const cn = { hp: 'HP', atk: '攻击', def: '防御', spa: '特攻', spd: '特防', spe: '速度' };
         desc = `对${logName(log)}使用王冠，练满了 ${(log.details.stats || []).map(k => cn[k] || k).join('、')}`;
@@ -513,7 +516,7 @@ export function renderSystemLogs() {
         desc = '自行车骑行结束';
         break;
       case 'auto_refill':
-        desc = `[自动] 补了${ITEM_NAMES[log.details.ball] || log.details.ball} ×1`;
+        desc = `[自动] 补了${ITEM_NAMES[log.details.ball || log.details.item] || '道具'} ×1（消耗${log.details.cost}糖果）`;
         break;
       case 'casino': {
         const p = log.details.profit;
@@ -813,8 +816,6 @@ function showShopContextMenu(itemKey, x, y, mode = 'buy') {
   const b = popupBounds(); // 夹紧在机身内：手游双屏下机身只占屏幕中间一块
   menu.style.left = Math.max(b.left, Math.min(lx - 24, b.right - mw - 4)) + 'px';
   menu.style.top = Math.max(b.top, Math.min(ly, b.bottom - mh - 4)) + 'px';
-  // 菜单内点击不触发外部关闭；点击外部任意位置关闭
-  menu.addEventListener('pointerdown', (e) => e.stopPropagation());
   menu.onclick = async (e) => {
     const opt = e.target.closest('.shop-ctx-item');
     if (!opt || opt.classList.contains('disabled')) return;
@@ -823,13 +824,16 @@ function showShopContextMenu(itemKey, x, y, mode = 'buy') {
     else await doCandyExchange(opt.dataset.item, Number(opt.dataset.q));
     renderMenu(); // 结算后刷新可操作状态，菜单保持打开可连续操作
   };
-  document.addEventListener('pointerdown', hideShopContextMenu);
+  _shopMenuUnwatch?.();
+  _shopMenuUnwatch = watchOutsidePress(menu, hideShopContextMenu);
 }
 
+let _shopMenuUnwatch = null;
 function hideShopContextMenu() {
   const menu = $('shopCtxMenu');
   if (menu) menu.style.display = 'none';
-  document.removeEventListener('pointerdown', hideShopContextMenu);
+  _shopMenuUnwatch?.();
+  _shopMenuUnwatch = null;
 }
 
 // ===== 设置视图 =====
@@ -966,6 +970,8 @@ export function renderSettings(container, s) {
   const balls = s.autoCatchBalls || { 'poke-ball': true, 'ultra-ball': true, 'master-ball': true };
   const autoBuffHoney = s.autoBuffHoney || false;
   const autoBuffCharm = s.autoBuffCharm || false;
+  const autoRefillHoney = s.autoRefillHoney || false;
+  const autoRefillCharm = s.autoRefillCharm || false;
   const autoRefill = s.autoRefill || false;
   const shinyMasterBall = s.shinyMasterBall || false;
   const variantMasterBall = s.variantMasterBall || false;
@@ -1079,7 +1085,7 @@ export function renderSettings(container, s) {
       </div>
 
       <div class="settings-group">
-        <div class="settings-group-title">背包与补球</div>
+        <div class="settings-group-title">自动补货</div>
         <div class="auto-catch-row">
           <div class="auto-catch-label">自动补球</div>
           <div class="toggle-switch" id="toggleAutoRefill">
@@ -1101,6 +1107,13 @@ export function renderSettings(container, s) {
           </div>
         </div>
         ` : ''}
+        <div style="padding:6px 4px 0 8px;">
+          <div class="auto-catch-label">自动补增益道具</div>
+          <div class="ball-check-row">
+            <span class="ball-check ${autoRefillHoney ? 'on' : ''}" id="toggleRefillHoney">${autoRefillHoney ? '☑' : '☐'}甜甜蜜</span>
+            <span class="ball-check ${autoRefillCharm ? 'on' : ''}" id="toggleRefillCharm">${autoRefillCharm ? '☑' : '☐'}闪耀护符</span>
+          </div>
+        </div>
       </div>
 
       ${windowGroupHtml}
@@ -1244,10 +1257,9 @@ export function renderSettings(container, s) {
     location.reload();
   });
   // 导出存档：桌面版调 Tauri 命令打开目录选择器；网页版直接下载 JSON 文件。
-  // 两种途径都会上调 lastSaveTime，迁移到新设备后不会被 localStorage 旧数据覆盖
+  // 时间戳保持真实（导入时靠确认框里把 lastSaveTime 顶到最新，见 doApplyImportedSave）
   container.querySelector('#exportSaveBtn')?.addEventListener('click', async () => {
     const btn = container.querySelector('#exportSaveBtn');
-    gameData.stats.lastSaveTime = Date.now() + 10 * 365 * 24 * 3600 * 1000;
     if (window.__POKEIDLE_MOBILE__?.exportSave) {
       btn.textContent = '导出中…';
       try {
@@ -1291,7 +1303,7 @@ export function renderSettings(container, s) {
     setTimeout(() => { btn.textContent = '导出'; }, 2500);
   });
   // 导入存档：桌面版调 Tauri 命令选文件；网页版用浏览器文件选择器读取 JSON。
-  // 两种途径都会比对时间戳，确保导入的 lastSaveTime > 当前，防止被旧数据回滚
+  // 两种途径都会先摆出两份档的对比、等玩家确认再覆盖（以前一点就写，选错文件就是一次静默回档）
   container.querySelector('#importSaveBtn')?.addEventListener('click', async () => {
     const btn = container.querySelector('#importSaveBtn');
     if (!window.__TAURI__?.core?.invoke) {
@@ -1312,7 +1324,7 @@ export function renderSettings(container, s) {
             setTimeout(() => { btn.textContent = '导入'; }, 2500);
             return;
           }
-          applyImportedSave(imported);
+          applyImportedSave(imported, btn);
         } catch (e) {
           flashSaveHint('存档导入失败');
           btn.textContent = '导入失败';
@@ -1332,7 +1344,7 @@ export function renderSettings(container, s) {
         setTimeout(() => { btn.textContent = '导入'; }, 2500);
         return;
       }
-      applyImportedSave(imported);
+      applyImportedSave(imported, btn);
     } catch (e) {
       if (typeof e === 'string' && e.includes('取消')) {
         btn.textContent = '导入';
@@ -1343,24 +1355,71 @@ export function renderSettings(container, s) {
       setTimeout(() => { btn.textContent = '导入'; }, 2500);
     }
   });
-  // 导入的存档：比对时间戳后覆盖并刷新（桌面版/网页版共用）
-  function applyImportedSave(imported) {
+  // 一份档的概况：导入前跟当前进度并排比一遍，少了什么一眼能看出来
+  function saveOutline(g) {
+    const played = (g.stats && g.stats.totalPlaySeconds) || 0;
+    const candy = (g.items && g.items.candy) || 0;
+    const mons = (g.roster || []).filter((p) => !p.kind || p.kind !== 'egg').length;
+    const dex = Object.values(g.pokedex || {}).filter((e) => ((e && e.caught) || 0) > 0).length;
+    return [played, candy, mons, dex];
+  }
+  // 时长按统计页的 HH:MM，糖果带千分位
+  const fmtOutline = (v, i) => (i === 0 ? fmtPlayTime(v) : i === 1 ? formatNum(v) : String(v));
+  // 导入的存档：弹框把两份档左右摆出来对比，玩家点确定才覆盖（桌面版/网页版共用）
+  function applyImportedSave(imported, btn) {
     const importedTime = imported.stats.lastSaveTime || 0;
     const currentTime = gameData.stats.lastSaveTime || 0;
-    if (importedTime <= currentTime) {
-      imported.stats.lastSaveTime = currentTime + 1;
-    }
+    const labels = ['时长', '糖果', '宝可梦', '图鉴'];
+    const mine = saveOutline(gameData);
+    const theirs = saveOutline(imported);
+    const col = (title, vals) => `<div class="cmp-col">
+        <div class="cmp-head">${title}</div>
+        ${labels.map((l, i) => `<div class="cmp-row"><span>${l}</span><b>${fmtOutline(vals[i], i)}</b></div>`).join('')}
+      </div>`;
+    const older = importedTime < currentTime;
+    const dialog = document.createElement('div');
+    dialog.id = 'importCmpDialog';
+    dialog.innerHTML = `<div class="dialog-box">
+        <button class="quit-close" data-cmp-no aria-label="关闭"><svg><use xlink:href="#icon-close" /></svg></button>
+        <div class="dialog-title">导入存档</div>
+        ${older ? '<div class="cmp-warn">导入的存档比当前旧，覆盖后进度会回退</div>' : ''}
+        <div class="cmp-grid">
+          ${col('导入', theirs)}
+          <div class="cmp-arrow">→</div>
+          ${col('当前', mine)}
+        </div>
+        <div class="cmp-btns">
+          <span class="cmp-btn" data-cmp-yes>确定覆盖</span>
+          <span class="cmp-btn" data-cmp-no>取消</span>
+        </div>
+      </div>`;
+    // 挂到设置页所在的那块屏上，遮住整屏并吃掉底下的点击
+    const host = $('settingsContent')?.closest('.screen') || document.body;
+    document.getElementById('importCmpDialog')?.remove();
+    host.appendChild(dialog);
+    const close = () => { dialog.remove(); if (btn) btn.textContent = '导入'; };
+    dialog.querySelectorAll('[data-cmp-no]').forEach((el) => el.addEventListener('click', close));
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) close(); }); // 点遮罩等同取消
+    dialog.querySelector('[data-cmp-yes]').addEventListener('click', () => {
+      dialog.remove();
+      doApplyImportedSave(imported, importedTime, currentTime, btn);
+    });
+  }
+  function doApplyImportedSave(imported, importedTime, currentTime, btn) {
+    // 时间戳后移一点点，保证重启时这份导入的档比磁盘上的旧档新（否则会被启动比对判为落后而丢弃）
+    if (importedTime <= currentTime) imported.stats.lastSaveTime = currentTime + 1;
     setGameData(imported);
     ensureGpsState();
     saveGame().then(() => {
       flashSaveHint('存档导入成功，即将刷新');
-      const b = container.querySelector('#importSaveBtn');
-      if (b) b.textContent = '已导入 ✓';
+      if (btn) btn.textContent = '已导入 ✓';
       setTimeout(() => { location.reload(); }, 800);
     });
   }
   container.querySelector('#toggleBuffHoney')?.addEventListener('click', toggleAutoBuffHoney);
   container.querySelector('#toggleBuffCharm')?.addEventListener('click', toggleAutoBuffCharm);
+  container.querySelector('#toggleRefillHoney')?.addEventListener('click', toggleAutoRefillHoney);
+  container.querySelector('#toggleRefillCharm')?.addEventListener('click', toggleAutoRefillCharm);
   container.querySelector('#toggleAutoRefill')?.addEventListener('click', toggleAutoRefill);
   const volSlider = container.querySelector('#musicVolumeSlider');
   volSlider?.addEventListener('input', (e) => {
@@ -1494,6 +1553,8 @@ function ensureSettings() {
   if (!gameData.settings) gameData.settings = { autoCatch: false, autoFlee: false, windowPinned: false, shinyStop: false, legendStop: false, autoBuffHoney: false, autoBuffCharm: false, gender: 'brendan' };
   if (!gameData.settings.autoCatchBalls) gameData.settings.autoCatchBalls = { 'poke-ball': true, 'ultra-ball': true, 'master-ball': true };
   if (gameData.settings.autoRefill == null) gameData.settings.autoRefill = false;
+  if (gameData.settings.autoRefillHoney == null) gameData.settings.autoRefillHoney = false; // 自动补甜甜蜜（补货，不负责使用）
+  if (gameData.settings.autoRefillCharm == null) gameData.settings.autoRefillCharm = false; // 自动补闪耀护符
   if (gameData.settings.shinyMasterBall == null) gameData.settings.shinyMasterBall = false; // 闪光使用大师球（默认关）
   if (gameData.settings.variantMasterBall == null) gameData.settings.variantMasterBall = false; // 特效使用大师球（默认关）
   if (!gameData.settings.autoRefillBalls) gameData.settings.autoRefillBalls = { 'poke-ball': true, 'ultra-ball': false, 'master-ball': false };
@@ -1585,10 +1646,27 @@ export function toggleAutoBuffHoney() {
   const container = $('settingsContent');
   renderSettings(container, gameData.settings);
   saveGame();
-  // 刚开启且闲置中，立即使用一个
+  // 刚开启且闲置中，立即使用一个（自己库存里的，不负责补货）
   if (gameData.settings.autoBuffHoney && phase === 'idle' && !honeyBuffActive && !charmBuffActive) {
     activateHoney();
   }
+}
+
+// 自动补货开关：只把背包补上，要不要自动用掉看「自动使用增益道具」
+export function toggleAutoRefillHoney() {
+  ensureSettings();
+  gameData.settings.autoRefillHoney = !gameData.settings.autoRefillHoney;
+  renderSettings($('settingsContent'), gameData.settings);
+  if (gameData.settings.autoRefillHoney) refillBuffIfEmpty('sweet-honey');
+  saveGame();
+}
+
+export function toggleAutoRefillCharm() {
+  ensureSettings();
+  gameData.settings.autoRefillCharm = !gameData.settings.autoRefillCharm;
+  renderSettings($('settingsContent'), gameData.settings);
+  if (gameData.settings.autoRefillCharm) refillBuffIfEmpty('shiny-charm');
+  saveGame();
 }
 
 export function toggleAutoBuffCharm() {
@@ -1597,7 +1675,7 @@ export function toggleAutoBuffCharm() {
   const container = $('settingsContent');
   renderSettings(container, gameData.settings);
   saveGame();
-  // 刚开启且闲置中，立即使用一个（甜甜蜜生效期间不叠加护符）
+  // 刚开启且闲置中，立即使用一个（自己库存里的，不负责补货；甜甜蜜生效期间不叠加护符）
   if (gameData.settings.autoBuffCharm && phase === 'idle' && !charmBuffActive && !honeyBuffActive) {
     activateShinyCharm();
   }
@@ -2164,7 +2242,7 @@ const TUTORIAL_SECTIONS = [
     html: `<p>开启后遇敌自动处理：勾选球种即<b>自动捕获</b>（按捕获率智能选球），一个球都不勾则<b>自动逃跑</b>。</p>`
       + `<p><b>自动丢球</b>：判定为「捕捉」后会自动<b>连续丢球直到捕获或逃跑</b>。球种按<b>智能选球</b>——<b>神兽或捕获率低</b>的宝可梦优先 <b>大师球→高级球→精灵球</b>，捕获率高的普通宝可梦优先 <b>精灵球</b> 省资源；只在勾选的球种中挑选，优先球种没库存自动顺延。</p>`
       + `<p><b>捕捉条件</b>：给 <b>普通 / 普通闪 / 神兽 / 神兽闪 / 可悬赏 / 特效</b> 六类各自设置 捕捉 / 暂停 / 逃跑——「逃跑」主角直接逃跑、「暂停」停手留给你手动；还能填<b>捕捉等级</b>范围（范围外的自动逃跑）、勾选<b>仅捕捉未拥有过的</b>（仓库里已有对应形态直接放跑）。<b>特效</b>类对应时空扭曲（RGB/污染）遭遇，优先级最高。</p>`
-      + `<p>勾选增益道具到期自动<b>续杯</b>；<b>自动补球</b>：球用光自动用糖果补 1 个（「‹ ›」调优先级）。</p>`,
+      + `<p>设置里的「<b>自动补货</b>」负责补资源：<b>自动补球</b>——球用光自动用糖果补 1 个（「‹ ›」调优先级）；<b>自动补增益道具</b>——甜甜蜜 / 闪耀护符各有独立开关，用光时按商店价自动补 1 个放进背包。</p>`,
   },
   {
     title: '佛系模式',

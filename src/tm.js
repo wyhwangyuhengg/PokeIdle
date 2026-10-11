@@ -61,22 +61,39 @@ const typeBadge = (type) =>
 function buyTm(id, onBought) {
   const row = rowOf(id);
   if (!row || isTmUnlocked(id)) return;
-  const candy = gameData.items['candy'] || 0;
-  if (candy < row.price) {
+  if ((gameData.items['candy'] || 0) < row.price) {
     showConfirmBar('糖果不够', null, null, { singleButton: true });
     return;
   }
   showConfirmBar(`花费糖果 ×${row.price} 解锁「${row.name}」？能学会它的宝可梦会直接学会。`, () => {
-    gameData.items['candy'] = candy - row.price;
-    gameData.tmUnlocked[id] = Date.now();
-    const learned = learnTmForAll(id);
-    addSystemLog('tm_unlock', { move: row.name, cost: row.price, learned });
-    updateBackpack('candy');
-    updateStats();
-    saveGame();
-    markRowUnlocked(id); // 原地改这一行，不重建商店（重建会把滚动位置顶回顶部）
+    // 余额按"点确定"这一刻算：确认框开着的时候余额可能已被别处改动，够不够要再判一次
+    if ((gameData.items['candy'] || 0) < row.price) {
+      showConfirmBar('糖果不够', null, null, { singleButton: true });
+      return;
+    }
+    applyTmUnlock(row);
     onBought?.();
   });
+}
+
+// 执行解锁：**先把解锁记上再扣糖**——万一后面配招出错，也不过是少学会几只，不会白扣糖果。
+// tmUnlocked 就地兜底：老存档没有这个字段，直接赋值会抛异常，扣了糖却什么也没落库
+export function applyTmUnlock(row) {
+  if (!gameData.tmUnlocked) gameData.tmUnlocked = {};
+  gameData.tmUnlocked[row.id] = Date.now();
+  gameData.items['candy'] = (gameData.items['candy'] || 0) - row.price;
+  let learned = 0;
+  try {
+    learned = learnTmForAll(row.id);
+  } catch (e) {
+    console.error('[tm] 解锁后自动配招失败（解锁已生效）：', e);
+  }
+  addSystemLog('tm_unlock', { move: row.name, cost: row.price, learned });
+  updateBackpack('candy');
+  updateStats();
+  saveGame();
+  markRowUnlocked(row.id);
+  return learned;
 }
 
 // 解锁后就地更新货架：该行换成「已解锁」、标题的计数加一

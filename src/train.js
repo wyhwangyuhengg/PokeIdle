@@ -94,8 +94,8 @@ const _walkerPos = new Map(); // id -> 上次位置 {c,r,facing}（页面重绘�
 // "放入训练"全页列表状态（点击训练空槽进入，与饲育屋放入页一致；放入/返回后清空）
 let _pickSlot = null;          // 当前放入槽位；null = 不在放入页
 let _pickSearch = '';          // 放入列表搜索词
-let _pickSortBy = null;        // 放入列表排序列：null=默认按编号+等级 | name | iv | level
-let _pickSortDir = 1;          // 1 升序 / -1 降序
+let _pickSortBy = null;        // 放入列表排序列：null=默认按获得时间倒序（与仓库列表同口径）| name | iv | level
+let _pickSortDir = -1;         // 1 升序 / -1 降序（默认时间倒序，与仓库列表一致）
 let _pickTypeFilter = '';      // 放入列表属性筛选
 let _pickRegionFilter = '';    // 放入列表地区筛选
 let _pickSrc = '';             // 放入列表来源筛选（''=全部 | normal | fishing | egg | trade | twist）
@@ -1000,15 +1000,8 @@ function pickPickRows() {
       } else if (_pickSortBy === 'level') {
         va = a.level || 1; vb = b.level || 1;
       } else {
-        // 默认按编号排序：纯数字保持"编号+等级"语义，扩展编号（变体）按字符串比较
-        const ai = String(a.species), bi = String(b.species);
-        const an = Number(ai), bn = Number(bi);
-        if (Number.isFinite(an) && Number.isFinite(bn)) {
-          va = an * 1000 + (a.level || 1);
-          vb = bn * 1000 + (b.level || 1);
-        } else {
-          va = ai; vb = bi;
-        }
+        // 默认与仓库列表同口径：按获得时间倒序，最新拿到的排最上面
+        va = a.obtainedAt || 0; vb = b.obtainedAt || 0;
       }
       if (typeof va === 'string') return va.localeCompare(vb) * _pickSortDir;
       return (va - vb) * _pickSortDir;
@@ -1117,7 +1110,7 @@ function bindPickPersistent(root) {
       const field = el.dataset.sort;
       if (_pickSortBy === field) {
         if (_pickSortDir === 1) _pickSortDir = -1;
-        else { _pickSortBy = null; _pickSortDir = 1; }
+        else { _pickSortBy = null; _pickSortDir = -1; } // 降序 → 回到默认时间倒序
       } else { _pickSortBy = field; _pickSortDir = 1; }
       refreshPickList();
     });

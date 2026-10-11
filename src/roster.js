@@ -1,7 +1,7 @@
 // ===== 宝可梦仓库 =====
 // 查看当前拥有的每只宝可梦个体（个体值/闪光/来源/在仓状态），
 // 交互与图鉴对齐：搜索 / 来源筛选 / 表头排序 / 点击进入个体详情，详情页可返回列表。
-import { $, showView, getCurrentView, tryLoadImage, tryLoadPokemonImage, showConfirmBar, hideConfirmBar, updateBackpack, updateStats, logicViewport, viewportToLogic, popupBounds, isDualLayout, isStageView, closeAppArea } from './ui.js';
+import { $, showView, getCurrentView, tryLoadImage, tryLoadPokemonImage, showConfirmBar, hideConfirmBar, updateBackpack, updateStats, logicViewport, viewportToLogic, popupBounds, isDualLayout, isStageView, closeAppArea, watchOutsidePress } from './ui.js';
 import { gameData, allPokemon, getPokemonByIndex, isTmUnlocked, getNature, pushNav, resetNav, saveGame, addSystemLog, setPokedexInLogView, ensureGender, genderBadge, isPokemon, phase, dexUnlocked, ivOf, effIvTotal, effPerfectCount, applyCrown, IV_STATS } from './state.js';
 import { TYPE_COLORS, typeIconColor, pokemonSourceBadge, itemIconSrc, MINT_KEYS } from './items.js';
 import { evolutionRows, applyEvolution, condItems, moveCondText, evoPreEvos, evolutionData, loadEvolution } from './evolution.js';
@@ -98,7 +98,7 @@ let _detailId = null;  // 当前详情个体 id（非空=处于详情页）
 let _detailFromView = null; // 详情跳转来源（捕获/孵蛋后“查看详情”进入时记录，返回列表后再返回时优先回来源）
 let _detailReturnFn = null; // 从悬赏提交/交换选择列表进入详情时注册的返回回调（返回时恢复来源列表）
 let _detailJumpedToPokedex = false; // 详情页跳转图鉴中（返回键应先回详情页，再按来源返回）
-let _detailEvoAllowed = false; // 详情页是否允许「改性格 / 进化链」：只有从宝可梦 app 列表点行进来才允许（挑一只来用的入口都不行）
+let _detailEvoAllowed = false; // 详情页是否允许「改性格 / 点进化」：只有从宝可梦 app 列表点行进来才允许；进化链本身各处都展示，挑一只来用的入口只是不给操作
 let _picker = null; // 选取模式：配队/训练点击空位跳转仓库选择，{ mode:'team'|'train', slot, from, exclude[] }
 let _renderSeq = 0; // 列表分片渲染版本号：新一轮渲染作废旧一轮，避免快速切换筛选时乱序
 let _rosterIconObs = null; // 列表图标懒加载观察器：滚动进入视口（含预载带）才加载，避免大仓库并发请求打爆资源
@@ -992,8 +992,8 @@ function showMoveSortMenu(x, y) {
   const b = popupBounds(); // 夹紧在机身内：手游双屏下机身只占屏幕中间一块
   menu.style.left = Math.max(b.left, Math.min(lx - 24, b.right - mw - 4)) + 'px';
   menu.style.top = Math.max(b.top, Math.min(ly, b.bottom - mh - 4)) + 'px';
-  // 菜单内点击不触发外部关闭；点击外部任意位置关闭
-  menu.addEventListener('pointerdown', (e) => e.stopPropagation());
+  _sortUnwatch?.();
+  _sortUnwatch = watchOutsidePress(menu, hideMoveSortMenu);
   menu.onclick = (e) => {
     const opt = e.target.closest('.shop-ctx-item');
     if (!opt) return;
@@ -1001,12 +1001,13 @@ function showMoveSortMenu(x, y) {
     _moveSort = opt.dataset.sort;
     renderMoveEditor();
   };
-  document.addEventListener('pointerdown', hideMoveSortMenu);
 }
+let _sortUnwatch = null; // 同上：候选排序菜单
 function hideMoveSortMenu() {
   const menu = $('moveSortCtxMenu');
   if (menu) menu.style.display = 'none';
-  document.removeEventListener('pointerdown', hideMoveSortMenu);
+  _sortUnwatch?.();
+  _sortUnwatch = null;
 }
 
 export function renderMoveEditor() {
@@ -1140,7 +1141,7 @@ window.addEventListener('view-changed', (e) => {
 });
 
 // ---------- 进化链 ----------
-// 只有从宝可梦列表点行进详情才显示，别的入口不给，见 _detailEvoAllowed
+// 各处入口都展示进化链（挑宝可梦时能顺手看值不值得培养），只有「进化」按钮跟 _detailEvoAllowed 走
 function evoBlockHtml(p, rows) {
   const title = `<div class="roster-detail-title">进化</div>`;
   if (!rows.length) return `${title}<div class="evo-empty">该宝可梦没有进化形态</div>`;
@@ -1167,7 +1168,7 @@ function evoBlockHtml(p, rows) {
           <div class="evo-conds">${conds.map((c) => `<span class="evo-cond${c.ok ? '' : ' inert'}">${c.text}</span>`).join('')}</div>
         </div>
       </div>
-      <span class="evo-btn${r.ok ? '' : ' inert'}">进化</span>
+      ${_detailEvoAllowed ? `<span class="evo-btn${r.ok ? '' : ' inert'}">进化</span>` : ''}
     </div>`;
   }).join('');
   return `${title}${rowsHtml}`;
@@ -1178,7 +1179,6 @@ async function renderEvoBlock(id) {
   if (!box) return;
   const p = (gameData.roster || []).find((r) => r.id === id);
   if (!p) return;
-  if (!_detailEvoAllowed) { box.style.display = 'none'; return; }
   box.style.display = '';
   const carried = new Set(currentMoveIds(p).filter((id) => id != null).map((id) => String(id)));
   const rows = evolutionRows(p, { moveIds: carried, moveData: _moveData });
@@ -1189,8 +1189,9 @@ async function renderEvoBlock(id) {
   });
   // 图鉴里还没见过的目标
   box.querySelectorAll('.evo-icon[data-unknown]').forEach((im) => tryLoadImage(im, 'pokemon-data/icon/unknown.png'));
-  // 顺手预取进化目标的立绘并解掉首帧：点进化后演出要立刻换图、立刻起手，别等到那时候才加载/解码
-  for (const t of rows.flatMap((r) => r.targets)) {
+  // 顺手预取进化目标的立绘并解掉首帧：点进化后演出要立刻换图、立刻起手，别等到那时候才加载/解码。
+  // 不能点进化的入口（悬赏/交换/放入…）不预取，别白拉一堆图
+  for (const t of _detailEvoAllowed ? rows.flatMap((r) => r.targets) : []) {
     const pd = getPokemonByIndex(String(t));
     if (!pd) continue;
     const warm = new Image();
@@ -2067,12 +2068,16 @@ function showContextMenu(x, y) {
     if (act === 'advFilter') openAdvFilter();
     else if (act === 'batchRelease') startBatchRelease();
   };
-  setTimeout(() => document.addEventListener('click', hideContextMenu, { once: true }), 0);
+  _ctxUnwatch?.();
+  _ctxUnwatch = watchOutsidePress(menu, hideContextMenu);
 }
 
+let _ctxUnwatch = null; // 点外面收菜单的解绑函数（每次弹出重新挂）
 function hideContextMenu() {
   const menu = document.getElementById('rosterCtxMenu');
   if (menu) menu.style.display = 'none';
+  _ctxUnwatch?.();
+  _ctxUnwatch = null;
 }
 
 function startBatchRelease() {
@@ -2264,7 +2269,7 @@ export function restoreRosterList() {
   stopShinySparkleLoop();
   if (_detailId == null) return;
   _detailJumpedToPokedex = false;
-  _detailEvoAllowed = false; // 退出详情就关掉改性格/进化链的开关，别漏给下一次别的入口
+  _detailEvoAllowed = false; // 退出详情就关掉改性格/进化的开关，别漏给下一次别的入口
   // 从悬赏提交/交换选择列表进入的详情：返回直接恢复来源列表
   if (_detailReturnFn) { leaveRosterDetailToList(); return; }
   _detailId = null;

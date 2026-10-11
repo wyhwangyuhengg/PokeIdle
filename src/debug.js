@@ -11,6 +11,7 @@
 //   __nextEncounter(25, true)         指定下次遇敌（用后即焚）
 //   __refreshAll()                    一键刷新：对战/交换/大量出没/时空扭曲/悬赏/商店每日限量货
 //   __npcTeam(25, 6, 149)             对战 NPC 全部使用指定精灵
+//   __ppZero()                        清空当前对战双方的 PP（验证「挣扎」兜底）
 import {
   gameData, allPokemon, getPokemonByIndex, addRosterEntry, saveGame,
   ensureGpsState, setLastRegionId, syncGpsPosition, rollGender, rollNature,
@@ -18,6 +19,7 @@ import {
 import { REGION_CYCLE } from './config.js';
 import { clearDailyStock } from './items.js';
 import { $, updateBackpack, updateStats, renderIncubatorView, updateIncubatorBadge } from './ui.js';
+import { debugClearPp } from './battle-view.js';
 import { refreshBerryView } from './berry.js';
 import { showGpsView } from './gps.js';
 import { forceRefreshMassOutbreak, forceRefreshTwist } from './events.js';
@@ -205,6 +207,13 @@ window.__npcTeam = (...ids) => {
   gameData.battleNpcs.list.forEach((n) => { n.mons = [...mons]; });
   if ($('battleView')?.style.display !== 'none' && !isBattleActive()) renderBattleList();
   console.log(`__npcTeam: 对战 NPC 已刷新，全部队伍=${mons.join(', ')}`);
+};
+
+// 清空当前对战双方的 PP：配合"只带一招"的配置，可以立刻看到四招全空时的「挣扎」
+window.__ppZero = () => {
+  const n = debugClearPp();
+  console.log(n ? `__ppZero: 已清空 ${n} 只宝可梦的 PP，回到出招面板看「挣扎」` : '__ppZero: 当前没有进行中的对战');
+  return n;
 };
 
 // ---------- 一键完成所有进度 ----------

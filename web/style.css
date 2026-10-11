@@ -1822,7 +1822,8 @@ nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; position: r
 }
 .pk-txt { flex: 1; min-width: 0; font-size: 12px; line-height: 1.7; color: var(--color-text); }
 .pk-txt b { color: var(--ui-color-darker); }
-.pk-recipe { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; vertical-align: middle; }
+.pk-recipe { margin-left: 4px; white-space: nowrap; }
+.pk-recipe .berry-ico { vertical-align: -3px; margin: 0 1px 0 0; }
 .pk-empty { font-size: 12px; color: var(--color-muted); }
 /* 进化链：根在左、分支向右的横向树，靠 grid 列对齐，超宽时横向滚动 */
 .pk-chain { margin-top: 12px; border-top: 1px dashed var(--console-border); padding-top: 10px; }

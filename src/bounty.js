@@ -3,7 +3,7 @@
 // 仓库里有该物种的在仓个体即可提交；只有今日到访过的地区能看到内容，提交必须到当地。
 import { REGION_CYCLE, ITEM_NAMES, BOUNTY_PER_REGION, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_JITTER, BOUNTY_RARE_WEIGHT, BOUNTY_COST_REF, BOUNTY_CANDY_CN, BOUNTY_BIG_CN, BOUNTY_BIG_RARE_CHANCE, BOUNTY_EXCLUSIVE_CHANCE, BOUNTY_MINT_CHANCE, BOUNTY_CROWN_CHANCE, BOUNTY_GOLD_CROWN_CHANCE, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BOUNTY_EXP_CANDY_QTY, EVO_PRICES } from './config.js';
 import { gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, getCurrentRegion, pushNav, saveGame, addSystemLog, ensureGender, genderBadge, isPokemon, randInt, ivOf, effIvTotal } from './state.js';
-import { $, showView, updateStats, tryLoadImage, logicViewport, popupBounds, showConfirmBar } from './ui.js';
+import { $, showView, updateStats, tryLoadImage, logicViewport, popupBounds, showConfirmBar, watchOutsidePress } from './ui.js';
 import { showGoodbyeConfirm } from './animation.js';
 import { pickFamily, pokemonSourceBadge, grantItem, itemIconSrc, evoExclusivePool, MINT_KEYS } from './items.js';
 import { evolutionData, evoPreEvos } from './evolution.js';
@@ -645,20 +645,22 @@ function showBountyContextMenu(ignored, regionIdx, bi, x, y) {
   const b = popupBounds(); // 夹紧在机身内：手游双屏下机身只占屏幕中间一块
   menu.style.left = Math.max(b.left, Math.min(lx - 24, b.right - mw - 4)) + 'px';
   menu.style.top = Math.max(b.top, Math.min(ly, b.bottom - mh - 4)) + 'px';
-  // 菜单内点击不触发外部关闭；点击外部任意位置关闭
-  menu.addEventListener('pointerdown', (e) => e.stopPropagation());
   menu.onclick = (e) => {
     const opt = e.target.closest('.shop-ctx-item');
     if (!opt) return;
     hideBountyContextMenu();
     toggleIgnoreBounty(Number(opt.dataset.region), Number(opt.dataset.bi));
   };
-  document.addEventListener('pointerdown', hideBountyContextMenu);
+  _bountyMenuUnwatch?.();
+  _bountyMenuUnwatch = watchOutsidePress(menu, hideBountyContextMenu);
 }
+let _bountyMenuUnwatch = null;
 
 function hideBountyContextMenu() {
   const menu = $('bountyCtxMenu');
   if (menu) menu.style.display = 'none';
+  _bountyMenuUnwatch?.();
+  _bountyMenuUnwatch = null;
   document.removeEventListener('pointerdown', hideBountyContextMenu);
 }
 
