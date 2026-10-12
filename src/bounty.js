@@ -355,7 +355,6 @@ function doClaimBounty(regionIdx, bi) {
   } else {
     gameData.items.candy = (gameData.items.candy || 0) + b.candy;
     gameData.stats.totalItemsEarned.candy = (gameData.stats.totalItemsEarned.candy || 0) + b.candy;
-    gameData.stats.totalBountyCandy = (gameData.stats.totalBountyCandy || 0) + b.candy;
   }
   gameData.stats.totalBountyClaims = (gameData.stats.totalBountyClaims || 0) + 1;
   // 今日完成数：跨天自动清零

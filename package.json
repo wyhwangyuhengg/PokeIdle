@@ -1,7 +1,8 @@
 {
   "name": "PokeIdle",
   "private": true,
-  "version": "1.1.4",
+  "version": "1.1.5",
+  "buildStamp": "beta2",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -12,7 +13,8 @@
     "android:debug": "node mobile/android.mjs debug",
     "android:build": "node mobile/android.mjs release",
     "android:install": "node mobile/android.mjs install",
-    "android:keystore": "node mobile/keystore.mjs"
+    "android:keystore": "node mobile/keystore.mjs",
+    "android:serve": "node mobile/dev-server.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.0",

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const FILES = ['views.js', 'config.js', 'team.js'];
+const FILES = ['views.js', 'config.js', 'team.js', 'build-info.js'];
 const destDir = join(here, 'src');
 const srcDir = join(here, '..', 'src');
 

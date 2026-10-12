@@ -288,7 +288,7 @@ export function getDefaultSave() {
       totalShinySeen:0, totalShinyCaught:0,
       totalBallsUsed:0, totalEggsHatched:0, totalShinyEggsHatched:0, totalEggsProduced:0, totalShinyTraded:0,
       totalBlockMade:0, totalPlantings:0, totalHarvests:0, totalBerriesHarvested:0, totalBoardTrades:0,
-      totalBountyClaims:0, totalBountyCandy:0, bountyClaimsToday:0, lastBountyDate:'',
+      totalBountyClaims:0, bountyClaimsToday:0, lastBountyDate:'',
       totalTrades:0, tradesToday:0, lastTradeDate:'', totalEvolutions:0, evolutionsToday:0, lastEvoDate:'',
       releaseXpPool: 0, // 放生返还的经验累积池：攒满 EXP_CANDY_XP 自动产出一颗经验糖果并清零
       totalNpcWins:0, totalNpcNoviceWins:0, totalNpcEliteWins:0, totalNpcLeaderWins:0, totalNpcChampionWins:0, totalNpcCandy:0,
@@ -332,7 +332,7 @@ export function getDefaultSave() {
     collectedCards: {}, // 卡牌收集：{ filename: { tier, cnName, enName, obtainedAt } }，由 gacha.js 管理
     gachaLogs: {}, // 抽卡记录：{ pool1: [{ time, card, tier, cnName, isNew }], pool2: [...] }，由 gacha.js 管理
     introDone: false, // 是否已完成开场剧情（首次进入必须看完才能开始挂机）
-    settings: { autoCatch: false, autoFlee: true, windowPinned: true, autoCatchBalls: { 'poke-ball': true, 'ultra-ball': true, 'master-ball': false }, shinyStop: false, legendStop: false, autoBuffHoney: false, autoBuffCharm: false, autoRefill: false, autoRefillHoney: false, autoRefillCharm: false, autoRefillBalls: { 'poke-ball': true, 'ultra-ball': false, 'master-ball': false }, autoRefillOrder: ['poke-ball', 'ultra-ball', 'master-ball'], catchFilter: { rows: { normal: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, normalShiny: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, legend: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, legendShiny: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false } } }, gender: 'brendan', musicVolume: 0.6, musicEnabled: true },
+    settings: { autoCatch: false, autoFlee: true, windowPinned: true, backgroundService: false, autoCatchBalls: { 'poke-ball': true, 'ultra-ball': true, 'master-ball': false }, shinyStop: false, legendStop: false, autoBuffHoney: false, autoBuffCharm: false, autoRefill: false, autoRefillHoney: false, autoRefillCharm: false, autoRefillBalls: { 'poke-ball': true, 'ultra-ball': false, 'master-ball': false }, autoRefillOrder: ['poke-ball', 'ultra-ball', 'master-ball'], catchFilter: { rows: { normal: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, normalShiny: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, legend: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }, legendShiny: { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false } } }, gender: 'brendan', musicVolume: 0.6, musicEnabled: true },
   };
 }
 
@@ -609,7 +609,9 @@ export async function saveGame() {
   }
   let lsOk = false;
   try { localStorage.setItem('pokemon_idle_save', s); lsOk = true; } catch (_) {}
-  reportSaveResult(primaryOk === null ? lsOk : primaryOk);
+  const ok = primaryOk === null ? lsOk : primaryOk;
+  reportSaveResult(ok);
+  return ok;
 }
 
 // 当前遭遇的自定义文案（如钓鱼"上钩了"），写入会话状态以便刷新后沿用

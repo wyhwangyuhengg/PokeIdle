@@ -69,8 +69,10 @@ export function startBackgroundCatchup() {
       }
       deps.onHidden(); // 遭遇中切后台：立即结算进行中的遭遇（autoCatch 定时器会被冻结卡画面）
     } else if (_hiddenAt) {
-      _bgSecAccum += (Date.now() - _hiddenAt) / 1000;
+      const awaySec = (Date.now() - _hiddenAt) / 1000;
+      _bgSecAccum += awaySec;
       _hiddenAt = 0;
+      deps.onShown(awaySec); // 停摆窗口内刷出的遭遇还压在屏幕上：回前台按当前模式结掉
     }
   });
 }

@@ -253,7 +253,8 @@ function buildItem(a) {
   const claimable = earned - claimed;
   const done = a.maxTiers != null && claimed >= a.maxTiers;
   const tier = tierAt(a, claimed);
-  const pct = done ? 100 : Math.min(99, Math.floor((v / tier.threshold) * 100));
+  // 达标待领取也画满：99 上限只留给还没达标的
+  const pct = (done || claimable > 0) ? 100 : Math.min(99, Math.floor((v / tier.threshold) * 100));
   // 糖果图标 + 数量放在按钮左侧（按钮外），右侧统一「领取」
   const rewardHTML = `<span class="ach-reward">${CANDY_ICON}×${formatNum(tier.reward)}</span>`;
   const btnHTML = done ? '已达成全部' : '领取';
@@ -329,7 +330,8 @@ export function refreshAchievements() {
     const claimable = earned - claimed;
     const done = a.maxTiers != null && claimed >= a.maxTiers;
     const tier = tierAt(a, claimed);
-    const pct = done ? 100 : Math.min(99, Math.floor((v / tier.threshold) * 100));
+    // 达标待领取也画满：99 上限只留给还没达标的
+    const pct = (done || claimable > 0) ? 100 : Math.min(99, Math.floor((v / tier.threshold) * 100));
     const prog = item.querySelector('.ach-prog');
     if (prog) prog.textContent = done ? '★ 已完成' : `${a.fmt(v)} / ${a.fmt(tier.threshold)}`;
     const bar = item.querySelector('.ach-bar-fill');

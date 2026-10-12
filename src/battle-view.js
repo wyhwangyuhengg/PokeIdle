@@ -128,7 +128,7 @@ function doRetreat(battle) {
   if (_activeBattle !== battle) return; // 防重复执行
   _activeBattle = null;
   battle.winner = null;
-  setPhase('idle'); // 撤退恢复主界面挂机状态
+  import('./battle.js').then(m => m.resumePhaseAfterBattle()); // 遭遇还在就回遭遇态，否则回挂机
   endBattle(); // 撤退 → 停止战斗曲，恢复地区曲
   showBattleView();
   addSystemLog('战斗', `与「${battle.preset.name}」的战斗中撤退了`);
@@ -442,9 +442,8 @@ async function startNpcBattle(npcId, startAuto = false) {
   _battleLogs = []; // 新战斗清空上一把的对战记录
   _logCtx = { p: pTeam.map((x) => x.mon.name), e: eTeam.map((x) => x.mon.name), npc: npc.name };
   setPhase('battle'); // 战斗中：主界面道路暂停切段/骑行切换，避免挂机 BGM 覆盖战斗曲
-  if (battle._hadPendingEncounter) {
-    import('./battle.js').then(m => m.handoffEncounterToBackground(battle._pendingEncounterPhase));
-  }
+  // 遭遇与对战现在各走各的状态，开战时不再把进行中的遭遇塞去后台：
+  // 它留在上屏继续，玩家照常丢球（战斗结束由 resumeEncounterFlow 收尾）
   _busy = true; // 开场精灵球登场动画期间也禁止刷新/重进战斗
   const pageReady = renderBattlePage(battle);
   playBattle(); // 进入 NPC 挑战 → 切换为战斗曲（覆盖地区曲）
@@ -2780,12 +2779,13 @@ async function battleLoop(battle) {
     hideLogMenu(); // 战斗结束时若右键菜单还开着，一并收起
     closeLogPage(); // 记录页开着则关闭并还原标题栏（战斗已结束，无返回战斗一说）
     if (_activeBattle === battle) _activeBattle = null;
-    setPhase('idle'); // 战斗结束（含撤退/异常）恢复主界面挂机状态
+    import('./battle.js').then(m => m.resumePhaseAfterBattle()); // 遭遇还在就回遭遇态，否则回挂机
     road.resume(); // 若进战斗前道路被其他流程暂停（如挂机遇敌）未恢复，回到主界面需恢复滚动
     // 进战斗前有被打断的野生遭遇：战斗结束后恢复 buff 倒计时与遇敌调度
     if (battle._hadPendingEncounter) {
       import('./battle.js').then(m => m.resumeEncounterFlow());
     }
+    import('./battle.js').then(m => m.fireWaitingEncounter());
   }
 }
 

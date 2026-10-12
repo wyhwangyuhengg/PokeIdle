@@ -8,6 +8,8 @@ import { copyFile, mkdir, readFile, readdir, stat, utimes } from 'node:fs/promis
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { syncVersion } from './sync-version.mjs';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const distDir = join(root, 'dist');
 const nsisDir = join(root, 'src-tauri', 'target', 'release', 'bundle', 'nsis');
@@ -16,7 +18,7 @@ const args = process.argv.slice(2);
 const skipPc = args.includes('--skip-pc') || process.env.SKIP_PC === '1';
 const skipAndroid = args.includes('--skip-android') || process.env.SKIP_ANDROID === '1';
 
-const { version } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+const { version } = await syncVersion(); // 版本号/版本戳：package.json 是唯一手改处
 
 function run(title, script) {
   console.log(`\n===== ${title} =====`);

@@ -1,7 +1,7 @@
 // ===== 饲育屋 App =====
 // 把两只宝可梦放进饲育屋配对：满足蛋组条件（雌雄共蛋组 / 百变怪万能配对）即可繁殖。
 // 互斥规则：饲育屋 / 训练 / 配队三方互斥——放入饲育屋自动离开队伍与训练槽，反之亦然。
-import { $, showView, tryLoadImage, setupFoodTooltip, showConfirmBar, hideConfirmBar } from './ui.js';
+import { $, showView, tryLoadImage, setupFoodTooltip, showConfirmBar, hideConfirmBar, hideFoodTip } from './ui.js';
 import { gameData, getPokemonByIndex, isPokemon, saveGame, pushNav, ensureGender, genderBadge, rollGender, rollNature, rollSexForm, addSystemLog } from './state.js';
 import { matchPinyinPartial } from './pokedex.js';
 import { BERRY_ICONS, BERRY_NAMES, pokemonSourceBadge } from './items.js';
@@ -844,6 +844,7 @@ function boardHost() {
 
 function openBoard() {
   _confirmTakeSlot = -1; // 新打开面板不残留上次的待确认态
+  hideFoodTip(); // 面板展开：tooltip 一起收掉
   const host = boardHost();
   host.innerHTML = boardHtml();
   host.style.display = '';
@@ -1660,6 +1661,7 @@ function openEggView() {
   _eggView = true;
   _confirmDiscardEgg = null; // 新打开蛋仓库不残留上次的待确认丢弃态
   _eggQuery = '';
+  hideFoodTip(); // 切到蛋仓库：饲育屋页面上的 tooltip 一起收掉
   const content = $('nurseryContent');
   if (content) { content.style.display = 'flex'; content.style.flexDirection = 'column'; }
   const title = $('appTitle');

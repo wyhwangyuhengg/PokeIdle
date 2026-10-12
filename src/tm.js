@@ -53,11 +53,12 @@ function ensureShop(pool) {
 
 const rowOf = (id) => (_pool || []).find((r) => r.id === id);
 
-const tmIcon = (type, cls) => `<img class="${cls || 'shop-icon'}" src="./items/${TM_ICONS[type] || 'tm/tm-normal.png'}" alt="${type}" />`;
+const tmIcon = (type) => `<img class="tm-icon" src="./items/${TM_ICONS[type] || 'tm/tm-normal.png'}" alt="${type}" />`;
 
 const typeBadge = (type) =>
   `<span class="b-move-type" style="background:${TYPE_COLORS[type] || '#888'};color:${typeIconColor(type)}"><svg class="b-move-type-icon"><use xlink:href="#icon-type-${type}"></use></svg></span>`;
 
+// 解锁：二次确认已经在行内做过了，这里直接结算
 function buyTm(id, onBought) {
   const row = rowOf(id);
   if (!row || isTmUnlocked(id)) return;
@@ -65,15 +66,8 @@ function buyTm(id, onBought) {
     showConfirmBar('糖果不够', null, null, { singleButton: true });
     return;
   }
-  showConfirmBar(`花费糖果 ×${row.price} 解锁「${row.name}」？能学会它的宝可梦会直接学会。`, () => {
-    // 余额按"点确定"这一刻算：确认框开着的时候余额可能已被别处改动，够不够要再判一次
-    if ((gameData.items['candy'] || 0) < row.price) {
-      showConfirmBar('糖果不够', null, null, { singleButton: true });
-      return;
-    }
-    applyTmUnlock(row);
-    onBought?.();
-  });
+  applyTmUnlock(row);
+  onBought?.();
 }
 
 // 执行解锁：**先把解锁记上再扣糖**——万一后面配招出错，也不过是少学会几只，不会白扣糖果。
@@ -124,8 +118,18 @@ function tmDetail(id) {
 }
 
 // 商店的「招式机」区块（只在兑换模式显示；异步填内容，不阻塞商店首帧）
+// 行内二次确认态（和今日道具、基础道具一致）
+let _tmConfirmId = null;
+function cancelTmConfirm() {
+  if (_tmConfirmId == null) return;
+  const btn = document.querySelector('.shop-tm-confirm');
+  if (btn) { btn.textContent = '解锁'; btn.classList.remove('shop-tm-confirm'); }
+  _tmConfirmId = null;
+}
+
 export async function renderShopTmSection(box, { onBought, onDetail } = {}) {
   if (!box) return;
+  cancelTmConfirm(); // 重绘时清掉上一次的确认态
   const pool = await ensurePool();
   const shop = ensureShop(pool);
   const unlockedCount = pool.filter((r) => isTmUnlocked(r.id)).length;
@@ -148,18 +152,28 @@ export async function renderShopTmSection(box, { onBought, onDetail } = {}) {
         </div>
       </div>`;
     }).join('') : `<div class="rec-empty">${pool.length && unlockedCount >= pool.length ? '全部招式机都已解锁' : '今日没有新货'}</div>`}`;
-  // 点按钮解锁，点条目本身看招式详情（自己截住冒泡，避免被商店的道具兑换逻辑接走）
+  // 点按钮解锁（行内二次确认：第一次变「确认解锁」，第二次才解锁），点条目本身看招式详情
   box.onclick = (e) => {
     const row = e.target.closest('.shop-item[data-tm]');
-    if (!row) return;
+    if (!row) { cancelTmConfirm(); return; }
     e.stopPropagation();
+    const id = Number(row.dataset.tm);
     const btn = e.target.closest('.shop-btn');
     if (btn && !btn.classList.contains('inert')) {
-      onDetail(null); // 关掉详情卡片，露出确认条
-      buyTm(Number(row.dataset.tm), onBought);
+      if (_tmConfirmId !== id) {
+        cancelTmConfirm();
+        _tmConfirmId = id;
+        btn.textContent = '确认解锁';
+        btn.classList.add('shop-tm-confirm');
+        return;
+      }
+      _tmConfirmId = null;
+      onDetail(null);
+      buyTm(id, onBought);
       return;
     }
-    const detail = tmDetail(Number(row.dataset.tm));
+    cancelTmConfirm();
+    const detail = tmDetail(id);
     if (detail) onDetail(detail);
   };
 }

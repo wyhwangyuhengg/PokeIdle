@@ -1,6 +1,7 @@
 // ===== 口袋挂机 · 后端服务（Node，无依赖） =====
 // 现在只有一个功能：在线统计 /api/telemetry/*。加新功能就在下面 ROUTES 里加一条。
 // 环境变量：PORT（默认 4000）/ DATA_DIR（默认 ./data）/ TELEMETRY_SALT（生产必填）/ TELEMETRY_ORIGINS（额外跨域来源）
+// 数据全在一个文件里：DATA_DIR/stats.json
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -26,33 +27,54 @@ if (!SALT) console.warn('[server] 未设置 TELEMETRY_SALT（仅限本地调试�
 // ---------- 在线统计 ----------
 const seen = new Map();  // hash -> { last, beats }
 const rate = new Map();  // ip -> { n, ts }
-const today = new Set();
-const total = new Set();
-let day = new Date().toISOString().slice(0, 10);
-let dataFile = path.join(DATA_DIR, `${day}.json`);
+// 落盘就一个文件 data/stats.json：{ days: { '2026-10-12': [哈希...] }, total: [哈希...] }
+const DB_FILE = path.join(DATA_DIR, 'stats.json');
+const db = { days: {}, total: [] };
+const totalSet = new Set();
+let day = dayKey();
+let today = new Set();
 
+function dayKey() { return new Date().toISOString().slice(0, 10); }
+function rollDay() { // 跨天：换一天的桶（历史留在 db.days 里）
+  const now = dayKey();
+  if (now === day) return;
+  if (today.size) db.days[day] = [...today].sort();
+  day = now;
+  today = new Set(db.days[day] || []);
+}
 function save() {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(dataFile, JSON.stringify([...today]));
-    fs.writeFileSync(path.join(DATA_DIR, 'total.json'), JSON.stringify([...total]));
+    if (today.size) db.days[day] = [...today].sort();
+    const days = {};
+    for (const k of Object.keys(db.days).sort()) days[k] = [...db.days[k]].sort();
+    db.total = [...totalSet].sort();
+    fs.writeFileSync(DB_FILE, JSON.stringify({ days, total: db.total }));
   } catch (e) { console.error('[server] 落盘失败:', e.message); }
 }
 function load() {
+  try { // 新格式
+    const j = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    if (j && typeof j.days === 'object') db.days = j.days || {};
+    if (Array.isArray(j && j.total)) j.total.forEach((h) => totalSet.add(h));
+    today = new Set(db.days[day] || []);
+    return;
+  } catch (_) {}
+  // 旧格式（每天一个 json + total.json）：一次性并进来，之后只用 stats.json
   try {
     const t = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'total.json'), 'utf8'));
-    if (Array.isArray(t)) t.forEach((h) => total.add(h));
-    const d = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-    if (Array.isArray(d)) d.forEach((h) => today.add(h));
-  } catch (_) {} // 首次运行没有文件
-}
-function rollDay() {
-  const now = new Date().toISOString().slice(0, 10);
-  if (now === day) return;
-  save();
-  day = now;
-  dataFile = path.join(DATA_DIR, `${day}.json`);
-  today.clear();
+    if (Array.isArray(t)) t.forEach((h) => totalSet.add(h));
+  } catch (_) {}
+  try {
+    for (const f of fs.readdirSync(DATA_DIR)) {
+      const m = /^(\d{4}-\d{2}-\d{2})\.json$/.exec(f);
+      if (!m) continue;
+      const arr = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8'));
+      if (Array.isArray(arr)) db.days[m[1]] = arr;
+    }
+  } catch (_) {}
+  today = new Set(db.days[day] || []);
+  if (Object.keys(db.days).length || totalSet.size) save();
 }
 
 // 真实客户端 IP：反代后 socket 里全是 127.0.0.1，取 X-Forwarded-For 第一跳；直连时用 socket
@@ -99,8 +121,9 @@ const ROUTES = [
       const h = hashOf(id);
       const cur = seen.get(h);
       if (cur) { cur.last = now; cur.beats++; } else seen.set(h, { last: now, beats: 1 });
+      rollDay();
       if (today.size < 500000) today.add(h);
-      if (total.size < 500000) total.add(h);
+      if (totalSet.size < 500000) totalSet.add(h);
       json(res, 200, { ok: true }, allowOrigin(req)); // 不回统计值：客户端不需要，也少一个被探测的口子
     },
   },
@@ -109,7 +132,7 @@ const ROUTES = [
     path: '/api/telemetry/stats',
     handle(req, res) {
       rollDay();
-      json(res, 200, { online: onlineCount(), today: today.size, total: total.size }, {
+      json(res, 200, { online: onlineCount(), today: today.size, total: totalSet.size }, {
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'public, max-age=10', // 官网读数由这层缓存兜住
       });
@@ -119,7 +142,7 @@ const ROUTES = [
     method: 'GET',
     path: '/healthz',
     handle(req, res) {
-      json(res, 200, { ok: true, online: onlineCount(), today: today.size, total: total.size }, { 'Cache-Control': 'no-store' });
+      json(res, 200, { ok: true, online: onlineCount(), today: today.size, total: totalSet.size }, { 'Cache-Control': 'no-store' });
     },
   },
 ];

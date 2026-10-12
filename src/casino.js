@@ -3,7 +3,7 @@
 // 规则：标准 52 张牌；A = 1/11 取最优，J/Q/K = 10；玩家可要牌/停牌/加倍；
 // 庄家点数 < 17 一直要牌；天然 21（前两张即 21 = 黑杰克）按 1.5 倍赔付；
 // 下注/赔付均操作 gameData.items.candy，结算走 saveGame() + updateStats()。
-import { $, showView, updateStats } from './ui.js';
+import { $, showView, updateStats, hideFoodTip } from './ui.js';
 import { gameData, saveGame, pushNav, formatNum, addSystemLog } from './state.js';
 import { playCasino, playMahjongSfx } from './audio.js';
 import { COIN_RATE, DEALER_STAND, BJ_MULT } from './config.js';
@@ -189,6 +189,7 @@ function exchangeCoin() {
   const bal = candy();
   if (bal <= 0) { hideExchangeMenu(); return; }
   hideExchangeMenu();
+  hideFoodTip(); // 菜单展开：tooltip 一起收掉
   const menu = document.createElement('div');
   menu.id = 'exchangeCoinMenu';
   menu.className = 'shop-ctx-menu casino-exchange-menu';

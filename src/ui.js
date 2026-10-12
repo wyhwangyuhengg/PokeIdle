@@ -63,6 +63,7 @@ export function isStageView(id) { return STAGE_VIEWS.has(id); }
 
 // 把 app 显示到下半屏：不改当前页、不入导航栈
 export function showAppView(id) {
+  hideFoodTip(); // 切页面：tooltip 不跟过去
   if (!isDualLayout()) { showView(id); return; }
   VIEW_IDS.forEach(v => {
     if (STAGE_VIEWS.has(v)) return;
@@ -76,6 +77,7 @@ export function showAppView(id) {
 
 // 下半屏回到手机首页（玩家「回挂机」：再点一次已高亮的入口图标、手机主页按返回）
 export function closeAppArea() {
+  hideFoodTip(); // 下半屏换了内容：tooltip 一起收掉
   if (!isDualLayout()) return;
   import('./phone.js').then(m => m.showPhoneHome()); // showPhoneHome 内会把当前页记成手机首页
 }
@@ -123,6 +125,7 @@ function dismissConfirmBarForView(id) {
 }
 
 export function showView(id) {
+  hideFoodTip(); // 切页面：tooltip 不跟着走到新页面
   dismissConfirmBarForView(id);
   // 导入存档的对比框只属于设置页：切走时收掉，别浮在新页面上
   if (id !== 'settingsView') document.getElementById('importCmpDialog')?.remove();
@@ -317,6 +320,7 @@ export function hideTextBox(owner = 'stage') {
 // 传入文案和确定/取消回调；onYes 返回 true 则保持显示（用于结算结果停留），返回 falsy 则关闭。
 export function showConfirmBar(text, onYes, onNo, opts = {}) {
   hideConfirmBar();
+  hideFoodTip(); // 确认条弹出：底下的 tooltip 一起收掉
   const bar = document.createElement('div');
   bar.id = 'confirmBar';
   bar.className = 'text-box shop-text-box';
@@ -1328,6 +1332,7 @@ function toggleIncubatorIgnore(slotIndex) {
 // 库存为 0 的选项置灰禁用；点击外部任意位置关闭
 function showIncubatorPickMenu(slot, anchorEl) {
   hideIncubatorPickMenu();
+  hideFoodTip(); // 菜单展开：tooltip 一起收掉
   const mysteryCount = gameData.items['mystery-egg'] || 0;
   const inUse = new Set((gameData.incubators || []).map(s => s && s.eggRef).filter(Boolean));
   const pokemonCount = (gameData.roster || [])
@@ -1341,27 +1346,25 @@ function showIncubatorPickMenu(slot, anchorEl) {
   if (!menu) {
     menu = document.createElement('div');
     menu.id = 'incubatorPickMenu';
-    menu.className = 'shop-ctx-menu';
-    document.body.appendChild(menu);
+    menu.className = 'team-menu'; // 和派遣/配队槽位菜单同一套样式与定位做法
+    document.getElementById('incubatorList')?.appendChild(menu);
   }
   menu.innerHTML = `
-    <div class="shop-ctx-item${mysteryCount > 0 ? '' : ' disabled'}" data-pick="mystery">
-      <span class="shop-ctx-qty">神秘蛋</span>
-    </div>
-    <div class="shop-ctx-item${pokemonCount > 0 ? '' : ' disabled'}" data-pick="pokemon">
-      <span class="shop-ctx-qty">宝可梦蛋</span>
-    </div>`;
-  // 定位到加号正下方（越界自动翻转）
-  const rect = anchorEl.getBoundingClientRect();
+    <button data-pick="mystery"${mysteryCount > 0 ? '' : ' class="disabled"'}>神秘蛋</button>
+    <button data-pick="pokemon"${pokemonCount > 0 ? '' : ' class="disabled"'}>宝可梦蛋</button>`;
+  // 容器相对坐标定位（同派遣页）：贴在槽位中部偏下，越界就夹在容器内
+  const box = document.getElementById('incubatorList') || document.body;
+  const r = box.getBoundingClientRect();
+  const sr = anchorEl.getBoundingClientRect();
   menu.style.display = '';
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  const x = Math.max(0, Math.min(rect.left + rect.width / 2 - 24, window.innerWidth - mw - 4));
-  const y = Math.max(0, Math.min(rect.bottom + 2, window.innerHeight - mh - 4));
-  menu.style.left = x + 'px';
-  menu.style.top = y + 'px';
+  const left = sr.left - r.left + sr.width / 2 - mw / 2;
+  const top = sr.top - r.top + sr.height * 0.65;
+  menu.style.left = `${Math.max(0, Math.min(left, r.width - mw - 4))}px`;
+  menu.style.top = `${Math.max(0, Math.min(top, r.height - mh - 4))}px`;
   menu.addEventListener('pointerdown', (e) => e.stopPropagation());
   menu.onclick = (e) => {
-    const opt = e.target.closest('.shop-ctx-item');
+    const opt = e.target.closest('[data-pick]');
     if (!opt || opt.classList.contains('disabled')) return;
     hideIncubatorPickMenu();
     if (opt.dataset.pick === 'mystery') {
@@ -1606,6 +1609,17 @@ export function setupFoodTooltip() {
   });
   document.addEventListener('mouseout', (e) => {
     if (!tooltipTextFor(e.target)) hideFoodTip();
+  });
+  // 点击后那一点还压着带 data-tip 的元素就留着，否则收掉（跳页、开面板、收起面板都会走到）
+  document.addEventListener('click', (e) => {
+    if (!_foodTipEl || _foodTipEl.style.display === 'none') return;
+    if (!e.clientX && !e.clientY) return; // 无坐标的程序化 click 不参与判定
+    const x = e.clientX, y = e.clientY;
+    setTimeout(() => {
+      if (!_foodTipEl || _foodTipEl.style.display === 'none') return;
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || !hit.closest || !hit.closest('[data-tip]')) hideFoodTip();
+    }, 0);
   });
   // 滚出/切页时隐藏
   document.addEventListener('scroll', hideFoodTip, true);

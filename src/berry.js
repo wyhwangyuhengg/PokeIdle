@@ -3,7 +3,7 @@
 import { $, showView, tryLoadImage, getCharPrefix, updateStats, logicToViewport, popupBounds, watchOutsidePress } from './ui.js';
 import { gameData, pushNav, saveGame, randInt, addSystemLog } from './state.js';
 import { BERRY_ICONS, BERRY_NAMES } from './items.js';
-import { setupFoodTooltip } from './ui.js';
+import { setupFoodTooltip, hideFoodTip } from './ui.js';
 import {
   FARM_PLOT_COUNT as PLOT_COUNT,
   FARM_MATURE_MIN as MATURE_MIN,
@@ -492,6 +492,7 @@ function pickerHost() {
 
 function openPicker(i) {
   _picking = i;
+  hideFoodTip(); // 面板展开：tooltip 一起收掉
   const host = pickerHost();
   host.innerHTML = pickerHtml();
   host.style.display = '';
@@ -523,6 +524,7 @@ function openPicker(i) {
 function closePicker() {
   _picking = null;
   const host = $('berryPickerHost');
+  if (host && host.style.display !== 'none') hideFoodTip(); // 面板收起：tooltip 别落在底层画面上
   if (host) {
     host.innerHTML = '';
     host.style.display = 'none';
@@ -725,6 +727,7 @@ function boardHtml() {
 
 function openBoard() {
   if (ensureBoard()) saveGame();
+  hideFoodTip(); // 面板展开：压在底下的 tooltip 一起收掉
   const host = boardHost();
   host.innerHTML = boardHtml();
   host.style.display = '';
@@ -741,6 +744,7 @@ function openBoard() {
 
 function closeBoard() {
   const host = $('berryBoardHost');
+  if (host && host.style.display !== 'none') hideFoodTip(); // 面板收起：tooltip 一起收掉
   if (host) {
     host.innerHTML = '';
     host.style.display = 'none';
@@ -772,6 +776,7 @@ function stockPanelHtml() {
 }
 
 function openStock() {
+  hideFoodTip(); // 面板展开：压在底下的 tooltip 一起收掉
   const host = stockHost();
   host.innerHTML = stockPanelHtml();
   host.style.display = '';
@@ -781,6 +786,7 @@ function openStock() {
 
 function closeStock() {
   const host = $('berryStockHost');
+  if (host && host.style.display !== 'none') hideFoodTip(); // 面板收起：压在它上面的 tooltip 一起收掉
   if (host) {
     host.innerHTML = '';
     host.style.display = 'none';
@@ -840,10 +846,10 @@ function harvest(i) {
   f.plots[i] = null;
   addSystemLog('berry_harvest', { berry: p.type, qty });
   saveGame();
-  // 树果飞向库存箱的动效播完再重绘（render 会清掉动效图标）
+  // 只重绘这一块地：整页 render 会把别人正在飞的收获动效一起清掉
   _harvesting.add(i);
   const wait = spawnHarvestFly(i, p.type, qty);
-  setTimeout(() => { _harvesting.delete(i); render(); notifyBerryChanged(); }, wait);
+  setTimeout(() => { _harvesting.delete(i); updatePlotDom(i); notifyBerryChanged(); }, wait);
 }
 
 function waterPlot(i) {

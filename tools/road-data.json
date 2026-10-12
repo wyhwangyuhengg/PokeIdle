@@ -9,7 +9,7 @@
     "game": {
       "width": 40,
       "height": 3,
-      "place": "在草丛里",
+      "place": "在草地上",
       "rows": [
         [
           {
@@ -208,7 +208,7 @@
     "game": {
       "width": 10,
       "height": 3,
-      "place": "在草丛里",
+      "place": "在草地上",
       "rows": [
         [
           {
@@ -290,7 +290,7 @@
     "game": {
       "width": 10,
       "height": 3,
-      "place": "在草丛里",
+      "place": "在花丛中",
       "rows": [
         [
           {

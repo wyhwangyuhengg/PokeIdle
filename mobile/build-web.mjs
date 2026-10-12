@@ -4,10 +4,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { build } from 'esbuild';
 
+import { syncVersion } from '../tools/sync-version.mjs';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BRIDGE_TAG = '<script src="./mobile-bridge.js"></script>';
 
 export async function buildWeb() {
+  await syncVersion(); // 版本号/版本戳：package.json 是唯一手改处
   const outDir = join(root, 'mobile', 'web');
   await rm(outDir, { recursive: true, force: true });
   await cp(join(root, 'src'), outDir, { recursive: true });

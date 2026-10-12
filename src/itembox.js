@@ -2,6 +2,8 @@
 // 只读陈列册：顶部搜索 + 五个页签（基础 / 树果 / 进化 / 专属 / 薄荷）；每行只有图标、名字、个数，个数为 0 的不显示。
 // 搜索时页签换成单个「搜索结果」。出售在商店的「出售」列表。
 import { $, showView } from './ui.js';
+import { itemDetailOf } from './items.js';
+import { showDetailCard, hideDetailCard } from './item-detail.js';
 import { gameData, pushNav } from './state.js';
 import { ensureBerryFarm } from './berry.js';
 import { ITEM_NAMES, CANDY_EXCHANGE, EVO_PRICES } from './config.js';
@@ -14,7 +16,7 @@ const qtyOf = (key) => (key.startsWith('berry:')
   ? (ensureBerryFarm().stock[Number(key.slice(6))] || 0)
   : (gameData.items[key] || 0));
 
-const rowHtml = (it) => `<div class="ib-row">
+const rowHtml = (it) => `<div class="ib-row" data-key="${it.k}">
   <img src="${it.icon}" alt="" />
   <span class="ib-name">${it.name}</span>
   <span class="ib-qty">×${it.qty}</span>
@@ -26,7 +28,7 @@ function itemsOf(keys, iconOf, nameOf) {
     .map((k) => ({ k, qty: qtyOf(k) }))
     .filter((x) => x.qty > 0)
     .sort((a, b) => b.qty - a.qty || String(nameOf(a.k)).localeCompare(String(nameOf(b.k)), 'zh'))
-    .map((x) => ({ name: String(nameOf(x.k)), icon: iconOf(x.k), qty: x.qty }));
+    .map((x) => ({ k: x.k, name: String(nameOf(x.k)), icon: iconOf(x.k), qty: x.qty }));
 }
 
 const TABS = [
@@ -43,6 +45,7 @@ let _all = [];       // 四类合并，搜索结果用
 
 export async function renderItemBox() {
   await ensureEvoMeta();
+  hideDetailCard();
   _query = '';
 
   const basicKeys = BASIC_ITEM_ORDER.concat(Object.keys(CANDY_EXCHANGE).filter((k) => !EVO_PRICES[k] && !BASIC_ITEM_ORDER.includes(k)));
@@ -60,6 +63,7 @@ export async function renderItemBox() {
 function paint() {
   const box = $('itemBoxContent');
   if (!box || !_groups.basic) return;
+  hideDetailCard();
   box.innerHTML = `
     <div class="pokedex-search ib-search">
       <div class="pokedex-search-row">
@@ -120,6 +124,12 @@ function paintList(box) {
     ? items.map(rowHtml).join('')
     : `<div class="ib-empty">${_query ? '没有匹配的道具' : '还没有这类道具'}</div>`;
   host.scrollTop = 0;
+  // 点任意一行看介绍（文案与图标和商店共用 itemDetailOf）
+  host.onclick = (e) => {
+    const row = e.target.closest('.ib-row');
+    if (!row || !row.dataset.key) return;
+    showDetailCard(itemDetailOf(row.dataset.key), 'itemBoxView');
+  };
 }
 
 // ===== 页面入口 =====

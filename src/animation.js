@@ -138,13 +138,19 @@ export function playFleeAnim(duration = 1000) {
   const w = pkmn.offsetWidth || start.width;
   const h = pkmn.offsetHeight || start.height;
   let dx = 40, dy = 120;
-  if (box) {
-    const br = box.getBoundingClientRect();
+  const br = box ? box.getBoundingClientRect() : null;
+  const boxOk = !!br && br.width > 0 && br.height > 0;
+  if (boxOk) {
     // 图片左缘超出视口右缘至少 20px（或 20% 图片宽），确保完全跑出屏幕
     const targetX = br.right + Math.max(20, w * 0.2);
     const targetY = br.top - h + br.height * 0.3; // 底部略微压进文字框
     dx = targetX - start.left;
     dy = targetY - start.top;
+  } else {
+    // 文字框不在（被收走/还没显示）：rect 全 0 会让宝可梦往左上角飞，按屏右缘兜底向右下跑
+    const host = pkmn.parentElement?.getBoundingClientRect();
+    const rightEdge = host && host.width > 0 ? host.right : window.innerWidth;
+    dx = rightEdge + Math.max(20, w * 0.2) - start.left;
   }
   // 保持水平居中的 translateX(-50%)，叠加水平翻转 + 向终点平移
   // 第一步：瞬间完成 2D 水平翻转（scaleX(-1)，不做缩放插值，避免"3D 翻转"观感）

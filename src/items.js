@@ -3,7 +3,7 @@ import { ITEM_NAMES, ITEM_DESC, CANDY_EXCHANGE, ITEM_SELL_RATE, ITEM_SELL_OVERRI
 import { phase, gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, encounterMsg, setCurrentEncounter, setEncounterLevel, setEncounterBallsUsed, setCurrentEncounterBalls, setEncounterMsg, setCurrentIsShiny, setPhase, _itemDropActive, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, honeyCountdownInterval, charmCountdownInterval, honeyExpiryTimer, charmExpiryTimer, nextEncounterTimer, _charmEncounterCount, _eggHatching, saveGame, addSystemLog, addIncubatorLog, randInt, rand, getCurrentRegion, setNextEncounterTimer, setItemDropActive, setEggHatching, setIdleMsgIdx, setHoneyBuffActive, setHoneyCountdownEnd, setCharmBuffActive, setCharmGuaranteed, setCharmCountdownEnd, setHoneyPausedRemaining, setCharmPausedRemaining, setCharmEncounterCount, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, calcHatchDistance, getIncubatorUnlockCost, addRosterEntry, rarityLabel, setLastObtainedEntryId, getLastObtainedEntryId, isPokemon, rollGender, ensureGender, genderBadge, dexUnlocked, dexShinyOwned } from './state.js';
 import { $, updateTextBox, updateBackpack, updateStats, showView, isOnHatchView, isIdleStageVisible, isPageHidden, fitPokemonImage, tryLoadPokemonImage, setIdleCharacter, renderIncubatorView, updateIncubatorBadge, showConfirmBar, hideConfirmBar, isEvolutionShowActive } from './ui.js';
 import { showIdlePickup, showBuffExpired } from './messages.js';
-import { animate, delay, burstShinySparkle } from './animation.js';
+import { animate, burstShinySparkle } from './animation.js';
 import { computeObtainScore } from './scoring.js';
 import { NATURES } from './battle-core.js';
 import { playCongratulation, stopCongratulation, playShiny } from './audio.js';
@@ -221,6 +221,16 @@ export function ensureEvoShop() {
 
 // 商店详情卡片的数据
 export function itemDetailOf(key) {
+  // 道具盒的树果键是 "berry:<下标>"：名字/图标走 BERRY_*，说明是纯风味文案（不写功效）
+  if (typeof key === 'string' && key.startsWith('berry:')) {
+    const icon = BERRY_ICONS[Number(key.slice(6))];
+    return {
+      badgeHtml: `<img class="shop-icon" src="./items/berries/${icon}" alt="">`,
+      title: BERRY_NAMES[icon] || '树果',
+      statsHtml: '',
+      desc: BERRY_DESC[icon] || '农场里种出来的树果',
+    };
+  }
   return {
     badgeHtml: `<img class="shop-icon" src="${itemIconSrc(key)}" alt="">`,
     title: ITEM_NAMES[key] || key,
@@ -230,8 +240,18 @@ export function itemDetailOf(key) {
 }
 
 // 商店的「今日道具」区块（买完只改那一行，不重建整页）
+// 今日道具的行内二次确认：第一次点变「确认兑换」，第二次才结算（和基础道具同一套逻辑）
+let _evoConfirmId = null;
+function cancelEvoConfirm() {
+  if (_evoConfirmId == null) return;
+  const btn = document.querySelector('.shop-evo-confirm');
+  if (btn) { btn.textContent = '购买'; btn.classList.remove('shop-evo-confirm'); }
+  _evoConfirmId = null;
+}
+
 export async function renderShopEvoSection(box, { onBought, onDetail } = {}) {
   if (!box) return;
+  cancelEvoConfirm(); // 重绘时清掉上一次的确认态
   await ensureEvoMeta();
   const shop = ensureEvoShop();
   const candy = gameData.items['candy'] || 0;
@@ -258,11 +278,11 @@ export async function renderShopEvoSection(box, { onBought, onDetail } = {}) {
 
   box.onclick = (e) => {
     const item = e.target.closest('.shop-item[data-evo]');
-    if (!item) return;
+    if (!item) { cancelEvoConfirm(); return; } // 点别处取消确认
     e.stopPropagation(); // 别被商店的道具兑换逻辑接走
     const id = decodeURIComponent(item.dataset.evo);
     const btn = e.target.closest('.shop-btn');
-    if (!btn) { onDetail?.(itemDetailOf(id)); return; } // 点条目本身 → 详情卡片
+    if (!btn) { cancelEvoConfirm(); onDetail?.(itemDetailOf(id)); return; } // 点条目本身 → 详情卡片
     if (btn.classList.contains('inert')) {
       if (btn.textContent === '已售罄') onDetail?.(itemDetailOf(id)); // 售罄时点按钮也给卡片
       return;
@@ -271,6 +291,14 @@ export async function renderShopEvoSection(box, { onBought, onDetail } = {}) {
     if ((shop.sold || []).includes(id)) return;
     const price = evoBasePrice(id);
     if ((gameData.items['candy'] || 0) < price) return;
+    if (_evoConfirmId !== id) { // 第一次点：只进确认态，不花钱
+      cancelEvoConfirm();
+      _evoConfirmId = id;
+      btn.textContent = '确认兑换';
+      btn.classList.add('shop-evo-confirm');
+      return;
+    }
+    _evoConfirmId = null; // 第二次点：结算
     gameData.items['candy'] -= price;
     grantItem(id, 1, '商店');
     shop.sold = [...(shop.sold || []), id];
@@ -347,11 +375,26 @@ export const TM_ICONS = {
 // 下标与 pokedex.json 的 foods 字段一一对应
 export const BERRY_ICONS = ['aspear.png', 'cheri.png', 'chesto.png', 'leppa.png', 'lum.png', 'tamato.png', 'oran.png', 'pecha.png', 'rawst.png', 'sitrus.png', 'figy.png', 'wiki.png'];
 
-// 树果中文名（hover 提示用，键为图标文件名）
+// 树果中文名
 export const BERRY_NAMES = {
   'aspear.png': '利木果', 'cheri.png': '樱子果', 'chesto.png': '零余果', 'leppa.png': '苹野果',
   'lum.png': '木子果', 'tamato.png': '茄番果', 'oran.png': '橙橙果', 'pecha.png': '桃桃果',
   'rawst.png': '莓莓果', 'sitrus.png': '文柚果', 'figy.png': '勿花果', 'wiki.png': '异奇果',
+};
+
+export const BERRY_DESC = {
+  'cheri.png': '红得发亮的小巧红果\n一口下去辣得舌尖发麻',
+  'chesto.png': '深蓝色硬壳坚果状果子\n入口带着浓重涩味',
+  'pecha.png': '桃形的粉润果子\n甜香醇厚，是很常见的树果',
+  'rawst.png': '带着绿叶的蓝果\n苦味突出，回味清冽凉爽',
+  'aspear.png': '表皮带斑纹的小黄硬果\n酸度极强，一咬就皱起眉头',
+  'leppa.png': '形似小苹果的红橙果子\n脆嫩多汁，越嚼越有风味',
+  'oran.png': '圆润的深蓝色小果\n随处可见，最为普通常见的树果',
+  'sitrus.png': '个头偏大的梨形黄果\n果肉厚实饱满，汁水充沛',
+  'lum.png': '圆润青绿色果子，自带淡香\n传言只生长在光照充足之处',
+  'tamato.png': '外形酷似番茄的红果\n辣度惊人，常用来做调味品',
+  'figy.png': '外形酷似无花果的果子\n辣中藏甜，味道浓烈刺激',
+  'wiki.png': '表皮带凸起的紫果，名字奇特\n清甜爽口，深受宝可梦喜爱',
 };
 
 // 树果固有色：
@@ -898,6 +941,31 @@ function applyHatchEntry(slotIndex, presetGender) {
 }
 
 // ---------- 从孵蛋器取出孵化 ----------
+// 单只孵化：播放中点画面 = 跳过剩余破壳动画，直接出结果（与批量孵化同一套做法）
+let _hatchOneSkip = false;     // 本次是否已点画面跳过
+let _hatchOneRunning = false;  // 动画是否在播（只有播放中才响应点击）
+let _hatchOneWait = null;      // 当前等待的延时（跳过时立刻放行）
+let _hatchOneSkipBound = false;
+function bindHatchOneSkip() {
+  if (_hatchOneSkipBound) return;
+  const view = $('hatchView');
+  if (!view) return;
+  _hatchOneSkipBound = true;
+  view.addEventListener('click', () => {
+    if (!_hatchOneRunning || _hatchOneSkip) return;
+    _hatchOneSkip = true;
+    if (_hatchOneWait) _hatchOneWait();
+  });
+}
+// 可跳过的等待：点了画面就立刻返回
+function hatchOneDelay(ms) {
+  if (_hatchOneSkip) return Promise.resolve();
+  return new Promise((res) => {
+    const timer = setTimeout(() => { _hatchOneWait = null; res(); }, ms);
+    _hatchOneWait = () => { clearTimeout(timer); _hatchOneWait = null; res(); };
+  });
+}
+
 export async function hatchFromIncubator(slotIndex) {
   if (_eggHatching) return;
   if (phase === 'battle' || phase === 'eggResult') return;                      // NPC 对战 / 孵蛋结果期间禁止孵化
@@ -944,6 +1012,9 @@ export async function hatchFromIncubator(slotIndex) {
     clearHoneyCountdown();
   }
 
+  _hatchOneSkip = false;
+  _hatchOneRunning = true;
+  bindHatchOneSkip();
   setCurrentEncounter(poke);
   showView('hatchView');
   $('fleeBtn').style.display = 'none';
@@ -985,7 +1056,7 @@ export async function hatchFromIncubator(slotIndex) {
   async function hatchFrame(ms, before) {
     if (!isOnHatchView()) { watchedAnim = false; return; }
     if (before) before();
-    await delay(ms);
+    await hatchOneDelay(ms);
     if (!isOnHatchView()) watchedAnim = false;
   }
 
@@ -1031,17 +1102,24 @@ export async function hatchFromIncubator(slotIndex) {
       img.style.objectFit = 'contain';
     }
 
-    void img.offsetHeight;
+    if (_hatchOneSkip) {
+      img.style.opacity = '1';
+      img.style.transform = '';
+    } else {
+      void img.offsetHeight;
 
-    await animate(350, t => {
-      const s = t;
-      const o = t < 0.2 ? t / 0.2 : 1;
-      img.style.transform = `translateX(-50%) scale(${s})`;
-      img.style.opacity = o;
-    });
+      await animate(350, t => {
+        const s = t;
+        const o = t < 0.2 ? t / 0.2 : 1;
+        img.style.transform = `translateX(-50%) scale(${s})`;
+        img.style.opacity = o;
+      });
 
-    img.style.transform = '';
+      img.style.transform = '';
+    }
   }
+
+  _hatchOneRunning = false;
 
   // 闪光蛋：出场动画结束后播放闪光音效并爆发星星粒子（与批量/图鉴同款）；
   // 等闪光音效播完再继续（后续庆祝音乐会紧接着播放，避免两音叠加）

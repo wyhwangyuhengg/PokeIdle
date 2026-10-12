@@ -27,7 +27,7 @@ export const ITEM_NAMES = {
   'poke-ball': '精灵球', 'ultra-ball': '高级球',
   'master-ball': '大师球', 'candy': '糖果',
   'sweet-honey': '甜甜蜜', 'mystery-egg': '神秘蛋', 'shiny-charm': '闪耀护符',
-  'bike': '自行车', 'exp-candy': '经验糖果',
+  'bike': '自行车', 'exp-candy': '经验糖果', 'casinoCoin': '游戏币',
   '火之石': '火之石', '水之石': '水之石', '雷之石': '雷之石', '叶之石': '叶之石',
   '冰之石': '冰之石', '月之石': '月之石', '日之石': '日之石', '光之石': '光之石',
   '暗之石': '暗之石', '觉醒之石': '觉醒之石',
@@ -460,6 +460,7 @@ export const BIKE_RESTORE_MAX_GAP_MS = 120000; // 手动骑行状态恢复的最
 
 // 道具作用简述（商店 hover 提示等统一 tooltip 文案）
 // 数值全部引用上方常量动态生成，配置改动后 tooltip 自动同步
+// 树果的说明不在这里：树果按图标文件名索引，名字与说明都在 items.js 的 BERRY_NAMES / BERRY_DESC
 const pct = v => Math.round(v * 100) + '%';
 export const ITEM_DESC = {
   'poke-ball': `普通精灵球\n基础捕获率 ${pct(CATCH_RATES['poke-ball'])}`,
@@ -471,6 +472,8 @@ export const ITEM_DESC = {
   'shiny-charm': `使用后下一只遭遇必定闪光
 其余 ${BUFF_DURATION} 秒内闪光概率提升至 ${pct(CHARM_SHINY_CHANCE)}`,
   'bike': `骑行赶路工具\n速度 ${Math.round(ROAD_SPEED_BIKE / ROAD_SPEED_WALK)} 倍且不遇敌、不拾取`,
+  'exp-candy': '使用后给宝可梦增加经验\n在背包里点经验糖果选一只使用',
+  'casinoCoin': '游戏厅的筹码\n在游戏厅柜台用糖果兑换',
   // 进化道具说明：是什么 + 干什么用；形态专属道具在 items.js 里按数据生成
   '火之石': '蕴含火之力量的不可思议的石头\n能让某些宝可梦进化',
   '水之石': '蕴含水之力量的不可思议的石头\n能让某些宝可梦进化',

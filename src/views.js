@@ -1,13 +1,15 @@
 import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE } from './config.js';
-import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, honeyBuffActive, charmBuffActive, saveGame, formatNum, pad, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing } from './state.js';
+import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, honeyBuffActive, charmBuffActive, saveGame, setSaveSuspended, formatNum, pad, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing, isPokemon } from './state.js';
 import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform, touchText, watchOutsidePress } from './ui.js';
-import { doCandyExchange, doSellBall, activateHoney, activateShinyCharm, refillBuffIfEmpty, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf } from './items.js';
+import { doCandyExchange, doSellBall, activateHoney, activateShinyCharm, refillBuffIfEmpty, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf, BASIC_ITEM_ORDER } from './items.js';
 import { formatLogTime } from './pokedex.js';
 import { stopAutoFleeTimer, startAutoFleeTimer, autoCatch } from './battle.js';
 import { setVolume, setBattleMusic, setMusicEnabled, setSfxEnabled, playBattle, endBattle } from './audio.js';
 import { renderAchievements, refreshAchievements } from './achievements.js';
 import { TEAM_MAX } from './team.js';
 import { clearBattleTier } from './battle-view.js';
+import { showDetailCard, hideDetailCard } from './item-detail.js';
+import { APP_VERSION, BUILD_STAMP } from './build-info.js';
 
 // ===== 欧气综合评定 =====
 // 取"最好的那一批场次"的平均分（前 10%，至少 10 场）映射到 9 档称号。
@@ -185,7 +187,6 @@ function refreshDataStats() {
   $('dataBoardTrades').textContent = formatNum(stats.totalBoardTrades || 0);
   $('dataBountyClaims').textContent = formatNum(stats.totalBountyClaims || 0);
   $('dataBountyToday').textContent = formatNum(stats.bountyClaimsToday || 0);
-  $('dataBountyCandy').textContent = formatNum(stats.totalBountyCandy || 0);
   $('dataNpcWins').textContent = formatNum(stats.totalNpcWins || 0);
   $('dataNpcNoviceWins').textContent = formatNum(stats.totalNpcNoviceWins || 0);
   $('dataNpcEliteWins').textContent = formatNum(stats.totalNpcEliteWins || 0);
@@ -211,13 +212,52 @@ function refreshDataStats() {
   $('dataMjNet').textContent = `${mj.net > 0 ? '+' : ''}${formatNum(mj.net)} 币`;
   const earnedEl = $('dataEarned');
   if (earnedEl) {
-    // 糖果置顶，其余保持原顺序
-    const entries = Object.entries(earned);
-    const rows = entries.filter(([k]) => k === 'candy').concat(entries.filter(([k]) => k !== 'candy'));
-    earnedEl.innerHTML = rows.map(([k, v]) =>
-      `<div class="stat-row"><span>${ITEM_NAMES[k] || k}</span><span>×${formatNum(v)}</span></div>`
-    ).join('') || '<div>暂无数据</div>';
+    // 只列基础道具：进化道具/专属道具/薄荷加起来上百种，一行一个铺不开
+    earnedEl.innerHTML = ['candy', ...BASIC_ITEM_ORDER].map((k) =>
+      `<div class="stat-row"><span>${ITEM_NAMES[k] || k}</span><span>${formatNum(earned[k] || 0)}</span></div>`
+    ).join('');
   }
+}
+
+// 仓库情况：当前仓库的画像，口径与配队页的来源筛选一致（闪光/神兽/变体是叠加项）
+function renderRosterMix() {
+  const box = $('dataRosterMix');
+  if (!box) return;
+  const rows = (gameData.roster || []).filter((p) => p && p.inRoster && isPokemon(p));
+  const cnt = (fn) => rows.filter(fn).length;
+  const inSrc = (keys) => cnt((p) => keys.includes(p.source || 'normal'));
+  const list = [
+    ['野生', inSrc(['normal', 'mass', 'twist', 'honey'])],
+    ['钓鱼', inSrc(['fishing'])],
+    ['孵蛋', inSrc(['egg'])],
+    ['交换', inSrc(['trade'])],
+    ['闪光', cnt((p) => !!p.shiny)],
+    ['神兽', cnt((p) => !!getPokemonByIndex(String(p.species))?.legend)],
+    ['RGB', cnt((p) => p.variant === 'rgb')],
+    ['污染', cnt((p) => p.variant === 'polluted')],
+  ];
+  box.innerHTML = list.map(([k, v]) =>
+    `<div class="stat-row"><span>${k}</span><span>${formatNum(v)}</span></div>`
+  ).join('');
+}
+
+// 宿敌：野外遇见最多、一次没抓到的那只（按图鉴条目，孵蛋/交换不算遭遇）
+function renderNemesis() {
+  const box = $('dataNemesis');
+  if (!box) return;
+  const WILD = ['normal', 'mass', 'twist', 'honey', 'fishing'];
+  let best = null;
+  for (const [idx, arr] of Object.entries(gameData.encounterLogs || {})) {
+    const wild = (arr || []).filter((l) => l && WILD.includes(l.source || 'normal'));
+    if (!wild.length || wild.some((l) => l.result === 'caught')) continue;
+    if (!best || wild.length > best.n) best = { idx, n: wild.length };
+  }
+  let text = '暂无 · 遇到的都抓到了';
+  if (best) {
+    const poke = getPokemonByIndex(String(best.idx));
+    text = `${poke ? (poke.form || poke.name) : best.idx} · 遇见 ${formatNum(best.n)} 次未捕获`;
+  }
+  box.innerHTML = `<div class="stat-row"><span>宿敌</span><span>${text}</span></div>`;
 }
 
 export function showDataView() {
@@ -256,6 +296,11 @@ export function showDataView() {
       <div class="stat-row"><span>行走距离</span><span id="dataWalkDist"></span></div>
       <div class="stat-row"><span>图鉴完成度</span><span id="dataDexPct"></span></div>
 
+      <div class="stat-section">仓库情况</div>
+      <div id="dataRosterMix"></div>
+      <div class="stat-section">宿敌</div>
+      <div id="dataNemesis"></div>
+
       <div class="stat-section">消耗统计</div>
       <div class="stat-row"><span>精灵球使用</span><span id="dataBallsUsed"></span></div>
       <div class="stat-row"><span>平均球/遇敌</span><span id="dataBallsAvg"></span></div>
@@ -270,7 +315,6 @@ export function showDataView() {
       <div class="stat-section">地区悬赏</div>
       <div class="stat-row"><span>累计完成悬赏</span><span id="dataBountyClaims"></span></div>
       <div class="stat-row"><span>今日完成悬赏</span><span id="dataBountyToday"></span></div>
-      <div class="stat-row"><span>悬赏糖果</span><span id="dataBountyCandy"></span></div>
 
       <div class="stat-section">NPC 对战</div>
       <div class="stat-row"><span>累计战胜训练家</span><span id="dataNpcWins"></span></div>
@@ -293,6 +337,8 @@ export function showDataView() {
   `;
   // 初始填充 + 每秒实时刷新全部动态值；离开统计页后定时器自动停止
   refreshDataStats();
+  renderRosterMix(); // 这两块要扫仓库和全部相遇日志，只在进页面时算一次，不跟每秒刷新
+  renderNemesis();
   // 卡册收集进度：卡池数据异步加载（有缓存），加载完成后填入
   import('./album.js').then(m => m.getCardCollectionStats()).then(s => {
     const el = $('dataCardPct');
@@ -528,7 +574,7 @@ export function renderSystemLogs() {
         const p = log.details.profit;
         const t = log.details.winner === 0 ? `你胡了${log.details.yaku && log.details.yaku.length ? '（' + log.details.yaku.join('/') + '）' : ''}`
           : log.details.winner === 'draw' ? '流局'
-          : ['对家', '左家', '右家'][log.details.winner - 1] + ' 胡牌';
+            : ['对家', '左家', '右家'][log.details.winner - 1] + ' 胡牌';
         desc = `麻将：${t} ${p > 0 ? '+' + p : p} 糖果`;
         break;
       }
@@ -605,51 +651,11 @@ function cancelPendingExchange() {
   row?.classList.remove('shop-confirming');
 }
 
-// ===== 商店详情弹框 =====
-// 道具/招式机的介绍都在这里看：小卡片挂在商店页容器内（双屏下也留在下屏），点空白处关闭
-function showShopDetail(detail) {
-  if (!detail) { hideShopDetail(); return; } // 传空 = 收起卡片
-  const { badgeHtml, title, statsHtml, desc } = detail;
-  const host = $('shopView');
-  if (!host) return;
-  let mask = $('shopDetailMask');
-  if (!mask) {
-    mask = document.createElement('div');
-    mask.id = 'shopDetailMask';
-    mask.className = 'shop-detail-mask';
-    mask.innerHTML = `<div class="shop-detail-card">
-      <div class="shop-detail-head">
-        <span class="shop-detail-badge"></span>
-        <span class="shop-detail-name"></span>
-      </div>
-      <div class="move-edit-detail-stats"></div>
-      <div class="shop-detail-desc"></div>
-    </div>`;
-    host.appendChild(mask);
-    mask.addEventListener('click', hideShopDetail); // 点卡片外的空白关闭
-    mask.querySelector('.shop-detail-card').addEventListener('click', (e) => e.stopPropagation());
-  }
-  mask.querySelector('.shop-detail-badge').innerHTML = badgeHtml || '';
-  mask.querySelector('.shop-detail-name').textContent = title || '';
-  mask.querySelector('.move-edit-detail-stats').innerHTML = statsHtml || '';
-  mask.querySelector('.shop-detail-desc').textContent = desc || '';
-  mask.style.display = 'flex';
-}
-
-function hideShopDetail() {
-  const mask = $('shopDetailMask');
-  if (mask) mask.style.display = 'none';
-}
 
 // 就地刷新商店顶部的糖果数（招式机解锁后调用，避免为了一个数字重建整页把滚动位置顶掉）
 function refreshShopCandy() {
   const el = $('shopCandyNum');
   if (el) el.textContent = String(gameData.items['candy'] || 0);
-}
-
-// 道具详情：只给介绍文字（价格在列表行上已经有了）
-function showItemDetail(item) {
-  showShopDetail(itemDetailOf(item));
 }
 
 export function showShopView(opts) {
@@ -723,7 +729,7 @@ export function showShopView(opts) {
     if (modeBtn) {
       _shopSellMode = !_shopSellMode;
       cancelPendingExchange();
-      hideShopDetail();
+      hideDetailCard();
       showShopView();
       return;
     }
@@ -746,7 +752,7 @@ export function showShopView(opts) {
     // 点条目本身 → 弹框看详情（糖果不够 / 没有库存的条目也能看）
     const row = e.target.closest('.shop-item[data-item]');
     cancelPendingExchange();
-    if (row) showItemDetail(row.dataset.item);
+    if (row) showDetailCard(itemDetailOf(row.dataset.item), 'shopView');
   };
   // 右键"兑换/出售"按钮弹出批量菜单（确认态下右键同样有效）
   content.oncontextmenu = (e) => {
@@ -759,14 +765,14 @@ export function showShopView(opts) {
   };
   showView('shopView');
   if (keepScroll && content) content.scrollTop = keepScroll;
-  if (!isReRender) hideShopDetail(); // 真正进入商店：关掉上次残留的详情弹框
+  if (!isReRender) hideDetailCard(); // 真正进入商店：关掉上次残留的详情弹框
   // 招式机区块：每天轮换的招式机（异步填内容，招式数据不在商店首帧拉取）
   if (!_shopSellMode) {
     const tmBox = $('shopTmBox');
-    if (tmBox) import('./tm.js').then((m) => m.renderShopTmSection(tmBox, { onBought: refreshShopCandy, onDetail: showShopDetail }));
+    if (tmBox) import('./tm.js').then((m) => m.renderShopTmSection(tmBox, { onBought: refreshShopCandy, onDetail: (d) => showDetailCard(d, 'shopView') }));
     // 今日道具（放在招式机下面）
     const evoBox = $('shopEvoBox');
-    if (evoBox) import('./items.js').then((m) => m.renderShopEvoSection(evoBox, { onBought: refreshShopCandy, onDetail: showShopDetail }));
+    if (evoBox) import('./items.js').then((m) => m.renderShopEvoSection(evoBox, { onBought: refreshShopCandy, onDetail: (d) => showDetailCard(d, 'shopView') }));
   }
   // 出售模式：标题栏显示「出售」，切回兑换模式时由 showView 恢复「商店」
   if (_shopSellMode) {
@@ -871,7 +877,7 @@ export async function applyWindowScale(scale) {
     }
   } catch (_) {
   }
-  try { await invoke('show_main_window'); } catch (_) {}
+  try { await invoke('show_main_window'); } catch (_) { }
 }
 
 // 设置页选择窗口倍率：持久化到存档并立即缩放
@@ -983,6 +989,7 @@ export function renderSettings(container, s) {
   const musicVolume = s.musicVolume ?? 0.6;
   const musicEnabled = s.musicEnabled !== false;
   const sfxEnabled = s.sfxEnabled !== false;
+  const backgroundService = s.backgroundService === true; // 后台常驻（仅安卓包有这个能力）
   const battleMusic = s.battleMusic !== false;
   const darkMode = s.darkMode || false;
   const uiMobile = getUiMode() !== 'classic'; // 双屏布局（手游模式/桌面双屏），存档未设置时按平台取默认
@@ -1082,6 +1089,7 @@ export function renderSettings(container, s) {
           </div>
         </div>
         <div class="cf-hint" style="padding:0 4px 4px;">遇敌后 30 秒未处理宝可梦会自动逃跑，防止挂机进度卡住</div>
+
       </div>
 
       <div class="settings-group">
@@ -1168,6 +1176,20 @@ export function renderSettings(container, s) {
         </div>
       </div>
 
+      ${window.__POKEIDLE_MOBILE__?.foregroundStart ? `
+      <div class="settings-group">
+        <div class="settings-group-title">后台常驻</div>
+        <div class="auto-catch-row">
+          <div class="auto-catch-label">常驻通知</div>
+          <div class="toggle-switch" id="toggleBackground">
+            <div class="toggle-track ${backgroundService ? 'on' : ''}"></div>
+            <div class="toggle-knob"></div>
+          </div>
+        </div>
+        <div class="cf-hint" style="padding:0 4px 4px;">开启后系统不会随便清掉后台</div>
+      </div>
+      ` : ''}
+
       <div class="settings-group">
         <div class="settings-group-title">角色与存档</div>
         <div class="auto-catch-row">
@@ -1193,13 +1215,21 @@ export function renderSettings(container, s) {
           <span class="auto-catch-label">刷新游戏</span>
           <span class="reset-save-btn" id="reloadGameBtn">刷新</span>
         </div>
+        <div class="reset-save-row">
+          <span class="auto-catch-label">保存并退出</span>
+          <span class="reset-save-btn" id="saveExitBtn">保存退出</span>
+        </div>
       </div>
       <a href="https://github.com/ZTMYO/PokeIdle" id="githubLink" class="settings-footer-link" target="_blank" rel="noopener">
         <svg viewBox="0 0 1024 1024" width="16" height="16" style="flex-shrink:0;"><use xlink:href="#icon-github"/></svg>
         <span style="font-weight:600;">ZTMYO</span>
       </a>
       <div class="settings-version" id="settingsVersion"></div>
-      <div id="declarationBtn" style="text-align:center;font-size:9px;opacity:0.5;padding:2px 0 4px;cursor:pointer;">版权声明</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:9px;padding:2px 0 4px;">
+        <a href="https://pokeidle.shiliu.space" id="siteLink" class="settings-mini-link" target="_blank" rel="noopener">官方网站</a>
+        <span style="opacity:0.3;">|</span>
+        <span id="declarationBtn" class="settings-mini-link">版权声明</span>
+      </div>
     </div>
   `;
   container.querySelector('#toggleAutoCatch')?.addEventListener('click', toggleAutoCatch);
@@ -1207,6 +1237,7 @@ export function renderSettings(container, s) {
   container.querySelector('#toggleVariantMaster')?.addEventListener('click', toggleVariantMasterBall);
   container.querySelector('#toggleMusicEnabled')?.addEventListener('click', toggleMusicEnabled);
   container.querySelector('#toggleSfxEnabled')?.addEventListener('click', toggleSfxEnabled);
+  container.querySelector('#toggleBackground')?.addEventListener('click', toggleBackgroundService);
   container.querySelector('#genderBrendan')?.addEventListener('click', () => toggleGender('brendan'));
   container.querySelector('#genderMay')?.addEventListener('click', () => toggleGender('may'));
   container.querySelector('#toggleAutoFlee')?.addEventListener('click', toggleAutoFlee);
@@ -1253,8 +1284,33 @@ export function renderSettings(container, s) {
   });
   // 刷新游戏：先保存再重载，等效 Ctrl+R 调试刷新
   container.querySelector('#reloadGameBtn')?.addEventListener('click', () => {
+    // 刷新前同步落盘：saveGame 在补算等流程里会被挂起，异步写会被刷新打断
+    window.__saveLastChance?.();
     saveGame();
     location.reload();
+  });
+  // 保存并退出：等这次写盘真的成功再退（写失败就留下，别让玩家带着没保存的进度走）
+  container.querySelector('#saveExitBtn')?.addEventListener('click', async () => {
+    const btn = container.querySelector('#saveExitBtn');
+    btn.textContent = '保存中…';
+    setSaveSuspended(false);
+    let ok = false;
+    try { ok = await saveGame(); } catch (_) { }
+    if (!ok) {
+      btn.textContent = '保存失败';
+      flashSaveHint('存档写入失败，先别退出');
+      setTimeout(() => { btn.textContent = '保存退出'; }, 2500);
+      return;
+    }
+    btn.textContent = '已保存 ✓';
+    const mob = window.__POKEIDLE_MOBILE__;
+    if (mob?.exitApp) { setTimeout(() => mob.exitApp(), 300); return; } // 安卓：直接退
+    try {
+      const w = window.__TAURI__?.window?.getCurrentWindow?.();
+      if (w?.close) { await w.close(); return; }
+    } catch (_) { }
+    flashSaveHint('已保存，可以退出游戏了');
+    setTimeout(() => { btn.textContent = '保存退出'; }, 2500);
   });
   // 导出存档：桌面版调 Tauri 命令打开目录选择器；网页版直接下载 JSON 文件。
   // 时间戳保持真实（导入时靠确认框里把 lastSaveTime 顶到最新，见 doApplyImportedSave）
@@ -1406,6 +1462,12 @@ export function renderSettings(container, s) {
     });
   }
   function doApplyImportedSave(imported, importedTime, currentTime, btn) {
+    // 旧档的会话状态不属于新档：正在进行的遭遇、当前道路都要清掉，
+    // 否则重载后新档会"在关都继承一场丰缘的遭遇"
+    try {
+      localStorage.removeItem('pokemon_idle_session');
+      localStorage.removeItem('pokemon_idle_road');
+    } catch (_) { }
     // 时间戳后移一点点，保证重启时这份导入的档比磁盘上的旧档新（否则会被启动比对判为落后而丢弃）
     if (importedTime <= currentTime) imported.stats.lastSaveTime = currentTime + 1;
     setGameData(imported);
@@ -1518,20 +1580,18 @@ export function renderSettings(container, s) {
       });
     });
   }
-  // GitHub 仓库链接：Tauri 下用 opener 插件在系统浏览器打开
-  container.querySelector('#githubLink')?.addEventListener('click', (e) => {
+  // GitHub 仓库 / 官网链接：Tauri 下用 opener 插件在系统浏览器打开
+  const openLink = (e, url) => {
     e.preventDefault();
-    const url = 'https://github.com/ZTMYO/PokeIdle';
     if (window.__POKEIDLE_MOBILE__?.openExternal) window.__POKEIDLE_MOBILE__.openExternal(url);
     else if (window.__TAURI__?.opener?.openUrl) window.__TAURI__.opener.openUrl(url);
     else window.open(url, '_blank');
-  });
-  (async () => {
-    let v = '';
-    try { v = await window.__TAURI__?.app?.getVersion?.(); } catch (_) {}
-    const el = container.querySelector('#settingsVersion');
-    if (el) el.textContent = v ? `v${v}` : 'v1.1.4';
-  })();
+  };
+  container.querySelector('#githubLink')?.addEventListener('click', (e) => openLink(e, 'https://github.com/ZTMYO/PokeIdle'));
+  container.querySelector('#siteLink')?.addEventListener('click', (e) => openLink(e, 'https://pokeidle.shiliu.space'));
+  // 版本号与版本戳都来自 build-info.js（由构建脚本按 package.json 生成）
+  const versionEl = container.querySelector('#settingsVersion');
+  if (versionEl) versionEl.textContent = [`v${APP_VERSION}`, BUILD_STAMP].filter(Boolean).join(' · ');
   // 版权声明：跳转声明视图
   container.querySelector('#declarationBtn')?.addEventListener('click', () => showDeclarationView());
 }
@@ -1569,9 +1629,9 @@ function ensureSettings() {
     const mk = action => ({ action: action || 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false }); // 默认最低 1（野生最低等级）、最高 20（野生上限，等效不限制）
     gameData.settings.catchFilter = {
       rows: {
-        normal:      { action: f.normal == null ? 'catch' : f.normal, levelMin: clampLv(f.levelMin), levelMax: clampLv(f.levelMax), uncaughtOnly: !!f.uncaughtOnly },
+        normal: { action: f.normal == null ? 'catch' : f.normal, levelMin: clampLv(f.levelMin), levelMax: clampLv(f.levelMax), uncaughtOnly: !!f.uncaughtOnly },
         normalShiny: mk(f.shiny),
-        legend:      mk(f.legend),
+        legend: mk(f.legend),
         legendShiny: mk(f.shiny),
       },
     };
@@ -1588,6 +1648,7 @@ function ensureSettings() {
   if (gameData.settings.musicVolume == null) gameData.settings.musicVolume = 0.6;
   if (gameData.settings.musicEnabled == null) gameData.settings.musicEnabled = true;
   if (gameData.settings.sfxEnabled == null) gameData.settings.sfxEnabled = true;
+  if (gameData.settings.backgroundService == null) gameData.settings.backgroundService = false;
   if (gameData.settings.darkMode == null) gameData.settings.darkMode = false; // 夜间模式（默认关闭）
 }
 
@@ -1618,6 +1679,21 @@ export function toggleMusicEnabled() {
   setMusicEnabled(gameData.settings.musicEnabled);
   const container = $('settingsContent');
   renderSettings(container, gameData.settings);
+  saveGame();
+}
+
+// 后台常驻：手动开关；起服务失败就不改状态（别看着是开的其实没生效）
+async function toggleBackgroundService() {
+  ensureSettings();
+  const on = !gameData.settings.backgroundService;
+  const mob = window.__POKEIDLE_MOBILE__;
+  if (on) {
+    try { await mob?.foregroundStart?.(); } catch (e) { console.error('[后台常驻] 开启失败:', e); flashSaveHint('开启失败，请稍后再试'); return; }
+  } else {
+    try { await mob?.foregroundStop?.(); } catch (_) { }
+  }
+  gameData.settings.backgroundService = on;
+  renderSettings($('settingsContent'), gameData.settings);
   saveGame();
 }
 
@@ -2020,7 +2096,7 @@ const TUTORIAL_SECTIONS = [
   {
     title: '交换',
     html: `<p>在<b>手机</b>页面打开<b>交换</b>应用，NPC 挂出想要的宝可梦与愿意给的宝可梦，有 <b>1/${Math.round(1 / TRADE_SHINY_CHANCE)}</b> 的概率给出闪光宝可梦。</p>`
-      +`<p>点击NPC旁边的宝可梦图标可以查看该宝可梦的详细信息。</p>`
+      + `<p>点击NPC旁边的宝可梦图标可以查看该宝可梦的详细信息。</p>`
       + `<p>NPC 有 <b>${TRADE_LEVEL_CHANCE * 100}</b>% 的概率指定想要的宝可梦<b>等级下限</b>（<b>${TRADE_WANT_LEVEL_MIN}~${TRADE_WANT_LEVEL_MAX}</b> 级）：个体必须达到等级要求才能提交。</p>`
       + `<p>仓库中有符合要求的个体即可与之互换，收到的宝可梦来源记为「<b>交换</b>」；每 <b>${TRADE_REFRESH_MS / 60000}</b> 分钟刷新一波。</p>`
       + `<p>跟随<b>毒 / 超能</b>属性<b>随从</b>时，会<b>强制刷新一波交易</b>让新加成立即生效。</p>`
@@ -2158,7 +2234,7 @@ const TUTORIAL_SECTIONS = [
       + `<p>右键生长的植物可<b>铲除</b>，回收地块重新种植。</p>`
       + `<p>收获的树果存入库存；库存的树果不能当种子，种地只能另买新种子。</p>`
       + `<p>点田地右上角告示牌查看树果委托（每天刷新 <b>${FARM_BOARD_DEMANDS}</b> 条，其中 <b>1</b> 条为大量需求 <b>${FARM_BOARD_BIG_QTY_MIN}~${FARM_BOARD_BIG_QTY_MAX}</b> 颗、<b>1</b> 条为巨量需求 <b>${FARM_BOARD_MEGA_QTY_MIN}~${FARM_BOARD_MEGA_QTY_MAX}</b> 颗，需专门种植较久；需求越多报酬越高）。也可以在此面板招募帮手（详见「<b>招募帮手</b>」章节）。</p>`,
-  },  
+  },
   {
     title: '混合器',
     html: `<p>在<b>手机</b>主页打开<b>混合器</b>，从农场库存选 <b>1~3</b> 颗树果作为<b>配方</b>，确认后消耗它们制成<b>树果方块</b>（详见「<b>树果方块</b>」章节）。</p>`
@@ -2169,7 +2245,7 @@ const TUTORIAL_SECTIONS = [
     html: `<p><b>树果方块</b>是<b>混合器</b>的产物：用配方树果制成，用于吸引特定的宝可梦。</p>`
       + `<p><b>品质</b>决定效果：品质越高，遇敌时直接遇到目标宝可梦的概率越高（${Object.values(BLOCK_QUALITY).map(q => `${q.label} <b>${Math.round(q.chance * 100)}</b>%`).join(' / ')}）。</p>`
       + `<p>按行走里程计时：主角再走 <b>${BLOCK_DISTANCE}</b> 米没被吃掉则风干失效（停下不走不消耗），期间不改变正常遇敌节奏。</p>`
-      + `<p>配方在当前地区野外没有宝可梦爱吃则无效；方块只对<b>已经拥有</b>的宝可梦有效，可以在图鉴查看它爱吃的配方；<b>神兽</b>不会被方块吸引。</p>`
+      + `<p>配方在当前地区野外没有宝可梦爱吃则无效；方块只对<b>已解锁图鉴</b>的宝可梦有效，可以在图鉴查看它爱吃的配方；<b>神兽</b>不会被方块吸引。</p>`
       + `<p>注意：方块命中目标的那次遇敌，闪光按默认 <b>1/${Math.round(1 / SHINY_CHANCE)}</b> 判定，不享受闪耀护符加成，也不计入闪耀护符的遭遇计数。</p>`,
   },
   {
@@ -2197,22 +2273,22 @@ const TUTORIAL_SECTIONS = [
       + `<p><b>立直</b>：门清（无副露）听牌时可支付 ${RIICHI_COST} 游戏币宣言立直，立直后只能打刚摸的牌；若立直后<b>自摸或荣和</b>，立直棒 ${RIICHI_COST} 游戏币<b>随胡牌一并退还</b>。</p>`
       + `<p>赢家按番数计算倍率（底倍 ×2 + 番数），番型举例：</p>`
       + tutorialTable([
-          ['立直 / 自摸 / 一发 / 门清 / 海底', '各 +1', '流程役'],
-          ['三色同刻', '+1', '三组不同属性'],
-          ['潜力三刻 / 王牌三刻', '+2', '三组全 5 分 / 全 10 分'],
-          ['清一色', '+4', '三组同属性'],
-          ['天和 / 全同种 / 幻神组合 / 神兽一色', '×10', '役满（封顶不叠加）'],
-        ], ['役种', '番数', '说明'], ['auto', 46, 'auto']),
+        ['立直 / 自摸 / 一发 / 门清 / 海底', '各 +1', '流程役'],
+        ['三色同刻', '+1', '三组不同属性'],
+        ['潜力三刻 / 王牌三刻', '+2', '三组全 5 分 / 全 10 分'],
+        ['清一色', '+4', '三组同属性'],
+        ['天和 / 全同种 / 幻神组合 / 神兽一色', '×10', '役满（封顶不叠加）'],
+      ], ['役种', '番数', '说明'], ['auto', 46, 'auto']),
   },
   {
     title: '抽卡机',
     html: `<p>在<b>游戏厅</b>场景点击<b>抽卡机</b>进入。</p>`
       + `<p>消耗<b>游戏币</b>抽卡，<b>${GACHA_DRAW_COST} 币单抽、${GACHA_DRAW_COST * 10} 币十连</b>。抽到重复卡片退还 <b>${GACHA_DUP_REFUND} 币</b>。卡片共分三个品级，概率如下：</p>`
       + tutorialTable([
-          ['N（普通）', '60%'],
-          ['R（稀有）', '32%'],
-          ['SR（超稀有）', '8%'],
-        ], ['品级', '概率'], ['auto', 'auto'])
+        ['N（普通）', '60%'],
+        ['R（稀有）', '32%'],
+        ['SR（超稀有）', '8%'],
+      ], ['品级', '概率'], ['auto', 'auto'])
       + `<p>已收集的卡片可在<b>卡册</b>应用中查看，点击缩略图可放大预览。</p>`,
   },
   {
@@ -2362,11 +2438,10 @@ export function showTutorialView() {
   }).join('');
   function render(idx) {
     const sec = TUTORIAL_SECTIONS[idx];
-    content.innerHTML = `<div class="tutorial-title-row"><p class="tutorial-title">${sec.title}</p>${
-      r.claimed.includes(idx)
+    content.innerHTML = `<div class="tutorial-title-row"><p class="tutorial-title">${sec.title}</p>${r.claimed.includes(idx)
         ? ''
         : `<button class="ach-btn ach-btn-ready tutorial-claim-btn" data-claim="${idx}"><img class="candy-icon" src="./items/goods/candy.png" alt="">×${TUTORIAL_REWARD} 领取</button>`
-    }</div>` + touchText(sec.html);
+      }</div>` + touchText(sec.html);
     list.querySelectorAll('.tutorial-nav-item').forEach((el) => el.classList.toggle('active', Number(el.dataset.i) === idx));
     // 点击领取：直接发糖果，弹章节总结，重绘当前章节（按钮消失），并移除左侧导航红点
     const btn = content.querySelector('.tutorial-claim-btn');
