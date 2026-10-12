@@ -43,11 +43,7 @@ let _query = '';     // 搜索词，非空时页签只剩「搜索结果」
 let _groups = {};    // 各类各自的持有道具
 let _all = [];       // 四类合并，搜索结果用
 
-export async function renderItemBox() {
-  await ensureEvoMeta();
-  hideDetailCard();
-  _query = '';
-
+function buildGroups() {
   const basicKeys = BASIC_ITEM_ORDER.concat(Object.keys(CANDY_EXCHANGE).filter((k) => !EVO_PRICES[k] && !BASIC_ITEM_ORDER.includes(k)));
   _groups = {
     basic: itemsOf(basicKeys, itemIconSrc, (k) => ITEM_NAMES[k] || k),
@@ -57,8 +53,49 @@ export async function renderItemBox() {
     mint: itemsOf(MINT_KEYS, itemIconSrc, (k) => k),
   };
   _all = ['basic', 'berry', 'evo', 'stone', 'mint'].flatMap((k) => _groups[k]);
-  paint();
 }
+
+export async function renderItemBox() {
+  await ensureEvoMeta();
+  hideDetailCard();
+  _query = '';
+  buildGroups();
+  paint();
+  _liveSig = liveSig();
+}
+
+// 挂机进程会持续改道具/树果库存：停留时每秒对一次指纹，变了只重刷列表（搜索、页签、滚动都不动）
+const liveSig = () => JSON.stringify(gameData.items) + '|' + JSON.stringify(ensureBerryFarm().stock || {});
+let _liveSig = '';
+function liveTick() {
+  try {
+    if ($('itemBoxView')?.style.display === 'none') {
+      if (startLiveTick._t) { clearInterval(startLiveTick._t); startLiveTick._t = null; }
+      return;
+    }
+    const sig = liveSig();
+    if (sig === _liveSig) return;
+    _liveSig = sig;
+    buildGroups();
+    paintList($('itemBoxContent'), true); // 保留滚动位置
+  } catch (e) {
+    // 回调里抛异常时 setInterval 不会停，但会每次都在同一行炸，表现为"数据永远不刷新"——必须能看见
+    if (!liveTick._logged) { liveTick._logged = true; console.error('[道具盒] 实时刷新出错:', e); }
+  }
+}
+
+function startLiveTick() {
+  if (startLiveTick._t) return;
+  startLiveTick._t = setInterval(liveTick, 1000);
+}
+
+// 主循环兜底：和背包栏同一心跳（updateBackpack 那处）调用，保证轮询一定在跑
+window.__itemboxLive = liveTick;
+
+// 自愈：任何方式打开道具盒都保证轮询在跑（轮询只在自己发现视图隐藏时才停）
+window.addEventListener('view-changed', (e) => {
+  if (e.detail === 'itemBoxView') startLiveTick();
+});
 
 function paint() {
   const box = $('itemBoxContent');
@@ -108,7 +145,7 @@ function paintTabs(box) {
   };
 }
 
-function paintList(box) {
+function paintList(box, keepScroll = false) {
   const host = box.querySelector('.ib-list');
   if (!host) return;
   let items;
@@ -123,7 +160,7 @@ function paintList(box) {
   host.innerHTML = items.length
     ? items.map(rowHtml).join('')
     : `<div class="ib-empty">${_query ? '没有匹配的道具' : '还没有这类道具'}</div>`;
-  host.scrollTop = 0;
+  if (!keepScroll) host.scrollTop = 0; // 切页签/搜索回顶部；实时刷新保留原位
   // 点任意一行看介绍（文案与图标和商店共用 itemDetailOf）
   host.onclick = (e) => {
     const row = e.target.closest('.ib-row');
@@ -137,4 +174,5 @@ export function showItemBoxView() {
   pushNav('itemBoxView');
   showView('itemBoxView');
   renderItemBox();
+  startLiveTick();
 }

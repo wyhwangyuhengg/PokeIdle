@@ -5,7 +5,7 @@ import { CATCH_RATES, SAVE_INTERVAL, ITEM_RATES, ITEM_NAMES, ROAD_SPECIAL_CHANCE
 import { allPokemon, gameData, phase, currentEncounter, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, getPokemonByIndex, ensureGpsState, restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer , setSimClock  } from './state.js';
 import { migrateEncounterScores } from './scoring.js';
 import { massTick, ensureMassInit as ensureMassInitEvents, twistTick, ensureTwistInit } from './events.js';
-import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView } from './ui.js';
+import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView } from './ui.js';
 import { spawnItemDrop, hasActiveDrop, activateHoney, activateShinyCharm, restoreHoneyRecord, restoreCharmRecord, grantItem, cancelItemDrop, rollCandyMult, ensureEvoMeta } from './items.js';
 import { syncBlockVisual, startBlockCountdown, clearBlockCountdown, showMixerView } from './mixer.js';
 import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, settleStaleEncounter, ensureEncounterTextBox, setEncounterAt, syncBattleMusic, encState, setEncPhase } from './battle.js';
@@ -19,7 +19,7 @@ import { showRosterView, isRosterPicking, leaveRosterPicker, isRosterInDetail, i
 import { isTradeInDetail, restoreTradeList, showTradeView } from './trade.js';
 import { showShopView, showSettingsView, showSystemLogs, showAchievementView, renderSystemLogs, applyWindowScale } from './views.js';
 import { showPhoneView, updateTradeBadge, updateBerryBadge, updateAchievementBadge, updatePhoneBadge, updateNurseryBadge, showIncubatorView } from './phone.js';
-import { gpsAddDistance, showGpsView, setRoamEnabled, startBikeTarget, abandonBikeTarget } from './gps.js';
+import { gpsAddDistance, showGpsView, setRoamEnabled, startBikeTarget, abandonBikeTarget, dropRideRoute } from './gps.js';
 import { initAudio, playRegion, playCycling, endCycling, stopVictory, stopCongratulation, setMusicEnabled, isMusicEnabled, setSplashLocked, setShowCardOnEncounterEnd, setBattleMusic, setSfxEnabled } from './audio.js';
 import { restoreMusicMode } from './music.js';
 import { startTelemetry } from './telemetry.js';
@@ -34,6 +34,8 @@ import * as road from './road.js';
 import { initBackgroundCatchup, startBackgroundCatchup, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds, bgPeekAccum } from './background-catchup.js';
 
 let ROAD_PRESETS = null;
+let ROAD_ALL = []; // 真正能当路段用的下标（road-data.json 里还混着场景地图，见下面筛选）
+const SCENE_MAPS = new Set(['intro', 'train', 'nursery', 'casino']); // 与场景渲染器按名字取用的那几个一致
 let ROAD_LAND = [];   // 普通陆地路段池（无垂钓点、非自行车道）
 let ROAD_WATER = [];  // 水域路段池（有垂钓点，可钓鱼）
 let ROAD_BIKE = [];   // 自行车道路段池（不遇敌、不拾取、快速推进里程）
@@ -147,7 +149,7 @@ function _pickNextRoad() {
       ? (ROAD_WATER.length > 0 ? ROAD_WATER : ROAD_BIKE)
       : (ROAD_BIKE.length > 0 ? ROAD_BIKE : ROAD_WATER);
   }
-  if (pool.length === 0) pool = ROAD_PRESETS.map((_, i) => i); // 目标池为空时退回全量
+  if (pool.length === 0) pool = ROAD_ALL; // 目标池为空时退回全部真路段
   if (pool.length === 1) return pool[0];
   let next;
   do { next = pool[Math.floor(Math.random() * pool.length)]; } while (next === _roadIdx);
@@ -612,7 +614,12 @@ async function onGameTick() {
     if (catchUpLog.enc && catchUpLog.enc.caught.length > 0) console.log('[挂机补发] 捕获明细：', catchUpLog.enc.caught.join('、'));
   }
 
-  if (gameTick % 5 === 0) { updateBackpack(); updateStats(); }
+  if (gameTick % 5 === 0) {
+    updateBackpack(); updateStats();
+    // 道具盒/商店的实时刷新跟背包栏同一心跳兜底，避免各自的轮询被意外掐死后不再恢复
+    window.__itemboxLive?.();
+    window.__shopLive?.();
+  }
 
   // 孵蛋器状态检查（每 tick，先检查再渲染）
   let incubatorChanged = false;
@@ -866,6 +873,7 @@ async function init() {
   applyWindowScale(gameData?.settings?.windowScale);
   // 应用夜间模式
   if (gameData.settings?.darkMode) document.documentElement.dataset.theme = 'dark';
+  applyWindowBg(); // 安卓窗口底色（状态栏那条）跟着主题走
   // 界面风格：未设置时按平台取默认；手游的开场剧情仍按单屏演，剧情结束再切双屏
   const targetUiMode = getUiMode();
   const introWillPlay = gameData.introDone === false;
@@ -942,9 +950,14 @@ async function init() {
   ROAD_LAND = [];
   ROAD_WATER = [];
   ROAD_BIKE = [];
+  ROAD_ALL = [];
   ROAD_PRESETS.forEach((p, i) => {
-    if (p.game && p.game.bike) ROAD_BIKE.push(i);
-    else if (p.game && p.game.fishingRow) ROAD_WATER.push(i);
+    // 这份数据里除了路段还放着场景地图（名字固定是这四个），混进池子会被当路段铺出来
+    // （渲染 fixed 时直接展开 tiles，游戏厅的地板就上路面了）
+    if (SCENE_MAPS.has(p.name)) return;
+    ROAD_ALL.push(i);
+    if (p.game.bike) ROAD_BIKE.push(i);
+    else if (p.game.fishingRow) ROAD_WATER.push(i);
     else ROAD_LAND.push(i);
   });
 
@@ -955,7 +968,7 @@ async function init() {
       const saved = localStorage.getItem('pokemon_idle_road');
       if (saved) {
         savedRoad = JSON.parse(saved);
-        if (savedRoad && typeof savedRoad.roadIdx === 'number' && savedRoad.roadIdx < ROAD_PRESETS.length) {
+        if (savedRoad && typeof savedRoad.roadIdx === 'number' && ROAD_ALL.includes(savedRoad.roadIdx)) {
           _roadIdx = savedRoad.roadIdx;
           _roadCycleStart = 0;
         }
@@ -1075,6 +1088,9 @@ async function init() {
     if ((sessionState?.manualBike || gameData.manualBike) && Date.now() - (gameData.stats.lastSaveTime || 0) < BIKE_RESTORE_MAX_GAP_MS) {
       _silentBikeRestore = true; // 恢复骑行非真实操作，不写"开始骑自行车"日志
       road.setManualBike(true);
+    } else {
+      // 没恢复骑行（离档超时）：骑行目的地一并收掉，别留僵尸路线（补算还没跑，正好赶在它前面）
+      dropRideRoute();
     }
 
     // 恢复生效中的增益：会话记录最新，其次主存档的耐久记录

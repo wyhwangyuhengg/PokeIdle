@@ -2,6 +2,8 @@ package com.pokemon.idle;
 
 import android.Manifest;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 
 import com.getcapacitor.JSObject;
@@ -50,6 +52,19 @@ public class KeepAlivePlugin extends Plugin {
     @PluginMethod
     public void stop(PluginCall call) {
         getContext().stopService(new Intent(getContext(), KeepAliveService.class));
+        call.resolve(new JSObject());
+    }
+
+    // 主题切换：设置窗口底色（状态栏与导航栏在这些机型上露出的就是窗口背景）
+    @PluginMethod
+    public void setWindowBg(PluginCall call) {
+        final String color = call.getString("color", "#E8DCC0");
+        getActivity().runOnUiThread(() -> {
+            try {
+                getActivity().getWindow().setBackgroundDrawable(new ColorDrawable(Color.parseColor(color)));
+            } catch (Exception ignored) {
+            }
+        });
         call.resolve(new JSObject());
     }
 

@@ -388,7 +388,8 @@ export function restorePokedex() {
   // 恢复滚动位置（列表容器的滚动）
   const pl = $('pokedexList');
   if (pl && pl.dataset.savedScroll) {
-    requestAnimationFrame(() => { pl.scrollTop = Number(pl.dataset.savedScroll); });
+    const top = Number(pl.dataset.savedScroll);
+    requestAnimationFrame(() => requestAnimationFrame(() => { pl.scrollTop = top; }));
   }
 }
 
@@ -490,7 +491,7 @@ export function setupPokedexSearch() {
     for (const p of matched) {
       html += `<div class="pokedex-dropdown-item" data-index="${p.index}">
         <span class="dd-idx">#${p.index}</span>
-        <span class="dd-name">${p.form || p.name}</span>
+        <span class="dd-name">${p.name}</span>
       </div>`;
     }
     dropdown.innerHTML = html;
@@ -723,6 +724,24 @@ export function setupTypeFilter() {
 }
 
 // ===== 图鉴列表 =====
+// 挂机抓到的宝可梦：停在图鉴列表时就地重刷，保留搜索与滚动；详情/相遇日志子页不打扰
+window.addEventListener('roster-changed', () => {
+  if ($('pokedexView')?.style.display === 'none') return;
+  if (isPokedexLogsPage()) return;
+  const search = document.querySelector('.pokedex-search');
+  if (search && search.style.display === 'none') return; // 在详情页
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+  const list = $('pokedexList');
+  const top = list ? list.scrollTop : 0;
+  showPokedex();
+  // 同上：渲染里会把列表滚动清零，等两帧高度成型后写回
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const next = $('pokedexList');
+    if (next) next.scrollTop = top;
+  }));
+});
+
 export function showPokedex() {
   pushNav('pokedexView');
   const list = $('pokedexList');
@@ -787,7 +806,7 @@ export function showPokedex() {
     html += `<div class="pokedex-entry${known ? '' : ' disabled'}" data-index="${p.index}" data-seen="${known ? '1' : '0'}">
       <span class="pokedex-star">${shinyTag}</span>
       <span class="pokedex-idx">#${p.index}</span>
-      <span class="pokedex-name">${known ? (p.form || p.name) : '？？？'}</span>
+      <span class="pokedex-name">${known ? p.name : '？？？'}</span>
       <span class="pokedex-stat">${seen}</span>
       <span class="pokedex-stat">${caught}</span>
       <span class="pokedex-stat">${shinySeen}</span>

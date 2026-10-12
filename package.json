@@ -2,7 +2,7 @@
   "name": "PokeIdle",
   "private": true,
   "version": "1.1.5",
-  "buildStamp": "beta2",
+  "buildStamp": "beta3",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",

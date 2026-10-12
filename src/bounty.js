@@ -421,7 +421,7 @@ function renderBountyTrade(content, regionIdx, bi) {
           <span class="pokedex-star">${pokemonSourceBadge(p)}</span>
           <span class="roster-ivs">${ivsText}</span>
           <span class="roster-nature">${genderBadge(ensureGender(p))}Lv${p.level || 1}</span>
-          <span class="bounty-trade-btn-col"><button class="bounty-trade-btn" data-trade-submit="${p.id}">提交</button></span>
+          <span class="bounty-trade-btn-col"><button class="bounty-trade-btn${p.locked ? ' locked' : ''}" data-trade-submit="${p.id}">提交</button></span>
         </div>`;
       }).join('');
   const syncIcons = () => {
@@ -547,7 +547,16 @@ export function showBountyView() {
         return;
       }
       const btn = e.target.closest('[data-trade-submit]');
-      if (btn) { submitTrade(btn.dataset.tradeSubmit); return; }
+      if (btn) {
+        // 锁定的个体不能提交悬赏：按钮画成禁用样，点它给一条提示
+        const bp = (gameData.roster || []).find(r => String(r.id) === String(btn.dataset.tradeSubmit));
+        if (bp?.locked) {
+          showConfirmBar('宝可梦已锁定，先解锁才能提交', null, null, { singleButton: true });
+          return;
+        }
+        submitTrade(btn.dataset.tradeSubmit);
+        return;
+      }
       const row = e.target.closest('[data-trade-view]');
       if (row) {
         import('./roster.js').then(m => m.showRosterDetailFromList(row.dataset.tradeView, () => {

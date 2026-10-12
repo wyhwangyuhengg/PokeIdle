@@ -680,6 +680,23 @@ export function setRoamEnabled(on) {
   saveGame();
 }
 
+// 长时间离档没能恢复骑行时用：目的地导航是按骑车结算的（选好目的地才上车），
+// 车没了却留着路线，就会出现「倒计时还在、人却不动、过一会儿又自己下车」的僵尸路线。
+// 清掉目的地但保留当前路段进度（物理位置不丢）；漫游是徒步的，清完立刻重新规划下一站
+export function dropRideRoute() {
+  const g = gameData.gps;
+  if (!g || (g.destIdx == null && g.massTarget == null && !g.pendingBike)) return false;
+  normalizeMassRemainToEnd(g);
+  g.destIdx = null;
+  g.massTarget = null;
+  g.pendingBike = false;
+  road.setManualBike(false);
+  if (g.roamEnabled) setRoamEnabled(true);
+  render();
+  saveGame();
+  return true;
+}
+
 // 取消目的地：停止导航，原地停在当前点
 // 保留当前路段进度作为物理位置（不清 path），只清除目的地——位置不丢，下次导航从当前点继续，不会瞬移
 // 待选骑行目的地中点退出 = 放弃选骑行目的地：恢复进入待选前的导航

@@ -12,6 +12,7 @@ import { showGoodbyeConfirm, startShinySparkleOn, stopShinySparkleLoop } from '.
 import { chooseMoves, fallbackMoves } from './moves.js';
 import { NATURES } from './battle-core.js';
 import { setupSourceFilter } from './filters.js';
+import { openShareCard } from './share-card.js';
 
 // 获得来源 → 中文
 // 大量出没（mass）本质也是野生遭遇，显示与筛选均归入「野生」，不单列筛选项
@@ -176,6 +177,8 @@ function ensureEvoDataForFilter() {
 
 function currentFilterPool() {
   let pool = inRoster();
+  // 批量放生：锁定的个体整个不参与——列表里不出现、搜索也搜不到、全选也选不上
+  if (_batchRelease) pool = pool.filter(p => !p.locked);
   const adv = _advFilter;
   if (adv) {
     // 高级筛选：名称/来源/稀有度/闪光/变体/属性/地区/等级/个体值/性别
@@ -252,6 +255,22 @@ function currentFilterPool() {
 }
 
 // 过滤 + 排序 + 渲染列表
+// 挂机抓到的宝可梦：停在仓库列表时就地重刷，保留筛选与滚动；放入/详情/配招子流程中不打扰
+window.addEventListener('roster-changed', () => {
+  if ($('rosterView')?.style.display === 'none') return;
+  if (isRosterPicking() || isRosterInDetail() || isRosterInMoveEdit()) return;
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return; // 正在搜索，别动
+  const list = $('rosterList');
+  const top = list ? list.scrollTop : 0;
+  renderList();
+  // 渲染过程中滚动会被重置，等两帧后高度成型再写回（同步写会被浏览器夹回 0）
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const next = $('rosterList');
+    if (next) next.scrollTop = top;
+  }));
+});
+
 function renderList() {
   const list = $('rosterList');
   if (!list) return;
@@ -1488,6 +1507,30 @@ function openCrownPanel() {
 
 // ---------- 个体详情 ----------
 // 点击列表行进入；返回按钮（标题栏 back）→ restoreRosterList 回到列表
+// 分享图的数据：只交纯数据出去，画图那边不反向依赖本文件
+function shareCardModel(p, poke) {
+  const g = ensureGender(p);
+  return {
+    name: rosterName(p),
+    title: p.nickname || poke.form || poke.name,   // 分享图：有昵称用昵称，否则全名（含形态）
+    dexNo: String(poke.index),
+    spriteName: poke.form || poke.name,
+    image: poke.image || '',
+    level: p.level || 1,
+    shiny: !!p.shiny,
+    gender: g === 'male' ? '♂' : g === 'female' ? '♀' : '',
+    types: (poke.types || []).map(t => ({ name: t, color: TYPE_COLORS[t] || '#888' })),
+    tags: memberStatusTags(p).replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean),
+    nature: natureText(p.nature),
+    source: srcName(p.source),
+    obtained: fmtTime(p.obtainedAt),
+    lastLog: latestLogLine(String(p.originSpecies || p.species), p.obtainedAt) || '',
+    ivs: IV_KEYS.map(([k, name]) => ({ key: k, label: name, value: ivOf(p, k) })),
+    ivTotal: ivSum(p),
+    crowned: crownedCount(p),
+  };
+}
+
 function showRosterDetail(id) {
   _renderSeq++; // 详情页直接覆盖列表内容：作废未完成的分片渲染，防止 rAF 分片把列表行追加到详情下方
   const p = (gameData.roster || []).find(r => r.id === id);
@@ -1516,9 +1559,10 @@ function showRosterDetail(id) {
   list.innerHTML = `
     <div style="font-size:13px;font-weight:700;padding:4px 5px 2px;display:flex;align-items:center;justify-content:space-between;">
       <span><span id="rosterNickSpan">${rosterName(p)}</span><button class="roster-nick-btn" id="rosterNickBtn" title="改名"><svg t="1786243847045" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M138.666667 810.666667V213.333333c0-41.216 33.450667-74.666667 74.666666-74.666666h469.333334v64H213.333333a10.666667 10.666667 0 0 0-10.666666 10.666666v597.333334c0 5.888 4.778667 10.666667 10.666666 10.666666h597.333334a10.666667 10.666667 0 0 0 10.666666-10.666666V352h64V810.666667A74.666667 74.666667 0 0 1 810.666667 885.333333H213.333333A74.666667 74.666667 0 0 1 138.666667 810.666667z" fill="currentColor"></path><path d="M444.330667 540.032L856.362667 128l45.226666 45.226667-411.989333 412.032-45.226667-45.226667z" fill="currentColor"></path></svg></button>${p.shiny ? ' <svg class="roster-shiny" viewBox="0 0 1024 1024" width="14" height="14" style="flex-shrink:0;vertical-align:-2px;transform:translateY(-2px);"><use xlink:href="#icon-star"/></svg>' : ''}<span class="roster-detail-lv${_detailEvoAllowed ? ' can-use' : ''}" id="rosterDetailLv"${_detailEvoAllowed ? ' data-exp-candy-open' : ''}>${dGSpan}Lv${p.level || 1}</span></span>
-      <div style="display:flex;flex-direction:row;align-items:flex-end;gap:2px;flex-shrink:0;">
-        <button class="roster-release" data-pokedex title="查看图鉴">图鉴</button>
-        <button class="roster-release" data-release>放生</button>
+      <div class="roster-detail-tools">
+        <button class="roster-tool" data-pokedex title="查看图鉴"><svg viewBox="0 0 1024 1024" width="18" height="18"><use xlink:href="#icon-book"></use></svg></button>
+        <button class="roster-tool${p.locked ? ' on' : ''}" data-lock title="${p.locked ? '取消锁定' : '锁定'}"><svg viewBox="0 0 1024 1024" width="18" height="18"><use xlink:href="${p.locked ? '#icon-lock' : '#icon-unlock'}"></use></svg></button>
+        <button class="roster-tool" data-share title="生成分享图"><svg viewBox="0 0 1024 1024" width="18" height="18"><use xlink:href="#icon-share"></use></svg></button>
       </div>
     </div>
     <div class="roster-detail-head">
@@ -1535,7 +1579,10 @@ function showRosterDetail(id) {
       </div>
     </div>
     <div class="roster-detail-block">
-      <div class="roster-detail-title${_detailEvoAllowed ? ' can-use' : ''}"${_detailEvoAllowed ? ' data-crown-open' : ''}>个体值 <span style="opacity:0.6;">${ivSum(p)}/186${crownedCount(p) ? ` · 王冠 ${crownedCount(p)}` : ''}</span></div>
+      <div class="roster-detail-title-row">
+        <div class="roster-detail-title${_detailEvoAllowed ? ' can-use' : ''}"${_detailEvoAllowed ? ' data-crown-open' : ''}>个体值 <span style="opacity:0.6;">${ivSum(p)}/186${crownedCount(p) ? ` · 王冠 ${crownedCount(p)}` : ''}</span></div>
+        <button class="roster-release${p.locked ? ' locked' : ''}" data-release>放生</button>
+      </div>
       <div class="roster-iv-flex">
         ${ivHexagon(p)}
         <div class="roster-iv-bars">
@@ -1551,6 +1598,13 @@ function showRosterDetail(id) {
     <div class="roster-detail-block roster-moves-block" id="rosterMovesBox"></div>
     <div class="roster-detail-block" id="rosterEvoBox" style="display:none;"></div>
   `;
+  const shareBtn = list.querySelector('[data-share]');
+  if (shareBtn && !poke) shareBtn.style.display = 'none'; // 查不到图鉴条目就没什么可分享的
+  if (shareBtn && poke) shareBtn.onclick = async () => {
+    shareBtn.disabled = true;
+    try { openShareCard(shareCardModel(p, poke)); }
+    finally { shareBtn.disabled = false; }
+  };
   const img = $('rosterDetailImg');
   if (img && poke) {
     // 时空扭曲外观变体：按个体 variant 应用 CSS 特效（RGB 分离 / 污染紫）
@@ -1621,7 +1675,14 @@ function showRosterDetail(id) {
     });
   }
   // 右上角放生：移除个体并播放告别动画
-  list.querySelector('[data-release]')?.addEventListener('click', () => releasePokemon(id));
+  list.querySelector('[data-release]')?.addEventListener('click', () => {
+    // 锁定的个体不能放生：给一条提示（按钮只是画成禁用样，仍可点击）
+    if (p.locked) {
+      showConfirmBar('宝可梦已锁定，先解锁才能放生', null, null, { singleButton: true });
+      return;
+    }
+    releasePokemon(id);
+  });
   // 图鉴：跳转到该宝可梦的图鉴详情页（第 4 层子页），返回键先回详情页
   list.querySelector('[data-pokedex]')?.addEventListener('click', () => {
     stopShinySparkleLoop();
@@ -1630,6 +1691,19 @@ function showRosterDetail(id) {
       m.showEncounterLogs(p.species);
       showView('pokedexView');
     });
+  });
+  // 锁定：标记存进个体，按钮就地换图标，不重画详情（免得列表滚动被重置）
+  list.querySelector('[data-lock]')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    p.locked = !p.locked;
+    saveGame();
+    btn.classList.toggle('on', !!p.locked);
+    btn.title = p.locked ? '取消锁定' : '锁定';
+    list.querySelector('[data-release]')?.classList.toggle('locked', !!p.locked);
+    const use = btn.querySelector('use');
+    const href = p.locked ? '#icon-lock' : '#icon-unlock';
+    use.setAttribute('href', href);
+    use.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', href);
   });
   loadMovesBlock(id);
 }
@@ -2282,9 +2356,43 @@ export function restoreRosterList() {
   if (prog) prog.style.display = '';
   // keepSearch：详情返回列表要还原进入详情前的搜索/筛选上下文，而不是当作一次新的进入
   showRosterView(false, { keepSearch: true });
-  // 恢复进入详情前的列表滚动位置
+  // 恢复列表滚动位置（见 restoreListScroll）
+  restoreListScroll(Number($('rosterList')?.dataset.savedScroll || 0));
+}
+
+let _suppressRecordUntil = 0; // 回位期间暂停记录：浏览器夹出来的中间值会把记录越踩越低
+
+// 回位：列表重绘后高度要等懒加载的图标撑起来，写一次会被夹住，得反复试到位置站住（上限约 1 秒）。
+// 试的过程每帧都在改位置，会像"列表自己在往下滚"，所以先把列表隐掉，站住再显示
+function restoreListScroll(top) {
   const list = $('rosterList');
-  if (list) requestAnimationFrame(() => { list.scrollTop = Number(list.dataset.savedScroll || 0); });
+  if (!list || !(top > 0)) return;
+  _suppressRecordUntil = Date.now() + 1200;
+  list.style.visibility = 'hidden';
+  let tries = 0;
+  const apply = () => {
+    list.scrollTop = top;
+    if (Math.abs(list.scrollTop - top) > 1 && ++tries < 60) {
+      requestAnimationFrame(apply);
+      return;
+    }
+    list.style.visibility = '';
+    _suppressRecordUntil = 0;
+  };
+  requestAnimationFrame(apply);
+}
+
+// 列表位置随手记：视图隐藏（display:none）会把 scrollTop 归零，只在"进详情时记一次"会还原到很久以前的位置
+function bindListScroll() {
+  const list = $('rosterList');
+  if (!list || list.dataset.scrollBound) return;
+  list.dataset.scrollBound = '1';
+  list.addEventListener('scroll', () => {
+    if (_detailId != null) return; // 详情里列表被置零，别把记录冲掉
+    if ($('rosterView')?.style.display === 'none') return; // 视图隐藏时也会归零，同样不能记
+    if (Date.now() < _suppressRecordUntil) return; // 回位过程中浏览器夹出来的中间值不能记
+    list.dataset.savedScroll = String(list.scrollTop);
+  }, { passive: true });
 }
 
 export function isRosterInDetail() {
@@ -2386,6 +2494,7 @@ export function showRosterView(noNav, opts) {
   // 进入前不在仓库视图 = 从其它页面重新进入列表（手机菜单、背包经验糖果等）
   const fromOtherView = getCurrentView() !== 'rosterView';
   // 正常入口压栈（返回回来源页）；选取/子流程模式传 true 跳过，避免污染导航栈
+  bindListScroll();
   if (!noNav) pushNav('rosterView');
   if (!_uiBound) {
     setupSearch();
@@ -2421,9 +2530,13 @@ export function showRosterView(noNav, opts) {
   }
   const prog = $('rosterProgress');
   if (prog) prog.style.display = '';
+  const listEl = $('rosterList');
   syncAdvFilterUi(); // 恢复高级筛选预览条状态（搜索行显隐）
   renderList();
   showView('rosterView');
+  // 重新进入列表：渲染那一刻图标还在懒加载、行高没成型，浏览器会把滚动夹到较小值，
+  // 等两帧高度稳定后按记录回位（同一视图内重绘不受影响，别干扰正常浏览）
+  if (fromOtherView) restoreListScroll(Number(listEl?.dataset.savedScroll || 0));
 }
 
 // 全选：把当前筛选结果全部勾入批量放生

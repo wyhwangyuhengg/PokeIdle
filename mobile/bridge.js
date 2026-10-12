@@ -66,6 +66,17 @@ async function exportSave(data) {
   await Share.share({ title: '口袋挂机存档', url: uri });
 }
 
+// 分享图片：PNG(base64) 先写进缓存目录，再调系统分享面板
+// （安卓 WebView 里没有 navigator.share，只能走原生插件；files 才会以文件流分享出去）
+async function shareImage(base64, name) {
+  const { uri } = await Filesystem.writeFile({
+    path: name,
+    data: base64,
+    directory: Directory.Cache,
+  });
+  await Share.share({ title: '口袋挂机', files: [uri] });
+}
+
 // 后台常驻（前台服务）：常驻通知 + 进程提到前台优先级，防小米/红米这类系统清后台。
 // 通知是 Android 强制的，藏不掉；开关在游戏设置里，默认关。
 // 通知不做动态内容：切后台 JS 被冻结，推过去的捕捉/地区状态只会是停摆前的旧值
@@ -76,14 +87,20 @@ async function foregroundStart(title = '', text = '') {
 async function foregroundStop() {
   await KeepAlive.stop();
 }
+// 主题切换：同步安卓窗口底色（状态栏/导航栏露出的那条）
+async function setWindowBg(color) {
+  await KeepAlive.setWindowBg({ color });
+}
 
 window.__POKEIDLE_MOBILE__ = {
   readSave,
   foregroundStart,
   foregroundStop,
+  setWindowBg,
   readSaveBackup,
   writeSave,
   exportSave,
+  shareImage,
   openExternal: url => Browser.open({ url }),
   exitApp: () => App.exitApp(),
   attach({ saveNow, back }) {

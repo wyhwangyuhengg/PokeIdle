@@ -6425,6 +6425,57 @@ html.mobile-app #quitHide { display: none !important; }
 }
 .roster-release:active { transform: scale(0.92); }
 
+/* 详情页右上角：图鉴 / 标星 / 分享 —— 图标按钮 */
+.roster-detail-tools {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.roster-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--ui-color);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s, transform 0.1s;
+}
+@media (hover: hover) {
+  .roster-tool:hover { color: var(--ui-color-dark); } /* 悬停只把图标压深一档 */
+}
+/* 锁定态：亮色画淡（像禁用，但不是真禁用）；夜间保持原来那档深色 */
+.roster-tool.on { color: var(--ui-color); opacity: 0.4; }
+[data-theme="dark"] .roster-tool.on { color: var(--ui-color-darker); opacity: 1; }
+@media (hover: hover) {
+  .roster-tool.on:hover { color: var(--ui-color); }                       /* 锁定态悬停不加深 */
+  [data-theme="dark"] .roster-tool.on:hover { color: var(--ui-color-darker); }
+}
+
+/* 放生按钮：个体锁定时画成禁用样，但点得动（点了给提示） */
+.roster-release.locked,
+.bounty-trade-btn.locked { opacity: 0.4; cursor: default; }
+@media (hover: hover) {
+  .roster-release.locked:hover,
+  .bounty-trade-btn.locked:hover { background: transparent; }
+}
+.roster-tool:active { transform: scale(0.92); }
+.roster-tool svg { display: block; }
+
+/* 个体值标题行：右侧挂放生，与标题同基线对齐 */
+.roster-detail-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
 /* === 开场剧情 === */
 #introView {
   position: relative;
@@ -11530,3 +11581,50 @@ html.ui-dual .app-host { /* 下屏容器要真实盒子，app 页才撑得满、
   will-change: transform, opacity;
 }
 #evoFlash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+
+/* === 分享图预览 === */
+.share-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.72);
+}
+.share-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-height: 100%;
+}
+.share-mask img {
+  max-width: 92vw;
+  max-height: 68vh;
+  border: 2px solid var(--console-border);
+  border-radius: 4px;
+  background: var(--console-body);
+}
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.share-btn {
+  padding: 5px 14px;
+  font-family: inherit;
+  font-size: clamp(11px, 1vh + 6px, 15px);
+  font-weight: 700;
+  color: var(--ui-color);
+  background: var(--console-body);
+  border: 1px solid var(--ui-color);
+  border-radius: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+.share-btn:hover { background: var(--console-border); }   /* 悬停只把底色压深一档，别做透明 */
+[data-theme="dark"] .share-btn:hover { background: #000; }
+.share-btn:active { transform: scale(0.95); }

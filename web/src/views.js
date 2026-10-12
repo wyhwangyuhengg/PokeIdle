@@ -1,6 +1,6 @@
 import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, honeyBuffActive, charmBuffActive, saveGame, setSaveSuspended, formatNum, pad, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing, isPokemon } from './state.js';
-import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform, touchText, watchOutsidePress } from './ui.js';
+import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, applyWindowBg, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform, touchText, watchOutsidePress } from './ui.js';
 import { doCandyExchange, doSellBall, activateHoney, activateShinyCharm, refillBuffIfEmpty, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf, BASIC_ITEM_ORDER } from './items.js';
 import { formatLogTime } from './pokedex.js';
 import { stopAutoFleeTimer, startAutoFleeTimer, autoCatch } from './battle.js';
@@ -658,6 +658,35 @@ function refreshShopCandy() {
   if (el) el.textContent = String(gameData.items['candy'] || 0);
 }
 
+// 糖果与道具会被挂机进程改动（自动补球、自动消耗）：停留时每秒对一次指纹，变了就地重绘
+let _shopLiveSig = '';
+const shopLiveSig = () => String(gameData.items.candy || 0) + '|' + JSON.stringify(gameData.items);
+function shopLiveTick() {
+  try {
+    if ($('shopView')?.style.display === 'none') {
+      if (startShopLiveTick._t) { clearInterval(startShopLiveTick._t); startShopLiveTick._t = null; }
+      return;
+    }
+    if (document.querySelector('.shop-confirming')) return; // 行内二次确认中，别重建把它冲掉
+    const now = shopLiveSig();
+    if (now === _shopLiveSig) return;
+    _shopLiveSig = now;
+    showShopView({ keepScroll: true });
+  } catch (e) {
+    if (!shopLiveTick._logged) { shopLiveTick._logged = true; console.error('[商店] 实时刷新出错:', e); }
+  }
+}
+window.__shopLive = shopLiveTick; // 主循环兜底调用
+function startShopLiveTick() {
+  if (startShopLiveTick._t) return;
+  _shopLiveSig = shopLiveSig();
+  startShopLiveTick._t = setInterval(shopLiveTick, 1000);
+}
+
+window.addEventListener('view-changed', (e) => {
+  if (e.detail === 'shopView') startShopLiveTick();
+});
+
 export function showShopView(opts) {
   // 兑换结算后 doCandyExchange 会重渲染本页：此时文案框保持固定，不清空不隐藏
   const isReRender = $('shopView')?.style.display === 'flex';
@@ -765,6 +794,7 @@ export function showShopView(opts) {
   };
   showView('shopView');
   if (keepScroll && content) content.scrollTop = keepScroll;
+  startShopLiveTick();
   if (!isReRender) hideDetailCard(); // 真正进入商店：关掉上次残留的详情弹框
   // 招式机区块：每天轮换的招式机（异步填内容，招式数据不在商店首帧拉取）
   if (!_shopSellMode) {
@@ -1219,6 +1249,7 @@ export function renderSettings(container, s) {
           <span class="auto-catch-label">保存并退出</span>
           <span class="reset-save-btn" id="saveExitBtn">保存退出</span>
         </div>
+        <div class="cf-hint" id="saveTimeHint" style="padding:2px 4px 4px;"></div>
       </div>
       <a href="https://github.com/ZTMYO/PokeIdle" id="githubLink" class="settings-footer-link" target="_blank" rel="noopener">
         <svg viewBox="0 0 1024 1024" width="16" height="16" style="flex-shrink:0;"><use xlink:href="#icon-github"/></svg>
@@ -1592,6 +1623,26 @@ export function renderSettings(container, s) {
   // 版本号与版本戳都来自 build-info.js（由构建脚本按 package.json 生成）
   const versionEl = container.querySelector('#settingsVersion');
   if (versionEl) versionEl.textContent = [`v${APP_VERSION}`, BUILD_STAMP].filter(Boolean).join(' · ');
+  // 上次存档时间：停留期间每秒刷新这一行文字，离开设置页自动停表（不重建整页）
+  const paintSaveTime = () => {
+    const el = container.querySelector('#saveTimeHint');
+    if (!el) return;
+    const t = gameData?.stats?.lastSaveTime || 0;
+    if (!t) { el.textContent = '还没有存档记录'; return; }
+    const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+    const rel = sec < 10 ? '刚刚' : sec < 60 ? `${sec} 秒前` : sec < 3600 ? `${Math.floor(sec / 60)} 分钟前` : `${Math.floor(sec / 3600)} 小时前`;
+    el.textContent = `上次存档：${rel}`;
+  };
+  paintSaveTime();
+  if (renderSettings._saveTimer) clearInterval(renderSettings._saveTimer);
+  renderSettings._saveTimer = setInterval(() => {
+    if ($('settingsView')?.style.display === 'none') {
+      clearInterval(renderSettings._saveTimer);
+      renderSettings._saveTimer = null;
+      return;
+    }
+    paintSaveTime();
+  }, 1000);
   // 版权声明：跳转声明视图
   container.querySelector('#declarationBtn')?.addEventListener('click', () => showDeclarationView());
 }
@@ -1657,6 +1708,7 @@ export function toggleDarkMode() {
   ensureSettings();
   gameData.settings.darkMode = !gameData.settings.darkMode;
   document.documentElement.dataset.theme = gameData.settings.darkMode ? 'dark' : 'light';
+  applyWindowBg();
   const container = $('settingsContent');
   renderSettings(container, gameData.settings);
   saveGame();
@@ -2107,7 +2159,8 @@ const TUTORIAL_SECTIONS = [
     html: `<p>在<b>手机</b>页面打开<b>宝可梦</b>应用查看宝可梦仓库：每只捕获/孵化的宝可梦都是独立个体。</p>`
       + `<p>每只个体带有随机<b>个体值</b>（HP/攻击/防御/特攻/特防/速度，各 <b>0~31</b>）与随机<b>性格</b>（共 <b>25</b> 种）。</p>`
       + `<p>点进详情可以重命名宝可梦（最多 <b>5</b> 个字），改名后搜索中文可匹配昵称。</p>`
-      + `<p>详情页右上角的<b>放生</b>按钮可放生该个体（不可恢复）同时返还（<b>${RELEASE_XP_RATE * 100}%</b>）经验（详见「<b>经验糖果</b>」章节）。</p>`
+      + `<p><b>个体值</b>那一行右侧的<b>放生</b>按钮可放生该个体（不可恢复），同时返还（<b>${RELEASE_XP_RATE * 100}%</b>）经验（详见「<b>经验糖果</b>」章节）。</p>`
+      + `<p>详情页右上角是<b>图鉴</b> / <b>锁定</b> / <b>分享</b>三个按钮：<b>图鉴</b>查看该物种的图鉴；<b>分享</b>可以生成这只宝可梦的详情卡片用于分享；<b>锁定</b>后它不会出现在放生、批量放生以及交换与悬赏的候选里（再点一次解锁）。</p>`
       + `<p>在仓库<b>列表页右键</b>可<b>批量放生</b>：勾选多只个体统一放生并返还总经验。</p>`
       + `<p>右键也可<b>高级筛选</b>（按名称、属性、等级等条件），方便批量处理。</p>`
       + `<p>个体可用来提交地区悬赏——提交后该宝可梦会从仓库中移除（详见「<b>悬赏</b>」章节）。</p>`,
@@ -2180,6 +2233,7 @@ const TUTORIAL_SECTIONS = [
   {
     title: '孵蛋',
     html: `<p>在<b>手机</b>主页打开<b>孵蛋器</b>应用，将背包里的<b>神秘蛋</b>或繁殖得到的<b>宝可梦蛋</b>放入空闲槽位开始<b>孵化</b>。</p>`
+      + `<p><b>神秘蛋</b>从<b>全图鉴</b>随机孵化（<b>神兽与超级进化/超极巨化形态除外</b>）。</p>`
       + `<p>孵蛋得到的宝可梦还能学会本物种的<b>蛋招式</b>，另有独立的个体值、性格与闪光判定。</p>`
       + `<p>孵化里程由宝可梦的体重和稀有度决定（<b>${HATCH_DIST_MIN / 1000}~${HATCH_DIST_MAX / 1000}</b> 公里）。</p>`
       + `<p>主角行走累计到所需里程即孵化完成——停下不走不推进，跑步/骑车走得更快。</p>`

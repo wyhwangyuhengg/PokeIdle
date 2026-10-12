@@ -1,7 +1,8 @@
 // ===== 农场 =====
-// 6 块田地按真实时间生长；生长/湿度由 Date.now() 折算并随存档持久化（gameData.berryFarm）
+// 6 块田地按真实时间生长；生长/湿度由 simNow() 折算并随存档持久化（gameData.berryFarm）
+// 补算期间 simNow() 走模拟时钟，帮手才会在「当时」浇水（见 catchUpHelper）
 import { $, showView, tryLoadImage, getCharPrefix, updateStats, logicToViewport, popupBounds, watchOutsidePress } from './ui.js';
-import { gameData, pushNav, saveGame, randInt, addSystemLog } from './state.js';
+import { gameData, pushNav, saveGame, randInt, addSystemLog, simNow, setSimClock } from './state.js';
 import { BERRY_ICONS, BERRY_NAMES } from './items.js';
 import { setupFoodTooltip, hideFoodTip } from './ui.js';
 import {
@@ -145,8 +146,11 @@ function ensureBoard() {
   return updateDailyDemands(ensureBerryFarm());
 }
 
+// 正在重放离线期间的劳作：只改状态，不落盘、不播动画、不发通知
+let _replaying = false;
+
 function plotState(p) {
-  const since = Date.now() - p.waterAt;
+  const since = simNow() - p.waterAt;
   const dropMs = (p.water / WATER_DROP) * 1000;
   // 随从增益：berry 类提升树果成熟速度（增长量按比例放大）
   const growMs = Math.min(since, dropMs) * (window.__followerBoostMechanic?.('berryGrow', 1) ?? 1);
@@ -508,7 +512,7 @@ function openPicker(i) {
       if (idx == null) return;
       gameData.items.candy -= PLANT_COST;
       gameData.stats.totalPlantings = (gameData.stats.totalPlantings || 0) + 1;
-      ensureBerryFarm().plots[idx] = { type, grownMs: 0, water: 0, waterAt: Date.now(), totalMs: randInt(MATURE_MIN, MATURE_MAX) };
+      ensureBerryFarm().plots[idx] = { type, grownMs: 0, water: 0, waterAt: simNow(), totalMs: randInt(MATURE_MIN, MATURE_MAX) };
       addSystemLog('berry_plant', { berry: type });
       saveGame();
       updatePlotDom(idx);
@@ -857,7 +861,7 @@ function waterPlot(i) {
   if (!p) return;
   p.grownMs = plotState(p).grownMs;
   p.water = MAX_WATER;
-  p.waterAt = Date.now();
+  p.waterAt = simNow();
   saveGame();
   spawnSpray(i);
   if (_hoverPlot === i) updateProgress();
@@ -1102,31 +1106,43 @@ export function catchUpHelper(secs) {
   if (!f || !f.helper) return { ok: false };
   const h = f.helper;
   migrateHelperShape(h);
-  let remainMs = secs * 1000;
+  const totalMs = secs * 1000;
+  let remainMs = totalMs;
   let works = 0, errored = 0;
-  while (remainMs > 0 && h.remainingMs > 0 && works < 600) {
-    // 阶段休息中：先耗休息时长，结束后进入下一工作阶段
-    if (h.restingMs > 0) {
-      const step = Math.min(remainMs, h.restingMs);
-      h.restingMs -= step;
-      h.remainingMs = Math.max(0, h.remainingMs - step);
-      remainMs -= step;
-      if (h.restingMs <= 0 && remainMs > 0) {
-        h.stageRemainingMs = HELPER_WORK_STAGE_MS;
+  // 劳作要铺回真实时间轴：模拟时钟每推进一步，帮手才是在「当时」浇的水、收的果，
+  // 地块也按当时的湿度继续生长；否则全部堆在回来的这一刻，中途缺水的时长就白丢了
+  _replaying = true;
+  setSimClock(Date.now() - totalMs);
+  try {
+    while (remainMs > 0 && h.remainingMs > 0 && works < 600) {
+      // 阶段休息中：先耗休息时长，结束后进入下一工作阶段
+      if (h.restingMs > 0) {
+        const step = Math.min(remainMs, h.restingMs);
+        h.restingMs -= step;
+        h.remainingMs = Math.max(0, h.remainingMs - step);
+        remainMs -= step;
+        setSimClock(Date.now() - remainMs);
+        if (h.restingMs <= 0 && remainMs > 0) {
+          h.stageRemainingMs = HELPER_WORK_STAGE_MS;
+        }
+        continue;
       }
-      continue;
+      // 工作阶段：按单次劳作平均间隔推进并劳作
+      const stepMs = randInt(HELPER_WORK_MIN, HELPER_WORK_MAX) * 1000;
+      const step = Math.min(remainMs, stepMs);
+      h.remainingMs = Math.max(0, h.remainingMs - step);
+      h.stageRemainingMs = Math.max(0, (h.stageRemainingMs || 0) - step);
+      remainMs -= step;
+      setSimClock(Date.now() - remainMs);
+      if (h.stageRemainingMs <= 0) h.restingMs = HELPER_REST_MS; // 本阶段结束进入休息
+      try {
+        helperWork();
+        works++;
+      } catch (e) { errored++; }
     }
-    // 工作阶段：按单次劳作平均间隔推进并劳作
-    const stepMs = randInt(HELPER_WORK_MIN, HELPER_WORK_MAX) * 1000;
-    const step = Math.min(remainMs, stepMs);
-    h.remainingMs = Math.max(0, h.remainingMs - step);
-    h.stageRemainingMs = Math.max(0, (h.stageRemainingMs || 0) - step);
-    remainMs -= step;
-    if (h.stageRemainingMs <= 0) h.restingMs = HELPER_REST_MS; // 本阶段结束进入休息
-    try {
-      helperWork();
-      works++;
-    } catch (e) { errored++; }
+  } finally {
+    _replaying = false;
+    setSimClock(0);
   }
   const ended = h.remainingMs <= 0;
   if (ended) {
@@ -1134,7 +1150,30 @@ export function catchUpHelper(secs) {
     addSystemLog('berry_helper_end', {});
   }
   saveGame();
+  notifyBerryChanged();
   return { ok: true, works, ended, errored };
+}
+
+// 调试用（debug.js 的 __berryInfo）：地块与帮手的现场
+export function berrySnapshot() {
+  const f = gameData?.berryFarm;
+  return {
+    simNow: new Date(simNow()).toLocaleString(),
+    helper: f?.helper
+      ? { remaining: Math.round((f.helper.remainingMs || 0) / 1000) + 's', resting: Math.round((f.helper.restingMs || 0) / 1000) + 's' }
+      : null,
+    plots: (f?.plots || []).map((p, i) => {
+      if (!p) return null;
+      const st = plotState(p);
+      return {
+        plot: i,
+        grown: Math.round(st.grownMs / 1000) + 's',
+        total: Math.round((p.totalMs || 0) / 1000) + 's',
+        water: Math.round(st.water),
+        wateredAt: new Date(p.waterAt).toLocaleTimeString(),
+      };
+    }),
+  };
 }
 
 // 帮手单次劳作，从随机起点扫描：
@@ -1177,7 +1216,7 @@ function helperWork() {
 // （页面隐藏/未渲染时同样收获、浇水、种植，自动种植不依赖页面是否打开）
 function helperTask(i, action, doWork, waterAfter) {
   const el = document.getElementById('berryHelper');
-  if (el && el.isConnected && $('berryView')?.style.display !== 'none') {
+  if (!_replaying && el && el.isConnected && $('berryView')?.style.display !== 'none') {
     moveHelperTo(i, action, doWork, waterAfter);
   } else {
     doWork();
@@ -1190,7 +1229,8 @@ function helperWater(i) {
   if (!p) return;
   p.grownMs = plotState(p).grownMs;
   p.water = MAX_WATER;
-  p.waterAt = Date.now();
+  p.waterAt = simNow();
+  if (_replaying) return;
   saveGame();
   spawnSpray(i);
   if (_hoverPlot === i) updateProgress();
@@ -1203,7 +1243,8 @@ function helperPlant(i) {
   const type = randInt(0, BERRY_ICONS.length - 1);
   gameData.items.candy -= PLANT_COST;
   gameData.stats.totalPlantings = (gameData.stats.totalPlantings || 0) + 1;
-  f.plots[i] = { type, grownMs: 0, water: 0, waterAt: Date.now(), totalMs: randInt(MATURE_MIN, MATURE_MAX) };
+  f.plots[i] = { type, grownMs: 0, water: 0, waterAt: simNow(), totalMs: randInt(MATURE_MIN, MATURE_MAX) };
+  if (_replaying) return;
   saveGame();
   updatePlotDom(i);
   updateStats(); // 同步底部糖果数量（自动种植扣费）
@@ -1221,6 +1262,7 @@ function helperHarvest(i) {
   gameData.stats.totalBerriesHarvested = (gameData.stats.totalBerriesHarvested || 0) + qty;
   f.stock[p.type] = (f.stock[p.type] || 0) + qty;
   f.plots[i] = null;
+  if (_replaying) return; // 补算重放：只结算收益
   saveGame();
   _harvesting.add(i);
   const wait = spawnHarvestFly(i, p.type, qty); // 收获动效：树果飞向库存箱（图标是 .berry-field 的兄弟元素，不受地块替换影响）

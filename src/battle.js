@@ -990,9 +990,9 @@ export async function throwBall(ballType) {
       return;
     }
 
-    // 后台结算（遭遇被 NPC 对战等打断且玩家不在游戏页）：判定已落库，快照结果跳过动画，
-    // 玩家切回游戏页后由 replayBgResult 补播；玩家已在游戏页则照常播放动画
-    if (_bgCatch && !isOnGameView()) {
+    // 判定落库时玩家不在游戏页（切去了图鉴/手机等，或遭遇被对战打断）：快照结果跳过动画，
+    // 切回游戏页由 replayBgResult 补播球晃动/逃跑演出；玩家在游戏页则照常播动画
+    if (!isOnGameView()) {
       if (outcome === 'caught' || outcome === 'fled') {
         storeBgResult(outcome, breakRound, ballType);
         cleanupEncounterState();
@@ -1004,9 +1004,8 @@ export async function throwBall(ballType) {
     const anim = await playCatchSequence(ballType, outcome, breakRound);
 
     if (outcome === 'caught') {
-      // 后台结算兜底：前台丢球动画中被战斗打断的判定，动画播完后再清理；
-      // 玩家不在游戏页时快照结果，切回后补播最终动画
-      if (_bgCatch && !isOnGameView()) { storeBgResult('caught', breakRound, ballType); cleanupEncounterState(); return; }
+      // 不在游戏页：快照结果，切回后补播演出
+      if (!isOnGameView()) { storeBgResult('caught', breakRound, ballType); cleanupEncounterState(); return; }
       endBattle(); // 战斗结束：捕捉成功即停战斗曲，胜利音效播完后恢复地区曲
       playVictory(); // 抓捕成功 → 胜利音效
       // 捕获文案（离开遇敌页则不弹出）
@@ -1039,9 +1038,8 @@ export async function throwBall(ballType) {
     const breakMsgs = BREAK_MSGS;
 
     if (outcome === 'fled') {
-      // 后台结算兜底：前台丢球动画中被战斗打断的判定，动画播完后再清理；
-      // 玩家不在游戏页时快照结果，切回后补播最终动画
-      if (_bgCatch && !isOnGameView()) { storeBgResult('fled', breakRound, ballType); cleanupEncounterState(); return; }
+      // 不在游戏页：快照结果，切回后补播演出
+      if (!isOnGameView()) { storeBgResult('fled', breakRound, ballType); cleanupEncounterState(); return; }
       // 先显示挣脱文案（离开遇敌页则不弹）
       const m = breakMsgs[breakRound] || breakMsgs[1];
       if (isOnGameView()) updateTextBox(m[randInt(0, m.length - 1)], false);
@@ -1102,7 +1100,7 @@ export async function fleeEncounter(isAutoFlee) {
   if (isOnGameView() && !_bgCatchup) updateTextBox('你逃走了！', false);
   await saveGame();
   updateStats();
-  if (_bgCatch && !isOnGameView()) {
+  if (!isOnGameView()) {
     // 后台结算：判定已落库，快照结果供玩家切回游戏页时补播逃跑文案
     storeBgResult('fled', 0, null, { noBall: true, fleeMsg: '你逃走了！' });
     cleanupEncounterState();
@@ -1459,7 +1457,7 @@ export async function autoCatch() {
       gameData.wildEncounter = null;   // 同上：判定落库即作废待开战记录
       await saveGame();
       updateStats();
-      if (_bgCatch && !isOnGameView()) {
+      if (!isOnGameView()) {
         // 后台结算：判定已落库，快照结果供玩家切回游戏页时补播逃跑文案
         storeBgResult('fled', 0, null, { noBall: true, fleeMsg: '你逃走了！' });
         cleanupEncounterState();

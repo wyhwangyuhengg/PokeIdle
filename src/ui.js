@@ -1463,6 +1463,13 @@ function getFoodTipEl() {
   return _foodTipEl;
 }
 
+// 主题切换时同步安卓窗口底色：状态栏/导航栏在"边到边但留边距"下露出的就是它，否则夜间模式仍是亮色
+export function applyWindowBg() {
+  const mobile = window.__POKEIDLE_MOBILE__;
+  if (!mobile?.setWindowBg) return;
+  mobile.setWindowBg(document.documentElement.dataset.theme === 'dark' ? '#0a0a0a' : '#e8dcc0');
+}
+
 export function hideFoodTip() {
   if (_foodTipEl) _foodTipEl.style.display = 'none';
 }
@@ -1614,6 +1621,8 @@ export function setupFoodTooltip() {
   document.addEventListener('click', (e) => {
     if (!_foodTipEl || _foodTipEl.style.display === 'none') return;
     if (!e.clientX && !e.clientY) return; // 无坐标的程序化 click 不参与判定
+    // 导航页的事件点：点了只是规划路线（地图会重渲染换掉节点），提示要留着
+    if (e.target.closest && e.target.closest('.gps-mass-marker, .gps-twist-marker')) return;
     const x = e.clientX, y = e.clientY;
     setTimeout(() => {
       if (!_foodTipEl || _foodTipEl.style.display === 'none') return;

@@ -624,7 +624,7 @@ function renderSelect(content, offerId) {
           <span class="pokedex-star">${pokemonSourceBadge(p)}</span>
           <span class="roster-ivs">${ivsText}</span>
           <span class="roster-nature">${genderBadge(ensureGender(p))}Lv${p.level || 1}</span>
-          <span class="bounty-trade-btn-col"><button class="bounty-trade-btn" data-trade-submit="${p.id}">交换</button></span>
+          <span class="bounty-trade-btn-col"><button class="bounty-trade-btn${p.locked ? ' locked' : ''}" data-trade-submit="${p.id}">交换</button></span>
         </div>`;
       }).join('');
   const syncIcons = () => {
@@ -906,6 +906,12 @@ document.addEventListener('click', e => {
   }
   const submitBtn = e.target.closest('[data-trade-submit]');
   if (submitBtn) {
+    // 锁定的个体不能交换：按钮画成禁用样，点它给一条提示
+    const tp = (gameData.roster || []).find(r => String(r.id) === String(submitBtn.dataset.tradeSubmit));
+    if (tp?.locked) {
+      showConfirmBar('宝可梦已锁定，先解锁才能交换', null, null, { singleButton: true });
+      return;
+    }
     doTrade(_tradeMode, submitBtn.dataset.tradeSubmit);
     return;
   }
