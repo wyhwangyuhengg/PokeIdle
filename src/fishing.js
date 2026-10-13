@@ -212,7 +212,8 @@ function finishFishing(silent = false) {
   clearFloatingItems();
   setFishing(false);
   // 战斗中道路保持暂停（由 goIdle 统一恢复）
-  if (phase === 'idle') { setIdleCharacter('walk'); road.resume(); }
+  setIdleCharacter('walk');            // 姿势必须收回走路：动画收尾被战斗打断时不会卡在动作帧
+  if (phase === 'idle') road.resume();   // 路面恢复交给战斗/goIdle 统一处理
   if (!silent) {
     // 有 buff 被暂停 → 恢复倒计时（由 buff 接管后续遇敌调度）；否则正常安排下次遇敌
     if (!resumeBuffCountdown()) scheduleNextEncounter();

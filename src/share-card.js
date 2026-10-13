@@ -344,6 +344,16 @@ function closeShareCard() {
   _mask.style.display = 'none';
 }
 
+// 返回键用：预览层开着就先关它，别让返回穿透到底层页面
+export function isShareCardOpen() {
+  return !!_mask && _mask.style.display !== 'none';
+}
+export function closeShareCardIfOpen() {
+  if (!isShareCardOpen()) return false;
+  closeShareCard();
+  return true;
+}
+
 function ensureMask() {
   if (_mask) return _mask;
   const el = document.createElement('div');

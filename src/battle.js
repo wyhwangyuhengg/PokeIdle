@@ -1,11 +1,11 @@
-import { ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, BLOCK_TARGET_CHANCE, BLOCK_QUALITY, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, CHARM_RARITY_BOOST, ITEM_NAMES, CATCH_RATES, ULTRA_BALL_ADD, AUTO_FLEE_TIMEOUT, AUTO_FLEE_NO_BALL_DELAY, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, CANDY_EXCHANGE, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, LEGEND_LEVEL, massShinyChance } from './config.js';
+import { ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, BLOCK_TARGET_CHANCE, BLOCK_QUALITY, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, CHARM_RARITY_BOOST, ITEM_NAMES, CATCH_RATES, ULTRA_BALL_ADD, AUTO_FLEE_TIMEOUT, AUTO_FLEE_NO_BALL_DELAY, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, CANDY_EXCHANGE, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, LEGEND_LEVEL, massShinyChance, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, nextEncounterTimer, honeyBuffActive, charmBuffActive, charmGuaranteed, blockBuffActive, blockRecipe, blockQuality, honeyCountdownEnd, charmCountdownEnd, honeyPausedRemaining, charmPausedRemaining, honeyExpiryTimer, charmExpiryTimer, honeyCountdownInterval, charmCountdownInterval, _charmEncounterCount, _autoFleeTimer, _autoFleeStartTime, _autoFleeBarInterval, _autoCatching, _throwing, _fishing, _eggHatching, encounterMsg, encounterSource, encounterVariant, saveGame, addSystemLog, getCurrentRegion, hasAnyBall, rand, randInt, setSaveSuspended, inMassZone, inTwistZone, rollGuaranteedIvs, setPhase, setCurrentEncounter, setEncounterLevel, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setHoneyBuffActive, setCharmBuffActive, setCharmGuaranteed, setCharmEncounterCount, setHoneyPausedRemaining, setCharmPausedRemaining, setHoneyCountdownEnd, setCharmCountdownEnd, setNextEncounterTimer, setAutoCatching, setThrowing, setCatchConfirmStep, setAutoFleeTimer, setAutoFleeStartTime, setAutoFleeBarInterval, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, setEncounterMsg, addRosterEntry, setLastObtainedEntryId, rollGender, genderBadge, wildLevelCap, dexUnlocked, dexShinyOwned, setEncounterSource, setEncounterVariant, simNow, setSimClock } from './state.js';
 import { $, showView, updateTextBox, hideTextBox, setIdleCharacter, isOnGameView, isIdleStageVisible, isDualLayout, isPageHidden, updateBackpack, updateStats, tryLoadPokemonImage, tryLoadPokemonIcon, isEvolutionShowActive } from './ui.js';
 import { getBountyTargetIndexes } from './bounty.js';
 import { pickRandomPokemon, pickWeightedPokemon, findBerryTarget, rollLegendEncounter, activateHoney, activateShinyCharm, clearCharmCountdown, clearHoneyCountdown, startCharmCountdown, startHoneyCountdown, handleHoneyExpired, handleCharmExpired, takeBuffForRenew, TYPE_COLORS, cancelSuspendedEncounterForEgg, pickFamily } from './items.js';
 import { eatBlock } from './mixer.js';
 import { delay, playCatchSequence, playFleeAnim, startShinySparkleLoop, stopShinySparkleLoop } from './animation.js';
-import { catchBonusFor, computeObtainScore, computeMeetScore } from './scoring.js';
+import { catchBonusFor, computeObtainScore, computeMeetScore, recordLuck } from './scoring.js';
 import { startIdleRotation } from './messages.js';
 import { playBattle, endBattle, playVictory, stopVictory, consumeShowCardOnEncounterEnd, showRegionNowPlaying, playShiny, setBulkQuiet } from './audio.js';
 import * as road from './road.js';
@@ -60,11 +60,6 @@ let _bgCatchup = false;
 let _encounterAt = 0;
 export function setEncounterAt(at) { _encounterAt = at > 0 ? at : 0; }
 const encounterStamp = () => _encounterAt || simNow();
-// 后台结算结果快照：最终判定已在后台落库，玩家切回游戏页时补播完整捕捉/逃跑动画
-let _bgResult = null;
-// 后台结果补播只是视觉回放，不允许再次参与真实遭遇结算。
-let _bgReplayActive = false;
-let _bgReplayToken = 0;
 // 当前遭遇宝可梦性别（每次遇敌 roll 一次；currentEncounter 是共享图鉴对象，直接写 gender 会污染数据源）
 let _encounterGender = 'male';
 // 事件遭遇（大量出没/时空扭曲）已在后台结算的标记：防止 goIdle 与 cleanupEncounterState
@@ -77,47 +72,6 @@ export function setDebugNextEncounter(idx, shiny) {
   const raw = String(idx);
   const dexIdx = /^\d+$/.test(raw) ? raw.padStart(4, '0') : raw;
   _debugNextEncounter = { index: dexIdx, shiny: !!shiny };
-}
-
-// 保存后台结算结果（供切回游戏页后重放动画）
-function storeBgResult(outcome, breakRound, ballType, opts = {}) {
-  if (!currentEncounter) return;
-  _bgResult = {
-    poke: currentEncounter,
-    shiny: currentIsShiny,
-    level: encounterLevel,
-    source: _encounterSource,
-    variant: _encounterVariant,
-    msg: encounterMsg,
-    outcome,
-    breakRound,
-    ballType: ballType || null,
-    noBall: !!opts.noBall,        // 无球逃跑：不播丢球动画，直接播逃跑文案
-    fleeMsg: opts.fleeMsg || null, // 逃跑文案（无球/主动逃跑用）
-    fleeAnim: !!opts.fleeAnim,     // 是否需要播放宝可梦逃走的离场动画
-  };
-}
-
-// 取出并清除后台结算结果
-export function consumeBgResult() {
-  const r = _bgResult;
-  _bgResult = null;
-  return r;
-}
-
-function isBgReplayCurrent(token) {
-  return _bgReplayActive && _bgReplayToken === token;
-}
-
-export function cancelBgResultReplay() {
-  if (!_bgReplayActive) return false;
-  _bgReplayToken++;
-  _bgReplayActive = false;
-  stopVictory();
-  endBattle();
-  cleanupEncounterState();
-  if (phase !== 'battle') setPhase('idle');
-  return true;
 }
 
 // 手动捕获成功后停在"是否查看详情"确认框（phase='caught'）时离开游戏页（切图鉴/商店/对战列表等）：
@@ -877,7 +831,6 @@ export function renderEncounterScene(poke) {
 // ===== 丢球 =====
 
 export async function throwBall(ballType) {
-  if (_bgReplayActive) return;
   if ((_encPhase !== 'encounter' && !_bgCatch) || !currentEncounter) return;
   if (_throwing) return;
   // 该球数量为 0：若已勾选自动补球，用糖果补 1 个再丢（手动模式同样生效）；补不了则直接作废
@@ -943,6 +896,7 @@ export async function throwBall(ballType) {
         ivs: _encounterSource === 'twist' ? rollGuaranteedIvs(currentEncounter.legend ? 3 : TWIST_GUARANTEED_IVS) : undefined,
         variant: _encounterVariant,
         at: _encounterAt, // 跨界遭遇：按切走时刻入档
+        ball: ballType,   // 捕获球种（高级筛选「球种」按它筛）
       });
       setLastObtainedEntryId(entry.id);
       // 记录遭遇日志（score 含个体值加成，需先建档拿到 ivs）
@@ -951,12 +905,12 @@ export async function throwBall(ballType) {
         time: encounterStamp(), shiny: currentIsShiny, result: 'caught',
         balls: { ...currentEncounterBalls }, source: _encounterSource,
         charmBuff: charmBuffActive, // 该遭遇是否处于闪耀护符 buff（影响闪光率评分）
-        score: computeObtainScore({
+        score: recordLuck(gameData, computeObtainScore({
           pokemon: currentEncounter, source: _encounterSource, shiny: currentIsShiny,
           charmBuff: charmBuffActive, honeyBuff: honeyBuffActive,
           balls: currentEncounterBalls, finalRate: rate, ivs: entry.ivs,
           guaranteedIvs: _encounterSource === 'twist' ? (currentEncounter.legend ? 3 : TWIST_GUARANTEED_IVS) : 0,
-        }),
+        })),
       });
       addSystemLog('pokemon_caught', { pokemon: idx, shiny: currentIsShiny, ball: ballType, auto: _autoCatching }, encounterStamp());
     } else if (outcome === 'fled') {
@@ -970,15 +924,17 @@ export async function throwBall(ballType) {
         balls: { ...currentEncounterBalls }, source: _encounterSource,
         charmBuff: charmBuffActive,
         // 未获得宝可梦：score 记"相遇欧气分"（遇到稀有本身也值得加分，无 buff 更高）
-        score: computeMeetScore({
+        score: recordLuck(gameData, computeMeetScore({
           pokemon: currentEncounter, source: _encounterSource, shiny: currentIsShiny,
           charmBuff: charmBuffActive, honeyBuff: honeyBuffActive,
-        }),
+        })),
       });
       addSystemLog('pokemon_escaped', { pokemon: idx, shiny: currentIsShiny, auto: _autoCatching }, encounterStamp());
     }
-    // 判定已落库就把待开战记录一起作废：否则存档里既有捕获结果、又留着"未结算的这只"，重启会重复入账。
-    gameData.wildEncounter = null;
+    // 只有这只已经离场（捕获 / 逃走）才作废待开战记录；没抓住、继续丢球时保留，
+    // 否则中途被系统杀掉/大退后再进来就找不到这一场了（安卓强杀不写会话存档，只能靠主存档恢复）。
+    // 捕获/逃走分支最后都会走 goIdle，那里也会再清一次。
+    if (outcome !== 'continue') gameData.wildEncounter = null;
     await saveGame(); // 立即存档：扣球 + 判定结果
 
     // 浏览器后台（页面不可见，rAF 停摆 / 后台补算）：判定已落库，跳过动画直接收尾，
@@ -990,43 +946,34 @@ export async function throwBall(ballType) {
       return;
     }
 
-    // 判定落库时玩家不在游戏页（切去了图鉴/手机等，或遭遇被对战打断）：快照结果跳过动画，
-    // 切回游戏页由 replayBgResult 补播球晃动/逃跑演出；玩家在游戏页则照常播动画
-    if (!isOnGameView()) {
-      if (outcome === 'caught' || outcome === 'fled') {
-        storeBgResult(outcome, breakRound, ballType);
-        cleanupEncounterState();
-      }
-      return;
-    }
-
-    // 播放完整动画（结果已定，纯展示）
-    const anim = await playCatchSequence(ballType, outcome, breakRound);
+    // 舞台不可见（单屏下切到了图鉴/商店等页面）：跳过纯展示的丢球动画，逻辑照常收尾；
+    // 可见时（挂机/遇敌页，或双屏常驻的上屏）照常播放
+    const stageVisible = isOnGameView();
+    const anim = stageVisible ? await playCatchSequence(ballType, outcome, breakRound) : null;
 
     if (outcome === 'caught') {
-      // 不在游戏页：快照结果，切回后补播演出
-      if (!isOnGameView()) { storeBgResult('caught', breakRound, ballType); cleanupEncounterState(); return; }
-      endBattle(); // 战斗结束：捕捉成功即停战斗曲，胜利音效播完后恢复地区曲
-      playVictory(); // 抓捕成功 → 胜利音效
-      // 捕获文案（离开遇敌页则不弹出）
-      let msg;
-      if (currentIsShiny) {
-        msg = '闪闪发光的 ' + name + ' 被捕获了！';
-      } else if (anim.master) {
-        msg = Math.random() < 0.5
-          ? '大师球完美锁住了 ' + name + '！'
-          : '大师球发挥奇效，顺利捕获 ' + name + '！';
-      } else {
-        msg = '搞定！' + name + ' 被收服了！';
+      // 收尾判定用"当前"是否在游戏页：丢球动画期间玩家可能已切走
+      const onView = isOnGameView();
+      if (onView) {
+        endBattle(); // 战斗结束：捕捉成功即停战斗曲，胜利音效播完后恢复地区曲
+        playVictory(); // 抓捕成功 → 胜利音效
+        let msg;
+        if (currentIsShiny) {
+          msg = '闪闪发光的 ' + name + ' 被捕获了！';
+        } else if (anim && anim.master) {
+          msg = Math.random() < 0.5
+            ? '大师球完美锁住了 ' + name + '！'
+            : '大师球发挥奇效，顺利捕获 ' + name + '！';
+        } else {
+          msg = '搞定！' + name + ' 被收服了！';
+        }
+        updateTextBox(msg, true);
       }
-      if (isOnGameView()) updateTextBox(msg, true);
       updateStats();
-      // 后台结算（遭遇曾被战斗打断）、自动捕捉，或丢球动画期间玩家已离开游戏页（如切到图鉴/商店）：
-      // 播完动画即统一收尾。否则手动捕获在离开游戏页后 phase 停在 'caught'、currentEncounter 不清理、
-      // 道路不恢复 → 切回挂机页会"主角在跑步但地块不动、不再遇敌"，而图鉴/日志早已记下捕获成功
-      if (_bgCatch || _autoCatching || !isOnGameView()) {
-        await delay(300);
-        stopVictory(); // 与自动捕捉流程一致，关闭胜利音效并恢复背景曲（离开游戏页时确认框不可见，无人点按钮触发）
+      // 自动捕捉、遭遇被对战打断、或玩家不在游戏页时统一收尾。
+      // 一律走 goIdle（恢复道路 / 清理遭遇 / 恢复遇敌调度），不再有"只清理不恢复道路"的分支
+      if (_bgCatch || _autoCatching || !onView) {
+        if (onView) { await delay(300); stopVictory(); } // 离开游戏页时确认框不可见、无人点按钮，这里直接收尾
         // 孵蛋动画进行中：判定已落库，只清理现场不切视图，等孵蛋结束后统一回空闲
         if (_eggHatching || phase === 'eggResult' || isEvolutionShowActive()) { cleanupEncounterState(); return; }
         goIdle();
@@ -1038,17 +985,17 @@ export async function throwBall(ballType) {
     const breakMsgs = BREAK_MSGS;
 
     if (outcome === 'fled') {
-      // 不在游戏页：快照结果，切回后补播演出
-      if (!isOnGameView()) { storeBgResult('fled', breakRound, ballType); cleanupEncounterState(); return; }
-      // 先显示挣脱文案（离开遇敌页则不弹）
-      const m = breakMsgs[breakRound] || breakMsgs[1];
-      if (isOnGameView()) updateTextBox(m[randInt(0, m.length - 1)], false);
-      await delay(800); // 停顿期间禁止丢球（phase='fled'已阻止丢球）
-      if (isOnGameView()) updateTextBox('精灵逃走了！', false);
+      const onView = isOnGameView();
+      if (onView) {
+        // 先显示挣脱文案，停顿期间禁止丢球（phase='fled' 已阻止丢球）
+        const m = breakMsgs[breakRound] || breakMsgs[1];
+        updateTextBox(m[randInt(0, m.length - 1)], false);
+        await delay(800);
+        updateTextBox('精灵逃走了！', false);
+      }
       updateStats();
       // 宝可梦水平翻转并向右下平移出屏
-      if (isOnGameView()) await playFleeAnim();
-      await delay(300);
+      if (onView) { await playFleeAnim(); await delay(300); }
       // 孵蛋动画进行中：判定已落库，只清理现场不切视图，等孵蛋结束后统一回空闲
       if (_eggHatching || phase === 'eggResult' || isEvolutionShowActive()) { cleanupEncounterState(); return; }
       goIdle();
@@ -1065,7 +1012,6 @@ export async function throwBall(ballType) {
 
 // ===== 逃跑 =====
 export async function fleeEncounter(isAutoFlee) {
-  if (_bgReplayActive) return;
   // 兜底：触发时自动/佛系模式若已全关（定时器/延迟残留走到的自动逃跑路径），
   // 降级为手动逃跑记录，避免日志出现误导性的 [自动] 标识
   if (isAutoFlee && !gameData.settings?.autoFlee && !gameData.settings?.autoCatch) {
@@ -1085,7 +1031,7 @@ export async function fleeEncounter(isAutoFlee) {
     time: encounterStamp(), shiny: currentIsShiny, result: 'fled',
     balls: { ...currentEncounterBalls }, source: _encounterSource,
     charmBuff: charmBuffActive,
-    // 主动逃跑（手动 / 佛系自动）属于玩家策略选择，不参与欧气评定
+    // 主动逃跑（手动 / 佛系自动）属于玩家策略选择，不参与欧气评定（所以不进 recordLuck 窗口）
     selfFlee: true,
     // 未获得宝可梦：score 记"相遇欧气分"（遇到稀有本身也值得加分，无 buff 更高）
     score: computeMeetScore({
@@ -1101,9 +1047,8 @@ export async function fleeEncounter(isAutoFlee) {
   await saveGame();
   updateStats();
   if (!isOnGameView()) {
-    // 后台结算：判定已落库，快照结果供玩家切回游戏页时补播逃跑文案
-    storeBgResult('fled', 0, null, { noBall: true, fleeMsg: '你逃走了！' });
-    cleanupEncounterState();
+    // 不在游戏页（单屏切到了别的页面）：判定已落库，直接收尾恢复挂机
+    goIdle();
     return;
   }
   if (_bgCatchup) { goIdle(); return; } // 后台补算：跳过延迟直接收尾
@@ -1122,6 +1067,8 @@ export function goIdle() {
     cleanupEncounterState();
     // 道路暂停来自被打断的遭遇开场：收尾后恢复滚动，钓鱼等待期间不动
     if (!_fishing && !road.isActive()) road.resume();
+    // 角色姿势必须一并收回走路：拾取等动画的收尾被战斗打断时会跳过自己的恢复，卡在动作帧
+    if (!_fishing) setIdleCharacter('walk');
     return;
   }
   setPhase('idle');
@@ -1314,7 +1261,7 @@ function pickAutoBallType(availableBalls) {
   const variantMaster = !!gameData.settings?.variantMasterBall && !!_encounterVariant;
   const preferred = (shinyMaster || variantMaster || currentEncounter?.legend)
     ? ['master-ball', 'ultra-ball', 'poke-ball']
-    : cr <= 0.2
+    : cr <= 0.1
     ? ['master-ball', 'ultra-ball', 'poke-ball']
     : cr <= 0.5
     ? ['ultra-ball', 'poke-ball', 'master-ball']
@@ -1406,7 +1353,6 @@ export function tryAutoRefill(onlyBall = null) {
 }
 
 export async function autoCatch() {
-  if (_bgReplayActive) return;
   if (_autoCatching || !currentEncounter) return;
   if (!gameData.settings?.autoCatch) return;
   // 遇敌过滤：不匹配直接逃跑；设为"暂停"则停手等手动丢球
@@ -1424,7 +1370,7 @@ export async function autoCatch() {
 
   while (currentEncounter && gameData.settings?.autoCatch && (_encPhase === 'encounter' || _bgCatch)) {
     // 智能选球：根据精灵捕获率决定使用哪种球
-    const enabledBalls = gameData.settings?.autoCatchBalls || { 'poke-ball': true, 'ultra-ball': true, 'master-ball': true };
+    const enabledBalls = gameData.settings?.autoCatchBalls || AUTO_CATCH_BALLS_DEFAULT;
     let availableBalls = ['poke-ball', 'ultra-ball', 'master-ball'].filter(b => enabledBalls[b] !== false && (gameData.items[b]||0) > 0);
     let ballType = availableBalls.length > 0 ? pickAutoBallType(availableBalls) : null;
 
@@ -1446,7 +1392,7 @@ export async function autoCatch() {
         time: encounterStamp(), shiny: currentIsShiny, result: 'fled',
         balls: { ...currentEncounterBalls }, manual: false, source: _encounterSource,
         charmBuff: charmBuffActive,
-        // 无球自动逃跑属于自动操作策略，不参与欧气评定
+        // 无球自动逃跑属于自动操作策略，不参与欧气评定（所以不进 recordLuck 窗口）
         selfFlee: true,
         // 未获得宝可梦：score 记"相遇欧气分"（遇到稀有本身也值得加分，无 buff 更高）
         score: computeMeetScore({
@@ -1458,9 +1404,8 @@ export async function autoCatch() {
       await saveGame();
       updateStats();
       if (!isOnGameView()) {
-        // 后台结算：判定已落库，快照结果供玩家切回游戏页时补播逃跑文案
-        storeBgResult('fled', 0, null, { noBall: true, fleeMsg: '你逃走了！' });
-        cleanupEncounterState();
+        // 不在游戏页（单屏切到了别的页面）：判定已落库，直接收尾恢复挂机
+        goIdle();
       } else {
         if (isOnGameView() && !document.hidden && !_bgCatchup) {
           updateTextBox('你逃走了！', false);
@@ -1606,7 +1551,6 @@ export async function settleStaleEncounter(awaySec) {
     console.error('[回前台结算] 异常:', e);
   } finally {
     _bgCatchup = false;
-    cancelBgResultReplay(); // 静默结算不留补播
     if (typeof window !== 'undefined') showView('idleView');
   }
 }
@@ -1664,90 +1608,3 @@ export async function resumeBgEncounter() {
   return true;
 }
 
-// ===== 补播后台结算结果 =====
-// 后台结算（遭遇被 NPC 对战打断）已把最终判定落库并清理遭遇状态；玩家切回游戏页时
-// 重建遭遇现场并播放完整捕捉/逃跑动画，避免"结果静默算出、毫无过程"的观感。
-// 期间若已开启新的遭遇（玩家离开较久），则不覆盖新遭遇，直接放弃补播。
-export async function replayBgResult() {
-  const res = consumeBgResult();
-  if (!res || !res.poke) return false;
-  if (_encPhase === 'encounter' && currentEncounter && currentEncounter !== res.poke) return false;
-  const replayToken = ++_bgReplayToken;
-  _bgReplayActive = true;
-
-  try {
-    // 重建遭遇现场（后台结算时已清理）
-    setEncPhase('encounter');
-    setCurrentEncounter(res.poke);
-    setEncounterLevel(res.level);
-    setCurrentIsShiny(res.shiny);
-    setEncounterBallsUsed(0);
-    setCurrentEncounterBalls({ 'poke-ball': 0, 'ultra-ball': 0, 'master-ball': 0 });
-    setEncounterMsg(res.msg || null);
-    _encounterSource = res.source || 'normal';
-    _encounterVariant = res.variant || null;
-    setEncounterSource(_encounterSource);
-    setEncounterVariant(_encounterVariant);
-    showView('encounterView');
-    $('fleeBtn').style.display = 'none';
-    await renderEncounterScene(res.poke);
-    if (!isBgReplayCurrent(replayToken)) return true;
-
-    // 无球逃跑：不播丢球动画，直接播逃跑文案/离场动画
-    if (res.noBall) {
-      updateTextBox(res.fleeMsg || '你逃走了！', false);
-      await delay(1500);
-      if (!isBgReplayCurrent(replayToken)) return true;
-      updateStats();
-      if (res.fleeAnim) {
-        await playFleeAnim();
-        if (!isBgReplayCurrent(replayToken)) return true;
-        await delay(300);
-        if (!isBgReplayCurrent(replayToken)) return true;
-      }
-      goIdle();
-      return true;
-    }
-
-    // 播放完整丢球动画（判定结果已在后台落库，动画纯展示）
-    const anim = await playCatchSequence(res.ballType || 'poke-ball', res.outcome, res.breakRound);
-    if (!isBgReplayCurrent(replayToken)) return true;
-
-    if (res.outcome === 'caught') {
-      endBattle(); // 战斗结束：捕捉成功即停战斗曲，胜利音效播完后恢复地区曲
-      playVictory(); // 抓捕成功 → 胜利音效
-      let msg;
-      if (res.shiny) {
-        msg = '闪闪发光的 ' + res.poke.name + ' 被捕获了！';
-      } else if (anim.master) {
-        msg = Math.random() < 0.5
-          ? '大师球完美锁住了 ' + res.poke.name + '！'
-          : '大师球发挥奇效，顺利捕获 ' + res.poke.name + '！';
-      } else {
-        msg = '搞定！' + res.poke.name + ' 被收服了！';
-      }
-      updateTextBox(msg, true);
-      updateStats();
-      await delay(300);
-      if (!isBgReplayCurrent(replayToken)) return true;
-      stopVictory();
-      goIdle();
-    } else {
-      // 挣脱后逃跑：先播挣脱文案，再播逃走文案与离场动画
-      const m = BREAK_MSGS[res.breakRound] || BREAK_MSGS[1];
-      updateTextBox(m[randInt(0, m.length - 1)], false);
-      await delay(800);
-      if (!isBgReplayCurrent(replayToken)) return true;
-      updateTextBox('精灵逃走了！', false);
-      updateStats();
-      await playFleeAnim();
-      if (!isBgReplayCurrent(replayToken)) return true;
-      await delay(300);
-      if (!isBgReplayCurrent(replayToken)) return true;
-      goIdle();
-    }
-  } finally {
-    if (_bgReplayToken === replayToken) _bgReplayActive = false;
-  }
-  return true;
-}

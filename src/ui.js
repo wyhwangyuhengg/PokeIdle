@@ -135,6 +135,10 @@ export function showView(id) {
   if (id === 'encounterView' && phase === 'idle') {
     id = 'idleView';
   }
+  // 对战进行中：单屏（PC）这一屏就是战斗页，不能让舞台页把它顶掉。
+  // 顶掉后战斗仍在跑——按钮全被对战锁住、标题返回也要 battleView 可见才撤退，玩家会卡死。
+  // 双屏不在此列：上屏本来就该继续挂机，对战在下屏各走各的。
+  if (!isDualLayout() && phase === 'battle' && STAGE_VIEWS.has(id)) id = 'battleView';
   // 离开游戏厅：仅当 nav 栈中不再有任何游戏厅页面时才停止音乐
   if (CASINO_VIEWS.has(_currentView) && !CASINO_VIEWS.has(id)) {
     if (!_navStack.some(v => CASINO_VIEWS.has(v))) {
@@ -192,7 +196,6 @@ export function showView(id) {
   // 跑了这段会取消待补播的结算、把"是否查看详情"直接结算掉
   if (!mobileDual && wasOnGameView && id !== 'idleView' && id !== 'encounterView') {
     import('./battle.js').then(m => {
-      m.cancelBgResultReplay();
       // 离开游戏页时若正停在手动捕获的"是否查看详情"确认框（phase='caught'）：
       // 确认框随视图隐藏后无人点击，不清理会导致返回挂机页时道路不移动、不再遇敌
       m.finalizePendingCatch();
@@ -203,9 +206,7 @@ export function showView(id) {
       // 返回游戏页：随从可能因 road-layer 重建或此前被隐藏，重新挂载/恢复显示
       import('./follower.js').then(m => m.refreshRoadFollower());
       import('./battle.js').then(async m => {
-        // 后台结算（遭遇被 NPC 对战打断）结果补播：切回游戏页时重放最终捕捉/逃跑动画
-        if (await m.replayBgResult()) return;
-        // 后台捕捉仍在进行：切回遭遇画面，后续丢球动画在可见状态下照常播放
+        // 后台捕捉仍在进行（遭遇被 NPC 对战打断）：切回遭遇画面，后续丢球动画在可见状态下照常播放
         if (await m.resumeBgEncounter()) return;
         if (phase === 'encounter' && currentEncounter) {
           // 遭遇待处理（暂停策略等后台遭遇）：切到战斗页展示，避免回到挂机页看不见
@@ -1529,7 +1530,7 @@ export function consoleLayerStyle() {
 
 export function showFoodTip(text, x, y) {
   const tip = getFoodTipEl();
-  tip.textContent = text;
+  tip.innerHTML = text; // 允许内联图标（如饲育屋 tip 里的彩色性别 svg）；文案同其它位置一样直接进 HTML
   // 多行文案（含 \n）时按行折行，单行文案保持 nowrap（如树果 tooltip）
   tip.style.whiteSpace = text.includes('\n') ? 'pre-line' : '';
   tip.style.display = '';

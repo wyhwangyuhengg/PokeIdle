@@ -566,7 +566,6 @@ if (shotStage) {
    ============================================================ */
 const REGIONS = ['关都', '城都', '丰缘', '神奥', '合众', '卡洛斯', '阿罗拉', '伽勒尔', '帕底亚'];
 const REGION_COLORS = ['#E3350D', '#F6C700', '#3DAE5B', '#4FC3F7', '#757575', '#F06292', '#FF9800', '#5C6BC0', '#AB47BC'];
-const LIGHT_NODES = [1, 3, 4, 5, 6];
 const REGION_POS = {
   0: [821, 299], 1: [762, 361], 2: [689, 484], 3: [845, 169],
   4: [165, 311], 5: [388, 202], 6: [424, 615], 7: [370, 85], 8: [365, 316],
@@ -642,6 +641,10 @@ function buildRegionMap() {
   const rawEdges = delaunay([0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => REGION_POS[i]))
     .filter(([a, b]) => !(a === 0 && b === 2) && !(a === 1 && b === 3));
   if (!rawEdges.some(([a, b]) => a === 0 && b === 3)) rawEdges.push([0, 3]);
+  // 编号顺序必须跟游戏内一致：游戏按 DIST_MATRIX 的上三角顺序发号（小号端在前），
+  // 所以这里把边统一成 [小,大] 再按序排 —— 否则官网的「N#道路」和游戏里对不上
+  rawEdges.forEach(e => e.sort((x, y) => x - y));
+  rawEdges.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
   for (const [a, b] of rawEdges) {
     const [ax, ay] = REGION_POS[a], [bx, by] = REGION_POS[b];
     const dx = bx - ax, dy = by - ay;
@@ -702,7 +705,7 @@ function buildRegionMap() {
     g.appendChild(el('circle', { cx: x, cy: y, r: 15, fill: REGION_COLORS[i], stroke: '#fff', 'stroke-width': 2 }));
     const n = el('text', {
       x: x, y: y + 4.5, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-      fill: LIGHT_NODES.includes(i) ? '#1f1f1f' : '#fff'
+      fill: '#fff'
     });
     n.textContent = String(i + 1);
     g.appendChild(n);
@@ -751,6 +754,317 @@ function buildRegionMap() {
    启动
    ============================================================ */
 buildRegionMap();
+
+/* ============================================================
+   全服事件：地图上的实时标记 + 从现在起的时间带
+   排期由游戏服务端每日生成，所有玩家同一时刻看到同一场事件。
+   图上一律只画"此刻正在发生"的两个标记，时间带也只铺从现在起 6 小时——
+   十几段排期不会一次性糊满地图，过去的段随时间自然消失，鼠标划过某段才预览它的位置。
+   ============================================================ */
+// 与游戏内 MAP_EDGES 同序：扭曲的 pos 按这个顺序落到具体路段上。
+// 官网地图自己的 Delaunay 顺序与游戏不同（边集相同、次序不同），不能混用。
+const MAP_EDGES = [[0, 1], [0, 3], [1, 2], [1, 5], [1, 8], [2, 6], [2, 8], [3, 5], [4, 5], [4, 7], [4, 8], [5, 7], [5, 8], [6, 8]];
+const EV_ENDPOINT = 'https://pokeidle.shiliu.space/api/events/';   // 写全地址：本地起预览服务也能拉（服务端 Access-Control-Allow-Origin: *）
+const EV_WINDOW = 6 * 3600e3;   // 时间带窗口：从现在起 6 小时
+const TWIST_COLOR = '#6f57b5';
+
+let evData = null, evSrvAt = 0, evPerfAt = 0, evPreview = null;
+const evNow = () => (evSrvAt ? evSrvAt + (performance.now() - evPerfAt) : Date.now());
+const hhmm = ms => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const mins = ms => `${Math.max(1, Math.round(ms / 60000))} 分钟`;
+
+// 扭曲的 pos → 路段上的落点（换算与游戏内 events.js 一致）
+function twistPoint(pos) {
+  const i = Math.min(MAP_EDGES.length - 1, Math.floor(pos * MAP_EDGES.length));
+  const [a, b] = MAP_EDGES[i];
+  const t = 0.2 + ((pos * MAP_EDGES.length) % 1) * 0.6;
+  const [ax, ay] = REGION_POS[a], [bx, by] = REGION_POS[b];
+  return { a, b, t, x: ax + (bx - ax) * t, y: ay + (by - ay) * t };
+}
+// 事件点落在几号道路：编号规则与游戏内 state.js 的 getRoadNumForEdge 一致
+// （游戏按 DIST_MATRIX 上三角顺序给每条路发两个连号，前段 t<0.5 拿小的那个）
+const roadNum = pos => {
+  const i = Math.min(MAP_EDGES.length - 1, Math.floor(pos * MAP_EDGES.length));
+  const t = 0.2 + ((pos * MAP_EDGES.length) % 1) * 0.6;
+  return 1 + 2 * i + (t < 0.5 ? 0 : 1);
+};
+const roadLabel = pos => (typeof pos === 'number' ? `${roadNum(pos)}#道路` : '');
+// 老数据（没有 pos 的排期）没有路可报，整段省略
+const roadPart = s => (typeof s.pos === 'number' ? ` · ${roadLabel(s.pos)}` : '');
+// 大量出没的归属地区：排期里带 region 就用它，没有就从位置反推（前半段归小号端，同一套规则）
+const regionOfPos = pos => { const p = twistPoint(pos); return p.t < 0.5 ? Math.min(p.a, p.b) : Math.max(p.a, p.b); };
+const massRegion = s => s.region || REGIONS[regionOfPos(s.pos)];
+const segLabel = s => `${hhmm(s.from)}~${hhmm(s.to)}　`
+  + (s.kind === 'mass' ? `大量出没 · ${massName(s) || massRegion(s)}` : '时空扭曲')
+  + (s.pos === undefined ? '' : ` · ${roadLabel(s.pos)}`);
+
+/* ---------- 大量出没的宝可梦：与游戏内同一套算法（该地区野池 + 种子的取模落点）---------- */
+const ICON_SPRITE = './pokeicons.png';
+let DEX = null, DEX_ICONS = null, PFORM = null, WILD_OUT = null, DEX_LOAD = null;
+const POOL_CACHE = new Map();
+
+// 图鉴 / 图标 / 进化表都是首页用不到的大文件，等排期拉到、确实要显示宝可梦时再加载
+function loadDex() {
+  if (DEX_LOAD) return DEX_LOAD;
+  DEX_LOAD = Promise.all([
+    fetch('./pokedex.json').then(r => r.json()),
+    fetch('./pokeicons.json').then(r => r.json()).catch(() => null),
+    fetch('./evolution.json').then(r => r.json()),
+  ]).then(([dex, icons, evo]) => {
+    DEX = dex; DEX_ICONS = icons;
+    // 与游戏内 state.js 同一套排除：强化形态按进化表的 stones 名单收口
+    PFORM = new Set(Object.keys(evo.stones || {}));
+    // 路边池排除"在 edges 里当目标、自己又没有出边"的进化链终点（wildKeep 里的例外照旧可遇）
+    WILD_OUT = new Set();
+    const edges = evo.edges || {};
+    const keep = new Set(evo.wildKeep || []);
+    for (const row of Object.values(edges)) {
+      for (const to of Object.keys(row)) if (!keep.has(to) && !edges[to]) WILD_OUT.add(to);
+    }
+    renderEvents();
+  }).catch(e => console.warn('[全服事件] 图鉴数据加载失败，只显示地区：', e.message));
+  return DEX_LOAD;
+}
+
+const isPowerForm = p => PFORM.has(p.index) || (p.form || '').includes('超级') || (p.form || '').includes('超极巨');
+
+// 事件宝可梦：该地区野池里按种子取模，和游戏里 spawnMassOutbreak 的算法一致
+function massSpecies(s) {
+  if (!DEX || typeof s.seed !== 'number') return null;
+  const region = massRegion(s);
+  if (!POOL_CACHE.has(region)) {
+    POOL_CACHE.set(region, DEX.filter(p => p.region === region && !p.legend && !isPowerForm(p) && !WILD_OUT.has(p.index)));
+  }
+  const pool = POOL_CACHE.get(region);
+  return pool.length ? pool[s.seed % pool.length] : null;
+}
+const massName = s => { const p = massSpecies(s); return p ? (p.form || p.name) : ''; };
+
+function iconHtml(index, box) {
+  const rect = DEX_ICONS && DEX_ICONS.icons[index];
+  if (!rect) return '';
+  const [x, y, w, h] = rect;
+  const k = Math.min(box / w, box / h);
+  const px = n => `${Math.round(n * 100) / 100}px`;
+  return `<span class="dex-ico" style="display:inline-block;vertical-align:middle;width:${px(w * k)};height:${px(h * k)};`
+    + `background-image:url('${ICON_SPRITE}');background-size:${px(DEX_ICONS.w * k)} ${px(DEX_ICONS.h * k)};`
+    + `background-position:${px(-x * k)} ${px(-y * k)};"></span>`;
+}
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// 宝可梦图标 + 名字（图鉴没到位时退回空串，调用方各自兜底）
+const speciesHtml = (s, box) => { const p = massSpecies(s); return p ? `${iconHtml(p.index, box)}${esc(p.form || p.name)}` : ''; };
+
+/* ---------- 地图标记 ---------- */
+const SVGNS = 'http://www.w3.org/2000/svg';
+const svgEl = (tag, attrs) => {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  return n;
+};
+
+// 环状标记：外扩一圈光环 + 脉冲。半径要比地区节点(15)大一圈，同色贴边等于没画。
+// 时间带上划过的预览与到点后的常驻标记用同一套样式，不靠虚线区分
+function ringAt(x, y, color, r) {
+  const g = svgEl('g', {});
+  g.appendChild(svgEl('circle', { cx: x, cy: y, r: r * 1.3, fill: color, opacity: .22 }));
+  const ring = { cx: x, cy: y, r, fill: 'none', stroke: color, 'stroke-width': 3.5 };
+  g.appendChild(svgEl('circle', ring));
+  g.appendChild(svgEl('circle', { ...ring, class: 'ev-ring' }));
+  return g;
+}
+
+// 大量出没：画在排期给的事件点上（与扭曲同一套 pos 换算）；排期里还没有 pos 的老数据退回地区节点
+function massMarker(seg) {
+  const i = REGIONS.indexOf(massRegion(seg));
+  const color = REGION_COLORS[i] || '#7c8b84';
+  if (typeof seg.pos === 'number') {
+    const p = twistPoint(seg.pos);
+    return ringAt(p.x, p.y, color, 12);
+  }
+  if (i < 0) return null;
+  const [x, y] = REGION_POS[i];
+  return ringAt(x, y, color, 20);
+}
+
+// 时空扭曲：落点上画一颗四角星（与时间带里的 ✦ 同一个符号），外圈脉冲
+function starPath(x, y, R) {
+  const r = R * 0.24;   // 内凹半径，越小越尖
+  return `M ${x} ${y - R} Q ${x + r} ${y - r} ${x + R} ${y}`
+    + ` Q ${x + r} ${y + r} ${x} ${y + R}`
+    + ` Q ${x - r} ${y + r} ${x - R} ${y}`
+    + ` Q ${x - r} ${y - r} ${x} ${y - R} Z`;
+}
+function twistMarker(pos) {
+  const p = twistPoint(pos);
+  const g = svgEl('g', {});
+  g.appendChild(svgEl('circle', { cx: p.x, cy: p.y, r: 16, fill: TWIST_COLOR, opacity: .18 }));
+  g.appendChild(svgEl('path', { d: starPath(p.x, p.y, 10), fill: TWIST_COLOR, stroke: TWIST_COLOR, 'stroke-width': 2.5, 'stroke-linejoin': 'round' }));
+  g.appendChild(svgEl('circle', { cx: p.x, cy: p.y, r: 10, fill: 'none', stroke: TWIST_COLOR, 'stroke-width': 2.5, class: 'ev-ring' }));
+  return g;
+}
+
+function renderMapMarkers(now) {
+  const layer = document.getElementById('evMarkerLayer');
+  if (!layer || !evData) return;
+  layer.textContent = '';
+  const m = (evData.mass || []).find(s => now >= s.from && now < s.to);
+  const t = (evData.twist || []).find(s => now >= s.from && now < s.to);
+  if (m) { const g = massMarker(m); if (g) layer.appendChild(g); }
+  if (t) layer.appendChild(twistMarker(t.pos));
+  // 时间带上划过的那一段：同款标记的预览，不写入地图的常驻状态
+  if (evPreview) {
+    const g = evPreview.kind === 'mass' ? massMarker(evPreview) : twistMarker(evPreview.pos);
+    if (g) layer.appendChild(g);
+  }
+}
+
+/* ---------- 时间带 ---------- */
+function renderRail(now) {
+  const rail = document.getElementById('evRail');
+  const tracks = { mass: document.getElementById('evTrackMass'), twist: document.getElementById('evTrackTwist') };
+  const ticks = document.getElementById('evTicks');
+  if (!rail || !tracks.mass || !tracks.twist || !ticks) return;
+  tracks.mass.textContent = ''; tracks.twist.textContent = ''; ticks.textContent = '';
+
+  const future = [
+    ...(evData.mass || []).filter(s => s.to > now).map(s => ({ ...s, kind: 'mass' })),
+    ...(evData.twist || []).filter(s => s.to > now).map(s => ({ ...s, kind: 'twist' })),
+  ];
+  if (!future.length) { rail.hidden = true; return; }
+  rail.hidden = false;
+
+  // 窗口结束：默认从现在起 6 小时；6 小时内一场都没有（深夜）就退到最近一场结束，至少画出这一段
+  let winEnd = now + EV_WINDOW;
+  if (!future.some(s => s.from < winEnd)) winEnd = Math.min(...future.map(s => s.to));
+  const span = Math.max(1, winEnd - now);
+  const pos = ms => ((Math.max(ms, now) - now) / span) * 100;
+
+  future.filter(s => s.from < winEnd).forEach(s => {
+    const left = pos(s.from), right = pos(Math.min(s.to, winEnd));
+    const bar = document.createElement('div');
+    bar.className = `ev-bar ev-bar-${s.kind}${now >= s.from ? ' is-now' : ''}${s.to > winEnd ? ' clipped' : ''}`;
+    bar.style.left = `${left}%`;
+    bar.style.width = `${Math.min(Math.max(2.5, right - left), 100 - left)}%`;   // 掐住最小宽度，别顶出容器右边缘
+    // 两种事件都按"归属地区"上色：扭曲的位置也能反推出它落在哪个地区
+    bar.style.background = REGION_COLORS[s.kind === 'mass' ? REGIONS.indexOf(massRegion(s)) : regionOfPos(s.pos)] || '#7c8b84';
+    if (s.kind === 'mass') {
+      // 宝可梦：种子算出来的那一只，图鉴没到位时退回地区名
+      const sp = massSpecies(s);
+      if (sp) {
+        bar.innerHTML = iconHtml(sp.index, 13);
+        const nm = document.createElement('span');
+        nm.textContent = sp.form || sp.name;
+        bar.appendChild(nm);
+      } else {
+        bar.textContent = massRegion(s);
+      }
+    } else {
+      bar.textContent = '✦';
+    }
+    const on = () => { evPreview = s; document.getElementById('evHint').innerHTML = segLabel(s); renderMapMarkers(evNow()); };
+    const off = () => { evPreview = null; renderStatus(evNow()); renderMapMarkers(evNow()); };
+    bar.addEventListener('mouseenter', on);
+    bar.addEventListener('mouseleave', off);
+    bar.addEventListener('click', on);   // 触屏：点一下也能预览
+    tracks[s.kind].appendChild(bar);
+  });
+
+  // 时刻刻度：整点一条虚线；与前一个标签挨太近（<7%）就只画线不写数，避免深夜窗口挤成一团
+  // 贴到右端的刻度把文字挂在虚线左侧，否则会冒出容器外面
+  let last = -Infinity;
+  const addTick = (ms, text, now_) => {
+    const p = pos(ms);
+    const t = document.createElement('div');
+    t.className = 'ev-tick' + (now_ ? ' now' : '') + (p > 85 ? ' end' : '');
+    t.style.left = `${p}%`;
+    if (p - last >= 7) { t.appendChild(document.createElement('span')).textContent = text; last = p; }
+    ticks.appendChild(t);
+  };
+  addTick(now, '现在', true);
+  const d = new Date(now); d.setMinutes(0, 0, 0);
+  for (let h = d.getTime() + 3600e3; h < winEnd; h += 3600e3) addTick(h, hhmm(h));
+
+  // 右上角注明这条带子铺到什么时候——玩家才知道后面还有没有
+  const spanEl = document.getElementById('evSpan');
+  if (spanEl) {
+    const m = Math.round((winEnd - now) / 60000);
+    spanEl.textContent = m >= 60
+      ? `接下来 ${Math.floor(m / 60)} 小时${m % 60 ? ` ${m % 60} 分` : ''}`
+      : `接下来 ${m} 分钟`;
+  }
+}
+
+/* ---------- 底部一行：有事件就报事件（最多两条），空档报下一场 ---------- */
+function renderStatus(now) {
+  const hint = document.getElementById('evHint');
+  if (!hint) return;
+  const m = (evData.mass || []).find(s => now >= s.from && now < s.to);
+  const t = (evData.twist || []).find(s => now >= s.from && now < s.to);
+  const parts = [];
+  if (m) {
+    const sp = speciesHtml(m, 15);
+    parts.push(`${sp ? sp + ' ' : ''}${esc(massRegion(m))} 大量出没${roadPart(m)} · 剩 ${mins(m.to - now)}`);
+  }
+  if (t) parts.push(`${esc(REGIONS[regionOfPos(t.pos)])} 时空扭曲${roadPart(t)} · 剩 ${mins(t.to - now)}`);
+  if (parts.length) { hint.innerHTML = parts.join('<i>|</i>'); return; }
+
+  const next = [
+    ...(evData.mass || []).map(s => ({ ...s, kind: 'mass' })),
+    ...(evData.twist || []).map(s => ({ ...s, kind: 'twist' })),
+  ].filter(s => s.from > now).sort((a, b) => a.from - b.from)[0];
+  if (!next) { hint.textContent = '今日排期已全部结束，明天 0 点更新'; return; }
+  const wait = Math.round((next.from - now) / 60000);
+  const sp = next.kind === 'mass' ? speciesHtml(next, 15) : '';
+  const what = next.kind === 'mass'
+    ? `${sp ? sp + ' ' : ''}${esc(massRegion(next))} 大量出没${roadPart(next)}`
+    : `${esc(REGIONS[regionOfPos(next.pos)])} 时空扭曲${roadPart(next)}`;
+  hint.innerHTML = `下一场：${hhmm(next.from)}　${what}　${wait <= 0 ? '（即将开始）' : `（${wait} 分钟后）`}`;
+}
+
+function renderEvents() {
+  if (!evData) return;
+  const now = evNow();
+  renderRail(now);
+  renderStatus(now);
+  renderMapMarkers(now);
+}
+
+// 地图标记层放在最上层；pointer-events:none 保证不挡住节点与道路的 hover
+function installMarkerLayer() {
+  const svg = document.getElementById('regionMap');
+  if (!svg || document.getElementById('evMarkerLayer')) return;
+  const layer = document.createElementNS(SVGNS, 'g');
+  layer.id = 'evMarkerLayer';
+  layer.setAttribute('pointer-events', 'none');
+  svg.appendChild(layer);
+}
+
+async function loadEventData() {
+  try {
+    const res = await fetch(`${EV_ENDPOINT}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    if (!Array.isArray(d.mass) || !Array.isArray(d.twist)) throw new Error('格式不对');
+    evData = d;
+    evSrvAt = d.serverNow || Date.now();   // 一切以服务器时间为准，本机时间只用来推进
+    evPerfAt = performance.now();
+    const panel = document.getElementById('evPanel');
+    if (panel) panel.hidden = false;
+    renderEvents();
+    loadDex();   // 排期到手才去拉图鉴/图标：要把种子算出来的宝可梦画出来
+  } catch (e) {
+    console.warn('[全服事件] 拉取失败，本区块不显示：', e.message);
+  }
+}
+
+function setupServerEvents() {
+  installMarkerLayer();
+  loadEventData();
+  setInterval(renderEvents, 20000);                  // 时间带随时间左移，20 秒重新铺一次
+  setInterval(loadEventData, 5 * 60000);             // 跨天后换上当天排期
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadEventData(); });
+}
+setupServerEvents();
 
 /* ============================================================
    树果农场：女主角来回走动 + 到每棵果树旁浇水（复刻游戏 helper 逻辑）

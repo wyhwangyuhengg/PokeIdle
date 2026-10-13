@@ -662,8 +662,8 @@ function syncWalkers() {
     w.el.appendChild(fx);
     w.fx = fx;
     const g = ensureGender(entry);
-    const gText = g === 'female' ? '♀' : g === 'male' ? '♂' : '⚲'; 
-    const tip = poke ? `${entry.nickname || poke.name} ${gText}` : '';
+    // 性别用游戏自带的彩色 svg（参考训练页）；data-tip 走 innerHTML，能渲染 svg
+    const tip = poke ? `${entry.nickname || poke.name} ${genderBadge(g)}` : '';
     if (tip) w.el.setAttribute('data-tip', tip);
     w.el.style.left = w.x + 'px';
     w.el.style.top = w.y + 'px';

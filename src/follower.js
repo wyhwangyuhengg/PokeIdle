@@ -962,12 +962,13 @@ function followerDexRowsHtml() {
 }
 
 function followerDexHeaderHtml() {
-  const cls = (k) => _followerDexSortBy === k ? (_followerDexSortDir === 1 ? ' sort-desc' : ' sort-asc') : '';
+  // 类名要塞进 class 属性里（之前当成文本内容了，页面上直接显示成「星级 sort-desc」）
+  const cls = (k) => _followerDexSortBy === k ? (_followerDexSortDir === 1 ? 'sort-desc' : 'sort-asc') : '';
   return `<div class="follower-dex-header">
     <span class="fdx-name">随从</span>
     <span class="fdx-type">属性</span>
-    <span class="fdx-star" data-fdx-sort="star">星级${cls('star')}</span>
-    <span class="fdx-count" data-fdx-sort="count">次数${cls('count')}</span>
+    <span class="fdx-star ${cls('star')}" data-fdx-sort="star">星级</span>
+    <span class="fdx-count ${cls('count')}" data-fdx-sort="count">次数</span>
   </div>`;
 }
 

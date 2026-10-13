@@ -4019,9 +4019,14 @@ html.mobile-app #quitHide { display: none !important; }
 @media (hover: hover) {
   *::-webkit-scrollbar-thumb:hover { background: rgba(var(--ui-color-rgb), 0.55); }
 }
-/* 图鉴/仓库列表的父容器自带 6px 右内边距，用负外边距抵消，让滚动条紧贴屏幕右缘 */
+/* 列表滚动条统一贴容器最右：这些页面容器自带 6px 右内边距，滚动容器用负外边距抵消
+   （图鉴/仓库列表原本就靠这条；以后新增页面只要滚动容器挂在带 6px 内边距的容器下，补一行选择器即可） */
 #pokedexList.list-scroll,
-#rosterList.list-scroll {
+#rosterList.list-scroll,
+.rec-view > .list-scroll,
+.view-list > .list-scroll,
+.nursery-egg-page .list-scroll,
+.bounty-trade-list .list-scroll {
   margin-right: -6px;
   padding-right: 2px;
 }
@@ -5574,7 +5579,7 @@ html.mobile-app #quitHide { display: none !important; }
 }
 .roster-hex {
   width: 90px;
-  height: 90px;
+  height: 79px;
   flex-shrink: 0;
   display: block;
 }
@@ -6475,6 +6480,7 @@ html.mobile-app #quitHide { display: none !important; }
   gap: 6px;
   margin-bottom: 2px;
 }
+.roster-detail-title-row .roster-release { padding: 1px 6px; font-size: 9px; }
 
 /* === 开场剧情 === */
 #introView {
@@ -6805,6 +6811,8 @@ body.booting { visibility: hidden; }
   .casino-history-btn:hover { background: rgba(var(--ui-color-rgb),0.12); }
 }
 .casino-history-btn:active { transform: translateY(-50%) scale(0.92); }
+/* 下注页左上角的难度切换：复用战绩按钮样式，镜像到左侧与它对称 */
+.mj-diff-btn { left: 8px; right: auto; }
 /* 下注档位：点击式刻度条（圆点可点击选择，选中档位上方浮出糖果 icon） */
 .casino-bet-slider {
   display: flex;
@@ -8463,18 +8471,28 @@ body.booting { visibility: hidden; }
 .train-status-satiety.low .train-status-sat-fill { background: #e0503c; }
 .train-status-satiety em { font-style: normal; }
 /* 场地宝可梦 hover 提示（样式对齐农场树果提示） */
-.train-walker-tip {
-  position: fixed;
-  z-index: 9999;
-  background: var(--screen-bg-dark);
-  color: #fff;
-  font-size: 10px;
-  line-height: 1.5;
+/* 悬停信息条：位置对齐树果顶部进度条（绝对定位、不参与布局），外观沿用原来的深底白字 tooltip */
+.hover-info-bar {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 2px;
   padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #fff;
+  background: var(--screen-bg-dark);
   border-radius: 3px;
   white-space: nowrap;
+  z-index: 9999; /* 压在场地里所有元素之上（角色按 10+行号 排层级，箱子告示牌也在上面） */
   pointer-events: none;
 }
+.hover-info-star svg { vertical-align: -1px; }
+
 .train-walker-tip-status { margin-left: 5px; font-weight: 700; }
 .train-walker-tip-status.lazy { color: #ffd18a; }
 

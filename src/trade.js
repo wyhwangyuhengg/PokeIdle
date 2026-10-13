@@ -496,14 +496,15 @@ function ivHexagon(ivs) {
     return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(var(--ui-color-rgb),0.15)" stroke-width="0.5"/>`;
   }).join('');
   const labels = IV_KEYS.map((k, i) => {
-    const [x, y] = pt(i, 1.32);
+    // 纵向两轴（HP/特攻）的标签向顶/底角靠拢，压缩雷达图上下留白
+    const [x, y] = pt(i, (i === 0 || i === 3) ? 1.16 : 1.32);
     return `<text x="${x.toFixed(1)}" y="${(y + 2).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="var(--ui-color)">${IV_LABELS[k]}</text>`;
   }).join('');
   const dots = IV_KEYS.map((k, i) => {
     const [x, y] = pt(i, (ivs[k] || 0) / 31);
     return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.7" fill="var(--ui-color)"/>`;
   }).join('');
-  return `<svg viewBox="0 0 100 100" class="roster-hex">
+  return `<svg viewBox="0 6 100 88" class="roster-hex">
     <polygon points="${poly(0.34)}" fill="none" stroke="rgba(var(--ui-color-rgb),0.18)" stroke-width="0.5"/>
     <polygon points="${poly(0.67)}" fill="none" stroke="rgba(var(--ui-color-rgb),0.18)" stroke-width="0.5"/>
     <polygon points="${poly(1)}" fill="none" stroke="rgba(var(--ui-color-rgb),0.18)" stroke-width="0.5"/>

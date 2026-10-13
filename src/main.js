@@ -1,14 +1,14 @@
 // ===== 口袋挂机 - 入口模块 =====
 // 禁用全局右键菜单（桌面端 webview 的原生右键菜单）
 document.addEventListener('contextmenu', e => e.preventDefault());
-import { CATCH_RATES, SAVE_INTERVAL, ITEM_RATES, ITEM_NAMES, ROAD_SPECIAL_CHANCE, ROAD_WIDTH_MIN, ROAD_WIDTH_MAX, ROAD_SWITCH_CYCLES, BIKE_RESTORE_MAX_GAP_MS, PX_PER_METER } from './config.js';
-import { allPokemon, gameData, phase, currentEncounter, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, getPokemonByIndex, ensureGpsState, restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer , setSimClock  } from './state.js';
+import { CATCH_RATES, SAVE_INTERVAL, ITEM_RATES, ITEM_NAMES, ROAD_SPECIAL_CHANCE, ROAD_WIDTH_MIN, ROAD_WIDTH_MAX, ROAD_SWITCH_CYCLES, BIKE_RESTORE_MAX_GAP_MS, PX_PER_METER, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
+import { allPokemon, gameData, phase, currentEncounter, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, getPokemonByIndex, ensureGpsState, restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer , setSimClock, _eggHatching  } from './state.js';
 import { migrateEncounterScores } from './scoring.js';
 import { massTick, ensureMassInit as ensureMassInitEvents, twistTick, ensureTwistInit } from './events.js';
-import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView } from './ui.js';
+import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, isEvolutionShowActive, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView } from './ui.js';
 import { spawnItemDrop, hasActiveDrop, activateHoney, activateShinyCharm, restoreHoneyRecord, restoreCharmRecord, grantItem, cancelItemDrop, rollCandyMult, ensureEvoMeta } from './items.js';
 import { syncBlockVisual, startBlockCountdown, clearBlockCountdown, showMixerView } from './mixer.js';
-import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, settleStaleEncounter, ensureEncounterTextBox, setEncounterAt, syncBattleMusic, encState, setEncPhase } from './battle.js';
+import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, settleStaleEncounter, ensureEncounterTextBox, setEncounterAt, syncBattleMusic, encState, setEncPhase, autoCatch } from './battle.js';
 import { startIdleRotation } from './messages.js';
 import { tryStartFishing, onRoadChanged, getFishingGuarantee, isFishingPending } from './fishing.js';
 import { helperTick, showBerryView, catchUpHelper } from './berry.js';
@@ -20,6 +20,7 @@ import { isTradeInDetail, restoreTradeList, showTradeView } from './trade.js';
 import { showShopView, showSettingsView, showSystemLogs, showAchievementView, renderSystemLogs, applyWindowScale } from './views.js';
 import { showPhoneView, updateTradeBadge, updateBerryBadge, updateAchievementBadge, updatePhoneBadge, updateNurseryBadge, showIncubatorView } from './phone.js';
 import { gpsAddDistance, showGpsView, setRoamEnabled, startBikeTarget, abandonBikeTarget, dropRideRoute } from './gps.js';
+import { closeShareCardIfOpen } from './share-card.js';
 import { initAudio, playRegion, playCycling, endCycling, stopVictory, stopCongratulation, setMusicEnabled, isMusicEnabled, setSplashLocked, setShowCardOnEncounterEnd, setBattleMusic, setSfxEnabled } from './audio.js';
 import { restoreMusicMode } from './music.js';
 import { startTelemetry } from './telemetry.js';
@@ -32,6 +33,7 @@ import { backFromBattlePick, isBattlePicking, migrateTeams, isTeamEditing, close
 import { showCasinoView } from './casino.js';
 import * as road from './road.js';
 import { initBackgroundCatchup, startBackgroundCatchup, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds, bgPeekAccum } from './background-catchup.js';
+import { startEventRefresh } from './server-events.js';
 
 let ROAD_PRESETS = null;
 let ROAD_ALL = []; // 真正能当路段用的下标（road-data.json 里还混着场景地图，见下面筛选）
@@ -159,6 +161,7 @@ function _pickNextRoad() {
 // ---------- 返回按钮 ----------
 function goBack() {
   stopVictory(); // 任何返回离开当前视图：若胜利/抓捕音效还在播则立即停止（无播放时无副作用）
+  if (closeShareCardIfOpen()) return; // 分享图预览开着：返回只关预览层，不穿透到底层页面
   // 经验糖果使用场景浮层：返回 = 取消并关闭场景（按进入来源回详情页/主界面）
   if ($('expCandyView')?.style.display === 'flex') {
     import('./exp-candy.js').then(m => m.cancelExpCandyScene());
@@ -500,6 +503,13 @@ async function onGameTick() {
     if (helper && helper.ok) {
       catchUpLog.helper = { works: helper.works, ended: helper.ended, errored: helper.errored };
     }
+  }
+
+  // 自动捕捉兜底：遭遇还在、开着自动、不在孵蛋/进化演出里，却没在丢球 → 重新起一轮。
+  // 进化演出会让 autoCatch 在入口直接返回，演出结束又没人再喊它，就会永久卡成"手动模式"
+  if (gameTick % 30 === 0 && currentEncounter && gameData.settings?.autoCatch && !_autoCatching
+      && encState() === 'encounter' && phase !== 'eggResult' && !_eggHatching && !isEvolutionShowActive()) {
+    autoCatch();
   }
 
   // 遇敌调度心跳：计时器丢失时补排；事件区/钓鱼/自行车/有待开战记录时不排
@@ -982,6 +992,42 @@ async function init() {
   updateStats();
   applyCharSprites();
 
+  // 老存档的一次性纠正：曾经缺 autoCatchBalls 时会被回填成「大师球也开着」，
+  // 自动丢球会在难抓/神兽/闪光时优先花掉大师球。这里按新默认纠正一次（之后按玩家自己的设置走）
+  if (gameData.settings && !gameData.settings.ballDefaultsV) {
+    const b = gameData.settings.autoCatchBalls;
+    if (!b || b['master-ball'] === true) {
+      gameData.settings.autoCatchBalls = { ...AUTO_CATCH_BALLS_DEFAULT, ...(b || {}) };
+      gameData.settings.autoCatchBalls['master-ball'] = false;
+    }
+    gameData.settings.ballDefaultsV = 1;
+  }
+
+  // 老存档回填「捕获球种」：个体原本没记球，用遭遇日志按物种 + 获得时刻对回来
+  // （日志里只有各球种用了几颗、没有"最后一颗是哪颗"，取用过的里面最强的那个近似，够排查用）
+  if (gameData.stats && !gameData.stats.ballBackfillV) {
+    const STRENGTH = { 'master-ball': 3, 'ultra-ball': 2, 'poke-ball': 1 };
+    const logs = gameData.encounterLogs || {};
+    let filled = 0;
+    for (const p of (gameData.roster || [])) {
+      if (!p || p.ball || p.source === 'egg' || !p.obtainedAt) continue;
+      const arr = logs[String(p.originSpecies || p.species)] || [];
+      let best = null, bestGap = Infinity;
+      for (const l of arr) {
+        if (!l || l.result !== 'caught' || !l.time || !l.balls) continue;
+        const gap = Math.abs(l.time - p.obtainedAt);
+        if (gap < bestGap) { bestGap = gap; best = l; }
+      }
+      if (best && bestGap <= 120000) {
+        const used = Object.keys(best.balls).filter(b => (best.balls[b] || 0) > 0)
+          .sort((a, b) => (STRENGTH[b] || 0) - (STRENGTH[a] || 0));
+        if (used.length) { p.ball = used[0]; filled++; }
+      }
+    }
+    gameData.stats.ballBackfillV = 1;
+    if (filled) console.log(`[存档] 已用遭遇日志补回 ${filled} 只宝可梦的捕获球种`);
+  }
+
   // 旧存档无 introDone 字段 → 视为已完成开场，跳过剧情
   if (gameData.introDone === undefined) gameData.introDone = true;
 
@@ -1083,8 +1129,7 @@ async function init() {
     if (sessionState.qteState) setQteState(sessionState.qteState);
 
     // 恢复手动骑行：主存档持久化（上车即存 + 每 30s 自动存档，任何关闭方式都能恢复），
-    // 会话（beforeunload 写入）作兜底；长时间离线（>BIKE_RESTORE_MAX_GAP_MS）不恢复，
-    // 维持"离线按走路结算"的设定（calcOffline 也已清除主存档标记）
+    // 会话（beforeunload 写入）作兜底；只有离档超过一天（BIKE_RESTORE_MAX_GAP_MS）才不恢复
     if ((sessionState?.manualBike || gameData.manualBike) && Date.now() - (gameData.stats.lastSaveTime || 0) < BIKE_RESTORE_MAX_GAP_MS) {
       _silentBikeRestore = true; // 恢复骑行非真实操作，不写"开始骑自行车"日志
       road.setManualBike(true);
@@ -1423,6 +1468,7 @@ async function init() {
   window.__POKEIDLE_MOBILE__?.attach({
     saveNow: () => saveGame(),
     back: () => {
+      if (closeShareCardIfOpen()) return; // 分享图预览开着：系统返回先关它
       if ($('appTitle')?.dataset.action === 'back') handleAppTitleBack();
       else openQuitDialog();
     },
@@ -1477,6 +1523,7 @@ async function init() {
     onShown: (awaySec) => settleStaleEncounter(awaySec).catch(() => {}),
   });
   startBackgroundCatchup();
+  startEventRefresh(); // 全服事件排期：先吃缓存再拉最新（拉不到就退回本地随机事件）
 
   // 回前台：后台期间遭遇可能已结算完，校准战斗曲，避免残留的战斗曲与地区曲叠加播放
   document.addEventListener('visibilitychange', () => {

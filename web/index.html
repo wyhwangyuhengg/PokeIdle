@@ -191,6 +191,19 @@
       <div class="map-frame">
         <svg id="regionMap" viewBox="110 70 790 570" font-family="'Segoe UI','PingFang SC','Microsoft YaHei',monospace" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
+      <!-- 全服事件：地图上标"此刻正在发生"，下面一条"从现在起"的时间带（拉不到排期则整块不显示） -->
+      <div class="ev-panel" id="evPanel" hidden>
+        <div class="ev-head">
+          <span class="ev-title">全服事件</span>
+          <span class="ev-span" id="evSpan"></span>
+        </div>
+        <div class="ev-rail" id="evRail">
+          <div class="ev-lane"><span class="ev-tag ev-tag-mass">出没</span><div class="ev-track" id="evTrackMass"></div></div>
+          <div class="ev-lane"><span class="ev-tag ev-tag-twist">扭曲</span><div class="ev-track" id="evTrackTwist"></div></div>
+          <div class="ev-lane"><span class="ev-tag ev-tag-empty"></span><div class="ev-ticks" id="evTicks"></div></div>
+        </div>
+        <div class="ev-hint" id="evHint"></div>
+      </div>
     </section>
 
     <!-- ============ 树果农场 ============ -->

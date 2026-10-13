@@ -1,5 +1,5 @@
 // ===== 游戏状态 + 存档管理 =====
-import { REGION_CYCLE, HATCH_DIST_MIN, HATCH_DIST_MAX, HATCH_DIST_SIGMA, START_CANDY, START_POKE_BALLS, BIKE_RESTORE_MAX_GAP_MS, WILD_LEVEL_MAX, DISPATCH_FREE_SLOTS } from './config.js';
+import { REGION_CYCLE, HATCH_DIST_MIN, HATCH_DIST_MAX, HATCH_DIST_SIGMA, START_CANDY, START_POKE_BALLS, BIKE_RESTORE_MAX_GAP_MS, BIKE_PENDING_MAX_GAP_MS, AUTO_CATCH_BALLS_DEFAULT, WILD_LEVEL_MAX, DISPATCH_FREE_SLOTS } from './config.js';
 
 // ---------- 游戏数据 ----------
 export let allPokemon = [];
@@ -293,6 +293,8 @@ export function getDefaultSave() {
       releaseXpPool: 0, // 放生返还的经验累积池：攒满 EXP_CANDY_XP 自动产出一颗经验糖果并清零
       totalNpcWins:0, totalNpcNoviceWins:0, totalNpcEliteWins:0, totalNpcLeaderWins:0, totalNpcChampionWins:0, totalNpcCandy:0,
       luckyGachaScore:0, luckyGachaCount:0, // 抽卡欧气累计（独立累计，不受抽卡日志 50 条窗口影响）
+      recentScores: [],   // 欧非评定滚动窗口：最近 500 场的评分（scoring.js 的 recordLuck 维护）
+      recentGacha: [],    // 抽卡欧气滚动窗口：最近 500 抽里每抽是否为 SR（1/0）
       totalItemsEarned: { 'poke-ball':0, 'ultra-ball':0, 'master-ball':0, 'candy':START_CANDY, 'sweet-honey':0, 'mystery-egg':0, 'shiny-charm':0, 'bike':0 },
     },
     incubators: Array.from({length: 8}, () => emptyIncubator()),
@@ -487,7 +489,7 @@ export function dexShinyOwned(idx) {
 }
 
 // 把一只刚获得的宝可梦加入仓库（捕获/孵蛋/交换时调用）
-export function addRosterEntry({ species, shiny = false, source = 'normal', level = 1, gender, ivs, variant, at = 0 }) {
+export function addRosterEntry({ species, shiny = false, source = 'normal', level = 1, gender, ivs, variant, at = 0, ball = null }) {
   if (!gameData) return null;
   markDexOwned(species, !!shiny); // 任何来源获得即解锁图鉴
   if (!Array.isArray(gameData.roster)) gameData.roster = [];
@@ -507,6 +509,7 @@ export function addRosterEntry({ species, shiny = false, source = 'normal', leve
     nature: rollNature(),
     source,
     variant: variant || null, // 外观变体：'rgb' 污染等（仅外观，功能等同普通宝可梦）
+    ball: ball || null, // 捕获用的球种（孵蛋/交换为空）；高级筛选「球种」用它
     obtainedAt: at || simNow(), // 显式时间优先；补算期间按模拟时刻写
     inRoster: true,
   };
@@ -702,10 +705,14 @@ export function calcOffline(save) {
   const now = Date.now();
   const elapsed = Math.min((now - save.stats.lastSaveTime) / 1000, 86400);
   if (!(elapsed > 0)) return 0; // 注意 NaN（旧档缺 lastSaveTime）：不能写成 elapsed <= 0，否则会把 NaN 统计进在线时长
-  // 长时间离线（非刷新）不保留手动骑行状态：清除标记，重开后按走路结算
+  // 骑行状态按 BIKE_RESTORE_MAX_GAP_MS 保留（车是花道具换来的，切后台被杀掉不该丢）
   if (elapsed * 1000 > BIKE_RESTORE_MAX_GAP_MS) {
     save.manualBike = false;
-    if (save.gps) { save.gps.pendingBike = false; save.gps.bikePrevNav = null; } // 待选骑行目的地也不跨长离线保留
+  }
+  // 「待选骑行目的地」是半个选择态，不跨长时间保留
+  if (elapsed * 1000 > BIKE_PENDING_MAX_GAP_MS && save.gps) {
+    save.gps.pendingBike = false;
+    save.gps.bikePrevNav = null;
   }
   save.stats.totalPlaySeconds += elapsed;
   // 今日挂机时长：跨天时只累计今天 0 点之后的部分（昨天的离线秒数不计入今天）
@@ -940,7 +947,7 @@ export function syncGpsPosition() {
 // ---------- 是否有可用球 ----------
 export function hasAnyBall() {
   if (gameData.settings?.autoCatch) {
-    const balls = gameData.settings?.autoCatchBalls || { 'poke-ball': true, 'ultra-ball': true, 'master-ball': true };
+    const balls = gameData.settings?.autoCatchBalls || AUTO_CATCH_BALLS_DEFAULT;
     for (const b of ['poke-ball', 'ultra-ball', 'master-ball']) {
       if (balls[b] !== false && (gameData.items[b]||0) > 0) return true;
     }

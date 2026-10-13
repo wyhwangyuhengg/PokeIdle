@@ -1,4 +1,4 @@
-import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE } from './config.js';
+import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, honeyBuffActive, charmBuffActive, saveGame, setSaveSuspended, formatNum, pad, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing, isPokemon } from './state.js';
 import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, applyWindowBg, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform, touchText, watchOutsidePress } from './ui.js';
 import { doCandyExchange, doSellBall, activateHoney, activateShinyCharm, refillBuffIfEmpty, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf, BASIC_ITEM_ORDER } from './items.js';
@@ -10,53 +10,75 @@ import { TEAM_MAX } from './team.js';
 import { clearBattleTier } from './battle-view.js';
 import { showDetailCard, hideDetailCard } from './item-detail.js';
 import { APP_VERSION, BUILD_STAMP } from './build-info.js';
+import { LUCK_WINDOW } from './scoring.js';
 
 // ===== 欧气综合评定 =====
-// 取"最好的那一批场次"的平均分（前 10%，至少 10 场）映射到 9 档称号。
-// 为什么不取全场平均：稀有度复位后闪光 1/1000、神兽只在事件出现，单场分的方差虽大，
-// 但几百场求平均会把运气抹平——实测全场平均的玩家间差距只有 1.6 分（几乎人人相同），
-// 而"前 10% 场次平均"差距有 3.2 分，才分得出欧非。
+// 取"最近 500 场"里最好的一批（前 10%，至少 10 场）的平均分，映射到 9 档称号。
+// 为什么用固定窗口而不是全部历史：场次一多，"前 10% 平均"会收敛到同一个固定值——
+// 实测 1000 场与 3000 场只差 0.3 分，老玩家之间再也分不出差别（玩家反馈"人人最低档"的根因）。
+// 为什么取"前 10%"而不是全场平均：闪光 1/1000、神兽只在事件出现，全场平均会被大量普通遭遇抹平。
 // 玩家主动逃跑（手动 / 佛系 / 无球自动）属于策略选择，不参与评定。
-// 参考分布（8000 名玩家 × 200 场模拟）：前 10% 平均 均值 38.6、P25 38.0、P75 39.3、P90 39.9、P97 40.6、P99.5 41.4
+// 抽卡欧气单独评（见 calcGachaTier）：两者是不同的运气维度，混池会互相冲淡。
+// 档位＝旧表整体下调 1.1 分：拿真实玩家存档实测，旧表下他（34.24）落在「大非酋」，
+// 而按同一份日志的整体分布看，他应当是中位水平，于是把整张表下移 1.1 分锚定在真实数据上
 const LUCKY_TIERS = [
-  { min: 39.3, name: '天运所归' },   // 前 ~1%
-  { min: 38.1, name: '大欧皇' },     // 前 ~6%
-  { min: 37.1, name: '小欧皇' },     // 前 ~16%
-  { min: 36.3, name: '小有运气' },   // 前 ~40%
-  { min: 35.3, name: '平凡训练家' }, // 中位附近
-  { min: 34.5, name: '小非酋' },
-  { min: 33.9, name: '大非酋' },
-  { min: 33.0, name: '终极非酋' },
+  { min: 38.2, name: '天运所归' },     // 前 ~1%
+  { min: 37.0, name: '大欧皇' },       // 前 ~6%
+  { min: 36.0, name: '小欧皇' },       // 前 ~16%
+  { min: 35.2, name: '小有运气' },     // 前 ~40%
+  { min: 34.2, name: '平凡训练家' },   // 中位附近
+  { min: 33.4, name: '小非酋' },
+  { min: 32.8, name: '大非酋' },
+  { min: 31.9, name: '终极非酋' },
+  { min: -Infinity, name: '终极无敌至尊非酋' },
+];// 窗口内取前 10%（至少 10 场）求平均 → 档位
+function tierOf(scores) {
+  if (!scores.length) return null;
+  const sorted = [...scores].sort((a, b) => b - a);
+  const topN = Math.max(10, Math.ceil(sorted.length * 0.1));
+  const pool = sorted.slice(0, topN);
+  const avg = pool.reduce((a, b) => a + b, 0) / pool.length;
+  return LUCKY_TIERS.find(t => avg >= t.min) || null;
+}
+
+function calcLuckyRating() {
+  // 滚动窗口（scoring.js 的 recordLuck 维护，含孵蛋/钓鱼/遭遇，不含抽卡）
+  const recent = Array.isArray(gameData.stats?.recentScores) ? gameData.stats.recentScores : [];
+  if (recent.length >= 10) return tierOf(recent);
+  // 老存档还没攒够窗口：从日志里按时间取最近 500 条兜底。
+  // 不能直接拿全部日志——日志是"每种最多留 50 条"，常见物种会被截断、稀有物种不会，
+  // 直接统计会被稀有物种整体撑高，这也正是"人人天运所归"的原因之一。
+  const rows = [];
+  for (const arr of Object.values(gameData.encounterLogs || {})) {
+    if (!Array.isArray(arr)) continue;
+    for (const l of arr) {
+      if (!l || typeof l.score !== 'number' || l.score <= 0) continue;
+      if (l.selfFlee === true) continue;
+      rows.push({ t: l.time || 0, s: l.score });
+    }
+  }
+  rows.sort((a, b) => a.t - b.t);
+  return tierOf(rows.slice(-LUCK_WINDOW).map(r => r.s));
+}
+
+// 抽卡欧气：看最近 500 抽里出了多少张 SR（卡池权重 N60/R32/SR8，期望 40 张）
+const GACHA_TIERS = [
+  { min: 60, name: '天运所归' },
+  { min: 52, name: '大欧皇' },
+  { min: 46, name: '小欧皇' },
+  { min: 42, name: '小有运气' },
+  { min: 36, name: '平凡训练家' },
+  { min: 31, name: '小非酋' },
+  { min: 26, name: '大非酋' },
+  { min: 21, name: '终极非酋' },
   { min: -Infinity, name: '终极无敌至尊非酋' },
 ];
 
-// 汇总全部遭遇日志 + 抽卡欧气累计，取分数最高的一批（前 10%，至少 10 场）求平均，返回对应称号
-function calcLuckyRating() {
-  const logs = gameData.encounterLogs || {};
-  const scores = [];
-  for (const arr of Object.values(logs)) {
-    if (!Array.isArray(arr)) continue;
-    for (const l of arr) {
-      // 跳过无有效评分的旧记录（旧 fled 无相遇分，score=0）
-      if (!l || typeof l.score !== 'number' || l.score <= 0) continue;
-      // 主动逃跑（selfFlee）是策略选择，不计入欧气评定
-      if (l.selfFlee === true) continue;
-      scores.push(l.score);
-    }
-  }
-  // 抽卡欧气：独立累计字段（不受抽卡日志 50 条窗口影响），按"累计分/次数"折算成等量场次并入
-  const gachaScore = gameData.stats?.luckyGachaScore || 0;
-  const gachaCount = gameData.stats?.luckyGachaCount || 0;
-  if (gachaCount > 0) {
-    const avgGacha = gachaScore / gachaCount;
-    for (let i = 0; i < gachaCount; i++) scores.push(avgGacha);
-  }
-  if (scores.length === 0) return null;
-  scores.sort((a, b) => b - a); // 高到低
-  const topN = Math.max(10, Math.ceil(scores.length * 0.1));
-  const pool = scores.slice(0, topN);
-  const avg = pool.reduce((a, b) => a + b, 0) / pool.length;
-  return LUCKY_TIERS.find(t => avg >= t.min) || null;
+function calcGachaTier() {
+  const arr = Array.isArray(gameData.stats?.recentGacha) ? gameData.stats.recentGacha : [];
+  if (!arr.length) return null;
+  const sr = arr.reduce((a, b) => a + b, 0);
+  return GACHA_TIERS.find(t => sr >= t.min) || null;
 }
 
 // ===== 数据统计视图 =====
@@ -165,6 +187,8 @@ function refreshDataStats() {
   $('dataTotalEvolved').textContent = formatNum(stats.totalEvolutions || 0);
   $('dataTradesToday').textContent = formatNum(stats.tradesToday || 0);
   $('dataRating').textContent = rating ? rating.name : '暂无评定，先去冒险吧';
+  const gachaTier = calcGachaTier();
+  $('dataGachaRating').textContent = gachaTier ? gachaTier.name : '还没抽过卡';
   $('dataTotalSeen').textContent = formatNum(totalSeen);
   $('dataTotalCaught').textContent = formatNum(stats.totalCatches);
   $('dataTotalFled').textContent = formatNum(stats.totalFlees);
@@ -269,6 +293,7 @@ export function showDataView() {
     <div class="stat-inner">
       <div class="stat-section">欧非评定</div>
       <div class="stat-row"><span>称号</span><span id="dataRating"></span></div>
+      <div class="stat-row"><span>抽卡欧气</span><span id="dataGachaRating"></span></div>
 
       <div class="stat-section">数据总览</div>
       <table class="stat-table">
@@ -1003,7 +1028,7 @@ export function renderSettings(container, s) {
         </div>
       </div>
 `;
-  const balls = s.autoCatchBalls || { 'poke-ball': true, 'ultra-ball': true, 'master-ball': true };
+  const balls = s.autoCatchBalls || AUTO_CATCH_BALLS_DEFAULT;
   const autoBuffHoney = s.autoBuffHoney || false;
   const autoBuffCharm = s.autoBuffCharm || false;
   const autoRefillHoney = s.autoRefillHoney || false;
@@ -1662,7 +1687,7 @@ export async function resetSave() {
 // 确保设置存在（旧存档可能缺 settings 或 autoCatchBalls）
 function ensureSettings() {
   if (!gameData.settings) gameData.settings = { autoCatch: false, autoFlee: false, windowPinned: false, shinyStop: false, legendStop: false, autoBuffHoney: false, autoBuffCharm: false, gender: 'brendan' };
-  if (!gameData.settings.autoCatchBalls) gameData.settings.autoCatchBalls = { 'poke-ball': true, 'ultra-ball': true, 'master-ball': true };
+  if (!gameData.settings.autoCatchBalls) gameData.settings.autoCatchBalls = { ...AUTO_CATCH_BALLS_DEFAULT };
   if (gameData.settings.autoRefill == null) gameData.settings.autoRefill = false;
   if (gameData.settings.autoRefillHoney == null) gameData.settings.autoRefillHoney = false; // 自动补甜甜蜜（补货，不负责使用）
   if (gameData.settings.autoRefillCharm == null) gameData.settings.autoRefillCharm = false; // 自动补闪耀护符
@@ -2129,7 +2154,7 @@ const TUTORIAL_SECTIONS = [
   },
   {
     title: '统计',
-    html: `<p>在<b>手机</b>页面打开<b>统计</b>应用可查看冒险数据：<b>欧非评定</b>按每次遭遇的稀有度与捕获运气综合评价称号；</p>`
+    html: `<p>在<b>手机</b>页面打开<b>统计</b>应用可查看冒险数据：<b>欧非评定</b>按最近 500 场遭遇的稀有度与捕获运气综合评价称号，<b>抽卡欧气</b>单独看最近 500 抽的 SR 出货；</p>`
       + `<p>板块分为：数据总览、冒险进度、消耗统计、农场与合成、地区悬赏、NPC对战、游戏厅战绩、道具累计获得。</p>`
   },
   {
@@ -2160,7 +2185,7 @@ const TUTORIAL_SECTIONS = [
       + `<p>每只个体带有随机<b>个体值</b>（HP/攻击/防御/特攻/特防/速度，各 <b>0~31</b>）与随机<b>性格</b>（共 <b>25</b> 种）。</p>`
       + `<p>点进详情可以重命名宝可梦（最多 <b>5</b> 个字），改名后搜索中文可匹配昵称。</p>`
       + `<p><b>个体值</b>那一行右侧的<b>放生</b>按钮可放生该个体（不可恢复），同时返还（<b>${RELEASE_XP_RATE * 100}%</b>）经验（详见「<b>经验糖果</b>」章节）。</p>`
-      + `<p>详情页右上角是<b>图鉴</b> / <b>锁定</b> / <b>分享</b>三个按钮：<b>图鉴</b>查看该物种的图鉴；<b>分享</b>可以生成这只宝可梦的详情卡片用于分享；<b>锁定</b>后它不会出现在放生、批量放生以及交换与悬赏的候选里（再点一次解锁）。</p>`
+      + `<p>详情页右上角是<b>图鉴</b> / <b>锁定</b> / <b>分享</b>三个按钮：<b>图鉴</b>查看该物种的图鉴；<b>分享</b>可以生成这只宝可梦的详情卡片用于分享；<b>锁定</b>后不会被放生，批量放生列表里也不再出现；交换与地区悬赏的候选里仍会列出它，只是交换 / 提交按钮不可点（点了会提示先解锁）。再点一次解除锁定。</p>`
       + `<p>在仓库<b>列表页右键</b>可<b>批量放生</b>：勾选多只个体统一放生并返还总经验。</p>`
       + `<p>右键也可<b>高级筛选</b>（按名称、属性、等级等条件），方便批量处理。</p>`
       + `<p>个体可用来提交地区悬赏——提交后该宝可梦会从仓库中移除（详见「<b>悬赏</b>」章节）。</p>`,
@@ -2213,7 +2238,7 @@ const TUTORIAL_SECTIONS = [
       + `<p>① 战胜<b>NPC 训练家</b>概率掉落（普通 <b>${EXP_CANDY_DROP.novice * 100}</b>%、精英 <b>${EXP_CANDY_DROP.veteran * 100}</b>%、馆主 <b>${EXP_CANDY_DROP.leader * 100}</b>%、冠军 <b>${EXP_CANDY_DROP.champion * 100}</b>%）。</p>`
       + `<p>② <b>悬赏</b>中档（"1 件常见道具"）里会随机给到。</p>`
       + `<p>③ 放生宝可梦返还 <b>${RELEASE_XP_RATE * 100}%</b> 的累计经验，存入「经验池」，攒满 <b>${EXP_CANDY_XP}</b> 经验自动产出 <b>1</b> 颗经验糖果并清零。</p>`
-      + `<p>背包第二页点击使用：选择宝可梦后调整数量（单颗 <b>${EXP_CANDY_XP}</b> 经验），确认后一次性结算。</p>`
+      + `<p>背包滚轮翻到第二页，点击<b>经验糖果</b>使用：选择宝可梦后调整数量（单颗 <b>${EXP_CANDY_XP}</b> 经验），确认后一次性结算。</p>`
       + `<p>在宝可梦详情页点击等级可以直接对当前宝可梦使用。</p>`
       + `<p>满级宝可梦无法使用。</p>`,
   },

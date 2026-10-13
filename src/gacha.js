@@ -551,6 +551,10 @@ async function doDraw(count) {
     const scoreMap = { SR: isNew ? 52 : 48, R: isNew ? 32 : 30, N: isNew ? 24 : 22 };
     gameData.stats.luckyGachaScore = (gameData.stats.luckyGachaScore || 0) + (scoreMap[card.tier] || 24);
     gameData.stats.luckyGachaCount = (gameData.stats.luckyGachaCount || 0) + 1;
+    // 抽卡欧气滚动窗口：只记「这抽是不是 SR」，评定看最近 500 抽出货数（累计分照旧保留）
+    if (!Array.isArray(gameData.stats.recentGacha)) gameData.stats.recentGacha = [];
+    gameData.stats.recentGacha.push(card.tier === 'SR' ? 1 : 0);
+    if (gameData.stats.recentGacha.length > 500) gameData.stats.recentGacha.shift();
     _results.push({ card, isNew, revealed: false });
     addSystemLog('gacha', { pool: _currentPoolId, card: card.filename, cnName: card.cnName, tier: card.tier, isNew });
     // 记录到抽卡历史

@@ -184,6 +184,22 @@ function ivBonus(ivs, ivRandomKey, guaranteedIvs = 0) {
 //   finalRate  捕获成功那一下的实际捕获率（含捕获加成；无丢球场景传 1）
 //   ivs        个体值（越高欧气加成越多；交换不算、无 ivs 时加成为 0）
 //   ivRandomKey 培育蛋的纯随机位（捕获/神秘蛋传 null）
+// ---- 欧非评定窗口 ----
+// 评定只取最近 LUCK_WINDOW 场的分数。取全部历史时场次一多，"前 10% 平均"会收敛到固定值，
+// 老玩家之间就分不出差别了（实测 1000 场与 3000 场只差 0.3 分，人人同一档）。
+export const LUCK_WINDOW = 500;
+
+// 记分并维护滚动窗口；返回原分数，方便直接写在日志对象的 score 字段里
+export function recordLuck(gd, score) {
+  const st = gd && gd.stats;
+  if (st && typeof score === 'number' && isFinite(score)) {
+    if (!Array.isArray(st.recentScores)) st.recentScores = [];
+    st.recentScores.push(Math.round(score));
+    if (st.recentScores.length > LUCK_WINDOW) st.recentScores.splice(0, st.recentScores.length - LUCK_WINDOW);
+  }
+  return score;
+}
+
 // ---- 旧日志评分迁移 ----
 // 稀有度复位后评分模型变了（权重三次方、神兽出池、护符闪光 80%→5%），旧 score 是按老模型算的，
 // 护符期间那些闪光场次分数虚高，留着会永久抬高欧气评定。

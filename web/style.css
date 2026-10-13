@@ -754,6 +754,58 @@ nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; position: r
 #regionMap .edge-line { cursor: pointer; transition: opacity .15s; }
 #regionMap .edge-line.hl { stroke-width: 4.5; opacity: 1; }
 #regionMap .edge-line.dim { opacity: .1; }
+#regionMap .ev-ring { transform-box: fill-box; transform-origin: center; animation: evRing 1.9s ease-out infinite; }
+@keyframes evRing { from { transform: scale(1); opacity: .9; } to { transform: scale(2.1); opacity: 0; } }
+#regionMap .ev-spin { transform-box: fill-box; transform-origin: center; animation: evSpin 7s linear infinite; }
+@keyframes evSpin { to { transform: rotate(360deg); } }
+
+/* ---------- 全服事件：此刻进行中 + 从现在起的时间带 ---------- */
+.ev-panel {
+  margin: 18px auto 0;
+  max-width: 660px;
+  background: var(--console-body);
+  border: 3px solid var(--console-edge);
+  border-radius: 3px;
+  padding: 8px 12px 6px;
+  font-family: var(--mono);
+}
+.ev-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 11.5px; min-height: 18px; }
+.ev-title { font-weight: 700; color: var(--ui-color-darker); letter-spacing: 1px; flex-shrink: 0; }
+.ev-span { margin-left: auto; font-size: 10px; color: var(--color-muted); }
+
+.ev-lane { display: flex; align-items: center; gap: 7px; margin-top: 5px; }
+.ev-tag {
+  flex: 0 0 30px; text-align: center; font-size: 9.5px; line-height: 15px;
+  color: #f2fbf7; background: var(--ui-color); border-radius: 2px; flex-shrink: 0;
+}
+.ev-tag-twist { background: #6f57b5; }
+.ev-tag-empty { background: none; }
+
+.ev-track, .ev-ticks {
+  position: relative; flex: 1; height: 17px;
+  background: rgba(0, 0, 0, .07); border-radius: 2px;
+}
+.ev-ticks { height: 14px; background: none; border-radius: 0; }
+.ev-hint { margin-top: 4px; font-size: 11.5px; color: var(--ui-color-dark); min-height: 17px; }
+.ev-hint i { font-style: normal; opacity: .35; margin: 0 3px; }
+.ev-hint .dex-ico { margin-right: 1px; }
+.ev-bar {
+  position: absolute; top: 1px; height: 15px; border-radius: 2px;
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  font-size: 9.5px; line-height: 15px; color: #fff; text-align: center;
+  overflow: hidden; white-space: nowrap; box-sizing: border-box;
+  cursor: default; transition: filter .15s;
+}
+.ev-bar-mass { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35); }
+.ev-bar.is-now { box-shadow: 0 0 0 2px #b3423a, inset 0 0 0 1px rgba(255, 255, 255, .5); }
+.ev-bar.clipped { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ev-bar:hover { filter: brightness(1.15); }
+
+.ev-tick { position: absolute; top: 0; height: 14px; border-left: 1px dashed rgba(31, 31, 31, .22); }
+.ev-tick span { position: absolute; left: 3px; top: 0; white-space: nowrap; font-size: 9px; color: var(--color-muted); }
+.ev-tick.end span { left: auto; right: 3px; }
+.ev-tick.now { border-left: 2px solid #b3423a; }
+.ev-tick.now span { color: #b3423a; font-weight: 700; }
 
 /* ---------- 像素主角：顶栏中间轨道来回行走（透明限制区域） ---------- */
 .pv-walk {

@@ -49,6 +49,8 @@ export const CATCH_RATES = {
 // 高级球绝对捕获率加成：捕获率 = (基础率 × catchRate + 加成) × 丢球加成
 // 对低 catchRate 的稀有/神兽增幅显著，体现「抓神兽用高级球」的定位
 export const ULTRA_BALL_ADD = 0.06;
+// 自动丢球的默认启用球种（唯一来源：兜底、设置页回填、背包判断都取这一份，避免各写各的漏掉大师球）
+export const AUTO_CATCH_BALLS_DEFAULT = { 'poke-ball': true, 'ultra-ball': true, 'master-ball': false };
 
 // 逃跑率拉满后每多丢一球的捕获加成
 export const CATCH_BONUS_INC = 0.10;
@@ -456,7 +458,11 @@ export const ROAD_SWITCH_CYCLES = 2;       // 滚动满几个循环后切换场�
 export const ROAD_SPEED_WALK = 0.75;  // 走路 → 45 px/秒
 export const ROAD_SPEED_RUN  = 1.5;   // 跑步（增益生效时）→ 90 px/秒
 export const ROAD_SPEED_BIKE = 3.0;   // 自行车道骑行 → 180 px/秒
-export const BIKE_RESTORE_MAX_GAP_MS = 120000; // 手动骑行状态恢复的最大离档间隔（>此值视为长时间离线，不恢复骑行）
+// 手动骑行状态的保留时长：骑行是花掉一个自行车道具换来的，切后台被系统杀掉再回来不该把车弄丢，
+// 所以只有真的离档很久（一天以上）才不恢复；离线里程照旧按离档时长结算
+export const BIKE_RESTORE_MAX_GAP_MS = 24 * 60 * 60 * 1000;
+// 「待选骑行目的地」（点过自行车、还没选目的地）不跨长时间保留，免得回来还挂着半个选择态
+export const BIKE_PENDING_MAX_GAP_MS = 10 * 60 * 1000;
 
 // 道具作用简述（商店 hover 提示等统一 tooltip 文案）
 // 数值全部引用上方常量动态生成，配置改动后 tooltip 自动同步

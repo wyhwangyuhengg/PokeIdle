@@ -4,7 +4,7 @@ import { phase, gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcl
 import { $, updateTextBox, updateBackpack, updateStats, showView, isOnHatchView, isIdleStageVisible, isPageHidden, fitPokemonImage, tryLoadPokemonImage, setIdleCharacter, renderIncubatorView, updateIncubatorBadge, showConfirmBar, hideConfirmBar, isEvolutionShowActive } from './ui.js';
 import { showIdlePickup, showBuffExpired } from './messages.js';
 import { animate, burstShinySparkle } from './animation.js';
-import { computeObtainScore } from './scoring.js';
+import { computeObtainScore, recordLuck } from './scoring.js';
 import { NATURES } from './battle-core.js';
 import { playCongratulation, stopCongratulation, playShiny } from './audio.js';
 import * as road from './road.js';
@@ -651,7 +651,8 @@ export function spawnItemDrop(itemKey, opts = {}) {
     // 清场但照常收下：直接入账并记掉落日志
     if (opts.collect) grantItem(itemKey, qty);
     saveGame();
-    if (phase === 'idle') { setIdleCharacter('walk'); road.resume(); }
+    setIdleCharacter('walk');            // 姿势必须收回走路：动画收尾被战斗打断时不会卡在动作帧
+    if (phase === 'idle') road.resume();   // 路面恢复交给战斗/goIdle 统一处理
   };
 
   // 动画受理成功：后续由 step/fly 驱动滚动与拾取入账，这里返回 true 让调用方扣减累积值
@@ -710,7 +711,8 @@ export function spawnItemDrop(itemKey, opts = {}) {
     setItemDropActive(false);
     gameData.roadItem = null; // 滑出屏/异常回收：这一件不再恢复
     saveGame();
-    if (phase === 'idle') { setIdleCharacter('walk'); road.resume(); }
+    setIdleCharacter('walk');            // 姿势必须收回走路：动画收尾被战斗打断时不会卡在动作帧
+    if (phase === 'idle') road.resume();   // 路面恢复交给战斗/goIdle 统一处理
   }
 
   // 世界步（每步一次，与路面同速）：位置推进 + 拾取判定
@@ -766,7 +768,8 @@ export function spawnItemDrop(itemKey, opts = {}) {
           _dropEl = null;
           el.remove();
           setItemDropActive(false);
-          if (phase === 'idle') { setIdleCharacter('walk'); road.resume(); }
+          setIdleCharacter('walk');            // 姿势必须收回走路：动画收尾被战斗打断时不会卡在动作帧
+          if (phase === 'idle') road.resume();   // 路面恢复交给战斗/goIdle 统一处理
           gameData.roadItem = null; // 已拾取：清档
           grantItem(itemKey, qty);
           saveGame(); // 拾取入账立即存档，避免刷新时丢失最新掉落日志/道具
@@ -926,11 +929,11 @@ function applyHatchEntry(slotIndex, presetGender) {
   gameData.encounterLogs[idx].push({
     time: Date.now(), shiny: eggIsShiny, result: 'caught', balls: {}, source: 'egg', // source 供统计页区分孵蛋/交换/遭遇
     charmBuff: false, // 闪耀护符不提升孵蛋闪光率（蛋的闪光在放入孵蛋器时已按 1/1000 判定），恒为 false
-    score: computeObtainScore({
+    score: recordLuck(gameData, computeObtainScore({
       pokemon: poke, source: 'egg', shiny: eggIsShiny,
       charmBuff: false, honeyBuff: false, balls: {}, finalRate: 1,
       ivs: entry.ivs, ivRandomKey,
-    }),
+    })),
   });
 
   addSystemLog('egg_hatch', { pokemon: poke.index, shiny: eggIsShiny });

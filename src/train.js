@@ -1,7 +1,7 @@
 // 训练 App：训练场 —— 把宝可梦放进训练槽，按真实时间挂机自动获得经验（不消耗糖果）
 // 页面为 tile 地图铺满 + 告示牌入口：点击告示牌弹出配置/数据面板
 // 训练中的宝可梦会以像素图标在场地上随机走动
-import { $, showView, tryLoadImage, setupFoodTooltip, showConfirmBar, logicToViewport, popupBounds } from './ui.js';
+import { $, showView, tryLoadImage, setupFoodTooltip, showConfirmBar } from './ui.js';
 import { gameData, getPokemonByIndex, saveGame, pushNav, addSystemLog, ensureGender, genderBadge, effIvTotal, ivOf } from './state.js';
 import {
   TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, MAX_LEVEL,
@@ -285,6 +285,7 @@ function render() {
   box.innerHTML = `
     <div class="train-app">
       <div class="train-field" style="width:${TRAIN_W}px;height:${TRAIN_H}px;">
+        <div class="hover-info-bar" id="trainInfoBar"></div>
         <canvas class="train-field-canvas"></canvas>
         <div class="train-walkers" id="trainWalkers"></div>
         <img class="train-box-sign berry-icon" src="${BOX_IMG}" data-tip="树果库存" alt="库存" />
@@ -392,10 +393,11 @@ function syncWalkers() {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
       wakeUp(slot, img);
+      showWalkerTip(el, slot); // 触屏没有 hover：点一下也把信息显示到顶部条
     });
     // hover 显示名字/等级/状态提示
     el.addEventListener('mouseenter', () => showWalkerTip(el, slot));
-    el.addEventListener('mouseleave', hideWalkerTip);
+    el.addEventListener('mouseleave', () => hideWalkerTip());
     _walkerPos.set(slot.id, { c: start.c, r: start.r, facing: start.facing || 1 });
     _walkers.set(slot.id, {
       el, img, isWater,
@@ -550,46 +552,36 @@ function wakeUp(slot, img) {
   refreshSlots(); // 同步告示牌上的状态标签
 }
 
-// ---------- 场地宝可梦 hover 提示（名字 · 等级 · 状态，样式对齐农场树果提示） ----------
-let _walkerTip = null;
-
-function walkerTipEl() {
-  if (_walkerTip && !_walkerTip.isConnected) _walkerTip = null;
-  if (!_walkerTip) {
-    _walkerTip = document.createElement('div');
-    _walkerTip.className = 'train-walker-tip';
-    _walkerTip.style.display = 'none';
-    document.body.appendChild(_walkerTip);
-  }
-  return _walkerTip;
+// ---------- 场地宝可梦信息条 ----------
+// 悬停/点击哪只就在顶部同一条里显示哪只（对齐农场顶部进度条那套：位置固定、不跟着宝可梦跑）
+function hideWalkerTip() {
+  const bar = $('trainInfoBar');
+  if (bar) bar.style.display = 'none'; // 鼠标离开就收起
 }
 
 function showWalkerTip(el, slot) {
+  const bar = $('trainInfoBar');
+  if (!bar) return;
+  bar.style.display = 'flex'; // CSS 默认 display:none，这里必须显式给值（清空内联样式会回落成 none）
   const entry = (gameData.roster || []).find(x => x.id === slot.id);
   if (!entry) return;
   const poke = getPokemonByIndex(String(entry.species));
   const lazy = isLazy(slot);
-  const tip = walkerTipEl();
-  if (!tip) return;
-  const shiny = entry.shiny
-    ? ' <svg viewBox="0 0 1024 1024" width="10" height="10" style="vertical-align:-1px;color:#fff;"><use xlink:href="#icon-star"/></svg>'
-    : '';
   const sat = slot.satiety == null ? TRAIN_SATIETY_MAX : Math.round(slot.satiety);
-  tip.innerHTML = `${entry.nickname || (poke ? poke.name : '#' + entry.species)}${shiny} · ${genderBadge(ensureGender(entry))}Lv${entry.level || 1} · 饱食${sat}
-    <span class="train-walker-tip-status${lazy ? ' lazy' : ''}">${lazy ? '偷懒中' : '训练中'}</span>`;
-  tip.style.display = '';
-  const er = el.getBoundingClientRect(); // 机身内 rect（逻辑像素）
-  // 提示框在机身外：坐标换算到同一空间并夹紧在机身内
-  const c = logicToViewport(er.left + er.width / 2, er.top);
-  const b = popupBounds();
-  const left = c.x - tip.offsetWidth / 2;
-  tip.style.left = Math.max(b.left + 4, Math.min(left, b.right - tip.offsetWidth - 4)) + 'px';
-  tip.style.top = Math.max(b.top + 4, c.y - tip.offsetHeight - 4) + 'px';
-}
-
-function hideWalkerTip() {
-  const tip = walkerTipEl();
-  if (tip) tip.style.display = 'none';
+  bar.textContent = '';
+  const name = document.createElement('span');
+  name.textContent = (entry.nickname || (poke ? poke.name : '#' + entry.species)) + ' ';
+  bar.appendChild(name);
+  if (entry.shiny) {
+    const star = document.createElement('span');
+    star.className = 'hover-info-star';
+    star.innerHTML = '<svg viewBox="0 0 1024 1024" width="10" height="10"><use xlink:href="#icon-star"></use></svg>';
+    bar.appendChild(star);
+  }
+  const rest = document.createElement('span');
+  rest.innerHTML = ` · ${genderBadge(ensureGender(entry))}Lv${entry.level || 1} · 饱食${sat} `
+    + `<span class="train-walker-tip-status${lazy ? ' lazy' : ''}">${lazy ? '偷懒中' : '训练中'}</span>`;
+  bar.appendChild(rest);
 }
 
 function boardOpen() {

@@ -42,6 +42,14 @@ const DICE_CHARS = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 const DEAL_ORDER = [0, 2, 1, 3]; // 顺时针发牌：玩家→左家→对家→右家
 const DEAL_STEP = 4;             // 每家每次发 4 张
 
+// ---------- AI 难度 ----------
+// 0 = 困难（全按最优决策）；>0 = 简单模式，按该概率让 NPC 走次优/随机
+const AI_DUMB_EASY = 0.5; // 简单模式的放水概率（约一半决策）
+let _aiDumb = 0;
+function setMahjongAiDumb(v) {
+  _aiDumb = Math.max(0, Math.min(1, Number(v) || 0));
+}
+
 // ---------- 对局状态 ----------
 const st = {
   phase: 'bet',      // bet=下注 | player=玩家回合 | ai=AI 回合 | settle=结算
@@ -478,6 +486,7 @@ function betHtml() {
         <div class="casino-bet-body">
           <div class="casino-bet-label-row">
             <div class="casino-bet-label">选择下注档位</div>
+            <button class="casino-history-btn mj-diff-btn" id="mjDiffBtn">${_aiDumb > 0 ? '简单' : '困难'}</button>
             <button class="casino-history-btn" id="mjHistoryBtn">战绩</button>
           </div>
           <div class="casino-bet-slider${disabled ? ' disabled' : ''}">
@@ -541,6 +550,14 @@ function bindBet(box) {
   });
   box.querySelector('#mStart')?.addEventListener('click', beginMatch);
   box.querySelector('#mjHistoryBtn')?.addEventListener('click', () => showCasinoHistoryView('mj'));
+  // 难度切换：简单 ↔ 困难（写进存档，下次进入沿用）
+  box.querySelector('#mjDiffBtn')?.addEventListener('click', () => {
+    const toEasy = _aiDumb === 0;
+    setMahjongAiDumb(toEasy ? AI_DUMB_EASY : 0);
+    gameData.settings.mahjongEasy = toEasy;
+    saveGame();
+    render();
+  });
   box.querySelector('#mjYakuPrev')?.addEventListener('click', () => {
     st.yakuPage = (st.yakuPage - 1 + YAKU_REF.length) % YAKU_REF.length;
     refreshYakuRef();
@@ -1475,14 +1492,16 @@ function aiPickDiscard(i, hand, isRiichi, lastDraw) {
   const anyoneRiichi = st.riichi || st.aiRiichi.some(r => r);
   // 立直后只能打刚摸的牌
   if (isRiichi) return hand.indexOf(lastDraw);
+  // 简单模式：有概率无视打分，随手打一张
+  if (Math.random() < _aiDumb) return Math.floor(Math.random() * hand.length);
   // 打分
   const scored = hand.map((id, idx) => ({
     idx,
     id,
     score: aiDiscardScore(id, hand, idx, isRiichi, lastDraw),
   }));
-  // 有人立直时：安全牌降分优先打出
-  if (anyoneRiichi) {
+  // 有人立直时：安全牌降分优先打出（简单模式有概率不防守）
+  if (anyoneRiichi && Math.random() >= _aiDumb) {
     const safeBonus = -30; // 安全牌减 30 分（更倾向打出）
     for (const s of scored) {
       if (isSafeVsRiichi(s.id) || (st.riichi && isSafeTile(s.id, 0))) {
@@ -1504,11 +1523,13 @@ function shouldAiPon(i, id) {
   hand.splice(idx2, 1);
   hand.splice(idx1, 1);
   const afterMeld = st.aiMeld[i - 1].length + 1;
+  // 碰后若直接成胡，必碰（放水也保留）
+  if (canWin(hand, afterMeld)) return true;
+  // 简单模式：有概率放着不碰
+  if (Math.random() < _aiDumb) return false;
   // 碰后孤张太多（≥ 半手牌），放弃
   const loners = loneCount(hand);
   if (loners >= Math.ceil(hand.length / 2)) return false;
-  // 碰后若直接成胡，必碰
-  if (canWin(hand, afterMeld)) return true;
   // 碰后手牌还有成对潜力，允许
   const pt = pairTriCount(hand);
   if (pt.pairs + pt.tris >= 1) return true;
@@ -1556,6 +1577,7 @@ async function runAi(i) {
     const best = bestType(st.ai[i - 1]);
     let chance = 0.3 + pt.pairs * 0.12 + Math.min(best.count || 0, 6) * 0.05;
     if (st.dora && st.ai[i - 1].includes(st.dora)) chance += 0.15;
+    chance *= (1 - _aiDumb); // 简单模式：立直意愿打折
     if (Math.random() < Math.min(chance, 0.9)) {
       st.aiRiichi[i - 1] = true;
       st.aiRiichiPending[i - 1] = true;
@@ -1742,6 +1764,8 @@ function nextRound() {
 
 // ---------- 入口 ----------
 export function showMahjongView() {
+  // 难度：默认简单，玩家切换后写入存档、下次进入沿用
+  setMahjongAiDumb(gameData.settings?.mahjongEasy === false ? 0 : AI_DUMB_EASY);
   // 余额连最低注额都玩不起 → 弹出确认框阻止
   if (coin() < BETS[0] * 40) {
     addSystemLog('mahjong', { blocked: 'entry-min', min: BETS[0] * 40, balance: coin() });

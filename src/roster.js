@@ -67,7 +67,8 @@ function ivHexagon(p) {
     return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(var(--ui-color-rgb),0.15)" stroke-width="0.5"/>`;
   }).join('');
   const labels = IV_KEYS.map(([, label], i) => {
-    const [x, y] = pt(i, 1.32);
+    // 纵向两轴（HP/特攻）的标签向顶/底角靠拢，压缩雷达图上下留白
+    const [x, y] = pt(i, (i === 0 || i === 3) ? 1.16 : 1.32);
     return `<text x="${x.toFixed(1)}" y="${(y + 2).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="var(--ui-color)">${label}</text>`;
   }).join('');
   const dots = IV_KEYS.map(([k], i) => {
@@ -75,7 +76,7 @@ function ivHexagon(p) {
     const [x, y] = pt(i, v / 31);
     return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.7" fill="var(--ui-color)"/>`;
   }).join('');
-  return `<svg viewBox="0 0 100 100" class="roster-hex">
+  return `<svg viewBox="0 6 100 88" class="roster-hex">
     <polygon points="${poly(0.34)}" fill="none" stroke="rgba(var(--ui-color-rgb),0.18)" stroke-width="0.5"/>
     <polygon points="${poly(0.67)}" fill="none" stroke="rgba(var(--ui-color-rgb),0.18)" stroke-width="0.5"/>
     <polygon points="${poly(1)}" fill="none" stroke="rgba(var(--ui-color-rgb),0.18)" stroke-width="0.5"/>
@@ -187,6 +188,7 @@ function currentFilterPool() {
     if (adv.src) pool = pool.filter(p =>
       adv.src === 'normal' ? p.source === 'normal'
         : adv.src === 'mass' ? p.source === 'mass' : p.source === adv.src);
+    if (adv.ball) pool = pool.filter(p => p.ball === adv.ball);
     if (adv.legend) {
       pool = pool.filter(p => {
         const isLegend = getPokemonByIndex(String(p.species))?.legend === true;
@@ -1856,6 +1858,9 @@ function advFilterHtml() {
         <div class="adv-group"><div class="adv-group-name">进化</div><div class="adv-chips">
           ${chip('evolvable', '', '不限')}${chip('evolvable', '1', '可进化')}
         </div></div>
+        <div class="adv-group"><div class="adv-group-name">球种</div><div class="adv-chips">
+          ${chip('ball', '', '不限')}${chip('ball', 'master-ball', '大师球')}
+        </div></div>
         <div class="adv-group adv-span2"><div class="adv-group-name">来源</div><div class="adv-chips">
           ${ADV_SRCS.map(([v, l]) => chip('src', v, l)).join('')}
         </div></div>
@@ -2029,6 +2034,7 @@ function bindAdvFilter(panel) {
       gender: getChips('gender'),
       ivCount: getChips('ivcount'),
       evolvable: getChips('evolvable'),
+      ball: getChips('ball'),
     };
     if (_advFilter.evolvable) ensureEvoDataForFilter();
     syncAdvFilterUi();
@@ -2079,7 +2085,7 @@ function removeAdvBadge(F, k) {
 
 // 所有条件均为默认/不限时视为空筛选：恢复到未启用状态
 function advIsEmpty(F) {
-  return !(F.poke || F.q || F.legend || F.shiny || F.variant || F.src || F.gender || F.evolvable
+  return !(F.poke || F.q || F.legend || F.shiny || F.variant || F.src || F.gender || F.evolvable || F.ball
     || (F.type && F.type.length) || F.region
     || (Number(F.lvMin) > 0) || (Number(F.lvMax) < 100)
     || (Number(F.ivMin) > 0) || (Number(F.ivMax) < 186)
@@ -2102,6 +2108,7 @@ function advFilterBadges(F) {
   if (F.variant === 'rgb') parts.push({ k: 'variant', t: 'RGB' });
   if (F.variant === 'polluted') parts.push({ k: 'variant', t: '污染' });
   if (F.src) parts.push({ k: 'src', t: ADV_SRC_NAMES[F.src] || F.src });
+  if (F.ball === 'master-ball') parts.push({ k: 'ball', t: '大师球捕获' });
   if (F.type && F.type.length) parts.push({ k: 'type', t: F.type.join('+') });
   if (F.region) parts.push({ k: 'region', t: F.region });
   const lvMin = Number(F.lvMin), lvMax = Number(F.lvMax);

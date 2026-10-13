@@ -23,6 +23,7 @@ import { MAP_EDGES, showGpsView } from './gps.js';
 import { startMassEncounter, startTwistEncounter, scheduleNextEncounter } from './battle.js';
 import { notifyMassStart, notifyMassEnd, massMsgTick, notifyTwistStart, notifyTwistEnd, twistMsgTick } from './messages.js';
 import { pickFamily, pickWeightedPokemon } from './items.js';
+import { hasSchedule, activeSlot, nextSlot, serverNow } from './server-events.js';
 
 // 扭曲池跨地区、条目多：均匀随机会让神兽过密（约占 7.5%），按稀有度加权后降到 2% 左右
 function pickTwistPoke(tw) {
@@ -35,6 +36,15 @@ function pickTwistPoke(tw) {
 import * as road from './road.js';
 
 // ===== 生成 / 结束 =====
+
+// 排期里的位置比例（0~1）→ 具体路段与路段上的点位：
+// 序号取整落到第几条路，小数部分在路段 20%~80% 之间取点（避开两端节点）
+function edgeAtPos(pos) {
+  const n = MAP_EDGES.length;
+  const v = pos * n;
+  const edge = MAP_EDGES[Math.min(n - 1, Math.floor(v))];
+  return { edge, t: 0.2 + (v % 1) * 0.6 };
+}
 
 // 随机选一条事件路段：大量出没与时空扭曲可同时活跃，必须避开另一事件所在路段，
 // 否则玩家停在事件点时会同时满足两个事件区域（inMassZone 与 inTwistZone 共用 massArrived），
@@ -58,10 +68,27 @@ export function ensureMassInit() {
 function spawnMassOutbreak() {
   if (!gameData || gameData.massOutbreak?.active) return;
   if (MAP_EDGES.length === 0) return;
-  // 随机选一条路段 + 路段中段位置（20%~80%，避开节点）；避开时空扭曲正在发生的路段
-  const edge = pickEventEdge(gameData.twist?.edge);
+  // 全服排期：时间段与地区由服务端定（同一时刻所有玩家同一个地区、同一只），不在排期内就等下一段
+  const slot = hasSchedule() ? activeSlot('mass') : null;
+  if (hasSchedule() && !slot) {
+    const nxt = nextSlot('mass');
+    gameData.massNextGenAt = nxt ? nxt.from : serverNow() + 60000;
+    return;
+  }
+  // 位置：有排期就用排期定死的那一个（全服同一条路、同一个点）；没排期才本地随机挑
+  let edge = null; let t = 0.2 + Math.random() * 0.6;
+  if (slot && typeof slot.pos === 'number') {
+    ({ edge, t } = edgeAtPos(slot.pos));
+  } else {
+    for (let i = 0; i < (slot ? 16 : 1) && !edge; i++) {
+      const e = pickEventEdge(gameData.twist?.edge);
+      if (!e) break;
+      const tt = 0.2 + Math.random() * 0.6;
+      const idx = tt < 0.5 ? Math.min(e[0], e[1]) : Math.max(e[0], e[1]);
+      if (!slot || !slot.region || REGION_CYCLE[idx] === slot.region) { edge = e; t = tt; }
+    }
+  }
   if (!edge) return;
-  const t = 0.2 + Math.random() * 0.6;
   // 事件宝可梦：从事件点归属地区随机选（t<0.5 归小号端地区，否则归大号端）
   const regionIdx = t < 0.5 ? Math.min(edge[0], edge[1]) : Math.max(edge[0], edge[1]);
   const regionName = REGION_CYCLE[regionIdx];
@@ -71,18 +98,26 @@ function spawnMassOutbreak() {
     return;
   }
   // 家族归一：多变体家族（未知图腾、彩粉蝶等）按单个形态计，不因形态数叠加
-  const poke = pickFamily(pool, () => 1);
+  // 有排期时用排期定死的那只（全服一致）；本地池里没有就退回家族随机
+  // 有排期时按种子取同一只（全服一致）；种子缺失/越界就退回家族随机
+  const poke = (slot && typeof slot.seed === 'number')
+    ? pool[slot.seed % pool.length]
+    : pickFamily(pool, () => 1);
+  const pokeOrFamily = poke && poke.index ? poke : pickFamily(pool, () => 1);
   const remain = randInt(MASS_COUNT_MIN, MASS_COUNT_MAX);
   gameData.massOutbreak = {
     edge, t,                       // 事件路段 + 事件点在路段上的位置比例
-    pokemon: poke.index,           // 事件宝可梦编号
+    slotFrom: slot ? slot.from : 0, // 来源排期段的起点（0 = 本地随机兜底），用来识别过期的旧事件
+    pokemon: pokeOrFamily.index,   // 事件宝可梦编号
     remain,                        // 剩余可遭遇数量
-    expiresAt: Date.now() + MASS_DURATION * 60000, // 事件到期时间
+    expiresAt: slot ? slot.to : Date.now() + MASS_DURATION * 60000, // 有排期就用排期的结束时刻
     nextSpawnAt: 0,                // 下一只事件宝可梦出现时间（0=立即）
     active: true,
   };
-  gameData.massNextGenAt = Date.now() + randInt(MASS_GEN_MIN, MASS_GEN_MAX) * 60000;
-  addSystemLog('mass_outbreak_start', { edge, t, pokemon: poke.index, remain });
+  gameData.massNextGenAt = slot
+    ? ((nextSlot('mass') || {}).from || slot.to + 60000)   // 排期模式：到下一段开始才生成
+    : Date.now() + randInt(MASS_GEN_MIN, MASS_GEN_MAX) * 60000;
+  addSystemLog('mass_outbreak_start', { edge, t, pokemon: pokeOrFamily.index, remain });
   saveGame();
   notifyMassStart();
 }
@@ -101,7 +136,7 @@ export function endMassOutbreak() {
     gameData.gps.massArrived = false;
     // 事件结束且玩家正骑行导航到该事件点：目的地已失效，手动骑行立即下车。
     // 否则会停在「骑行中 + 地图禁止改选目的地（planRoute 拦截）+ 取消按钮不显示（hasDest=false）」
-    // 的不可操作死锁状态；forceStopBikeInMassZone 依赖 massOutbreak.active，此刻已失效，必须在此兜底。
+    // 的不可操作死锁状态，必须在此兜底。
     if (hadMassTarget && road.isManualBike()) {
       road.setManualBike(false);
     }
@@ -134,10 +169,24 @@ export function scheduleMassSpawn() {
 export function massTick() {
   if (!gameData) return;
   ensureMassInit();
-  const now = Date.now();
+  // 有全服排期时按服务器时间走：玩家改系统时间不影响事件起止
+  const now = hasSchedule() ? serverNow() : Date.now();
   if (!gameData.massOutbreak?.active) {
+    // 有排期时生成时刻完全由排期说了算：存档里那个本地随机计时器（新档/离线时给的）作废。
+    // 排期是异步拉回来的，所以这里每 tick 重新算一次，排期一到就能立刻补上当前这一段。
+    if (hasSchedule()) {
+      const cur = activeSlot('mass');
+      const nxt = cur || nextSlot('mass');
+      gameData.massNextGenAt = nxt ? nxt.from : now + 60000;
+    }
     if (now >= gameData.massNextGenAt) spawnMassOutbreak();
     return;
+  }
+  // 有全服排期：只认"当前这一段"。本地随机生成的、以及排期重新生成前留下的旧事件，
+  // 这里比对段起点就能识别出来，就地作废交给排期重新生成
+  if (hasSchedule()) {
+    const cur = activeSlot('mass');
+    if (!cur || gameData.massOutbreak.slotFrom !== cur.from) { endMassOutbreak(); return; }
   }
   if (now >= gameData.massOutbreak.expiresAt) { endMassOutbreak(); return; }
   massMsgTick(now);      // 大量出没提示文案轮播（远处 / 区域内）
@@ -303,21 +352,7 @@ function updateMassSpawner(now) {
     return;
   }
   // 注意不含 road.isActive()：拾取道具等道路暂停时保持注册，由 _massStep 原地等待，避免捡完球 icon 消失
-  // 大量出没事件点可能落在自行车路段上：骑行中事件宝可梦不滚动、普通遭遇也不触发，
-  // 玩家到了点位却在骑车会错过事件。进入事件区域立即强制下车，恢复正常遭遇等非骑行功能。
-  forceStopBikeInMassZone();
   startMassRaf();
-}
-
-// 大量出没区域内强制结束骑行状态（自行车路段 _bike 和/或手动骑行 _manualBike）
-function forceStopBikeInMassZone() {
-  if (!road.isBike()) return;
-  // 先清路段骑行状态，再清手动骑行：onManualBikeChanged 回调里 road.isBike() 已是 false，
-  // 骑行音乐 / 角色外观 / 存档 / 背包槽 / buff 禁用都会按「下车」正确处理
-  road.setBike(false);
-  if (road.isManualBike()) road.setManualBike(false);
-  endCycling();             // 兜底：停止骑行音乐
-  setIdleCharacter('walk'); // 恢复走路外观与速度
 }
 
 // ===== 时空扭曲（跨地区稀有事件）=====
@@ -330,9 +365,20 @@ function spawnTwist() {
   if (!gameData || gameData.twist?.active) return;
   if (MAP_EDGES.length === 0) return;
   // 随机选一条路段 + 路段中段位置（20%~80%，避开节点）；避开大量出没正在发生的路段
-  const edge = pickEventEdge(gameData.massOutbreak?.edge);
+  // 全服排期：位置全服统一（同一条边、同一个位置比例），时段由服务端定，内容仍本地随机
+  const slot = hasSchedule() ? activeSlot('twist') : null;
+  if (hasSchedule() && !slot) {
+    const nxt = nextSlot('twist');
+    gameData.twistNextGenAt = nxt ? nxt.from : serverNow() + 60000;
+    return;
+  }
+  let edge = null; let t = 0.2 + Math.random() * 0.6;
+  if (slot && typeof slot.pos === 'number') {
+    ({ edge, t } = edgeAtPos(slot.pos));
+  } else {
+    edge = pickEventEdge(gameData.massOutbreak?.edge);
+  }
   if (!edge) return;
-  const t = 0.2 + Math.random() * 0.6;
   // 事件点归属地区（t<0.5 归小号端地区，否则归大号端）；池 = 该地区以外的全部宝可梦
   const regionIdx = t < 0.5 ? Math.min(edge[0], edge[1]) : Math.max(edge[0], edge[1]);
   const regionName = REGION_CYCLE[regionIdx];
@@ -344,13 +390,16 @@ function spawnTwist() {
   const remain = randInt(TWIST_COUNT_MIN, TWIST_COUNT_MAX);
   gameData.twist = {
     edge, t,                       // 事件路段 + 事件点在路段上的位置比例
+    slotFrom: slot ? slot.from : 0, // 来源排期段的起点（0 = 本地随机兜底），用来识别过期的旧事件
     pool: pool.map(p => p.index),  // 该局可遭遇的宝可梦编号池（排除归属地区）
     remain,                        // 剩余可遭遇数量
-    expiresAt: Date.now() + TWIST_DURATION * 60000, // 事件到期时间
+    expiresAt: slot ? slot.to : Date.now() + TWIST_DURATION * 60000, // 有排期就用排期的结束时刻
     nextSpawnAt: 0,                // 下一只事件宝可梦出现时间（0=立即）
     active: true,
   };
-  gameData.twistNextGenAt = Date.now() + randInt(TWIST_GEN_MIN, TWIST_GEN_MAX) * 60000;
+  gameData.twistNextGenAt = slot
+    ? ((nextSlot('twist') || {}).from || slot.to + 60000)   // 排期模式：到下一段开始才生成
+    : Date.now() + randInt(TWIST_GEN_MIN, TWIST_GEN_MAX) * 60000;
   addSystemLog('twist_start', { edge, t, remain });
   saveGame();
   notifyTwistStart();
@@ -389,11 +438,22 @@ export function onTwistEncounterEnded() {
 export function twistTick() {
   if (!gameData) return;
   ensureTwistInit();
-  const now = Date.now();
+  const now = hasSchedule() ? serverNow() : Date.now();
   if (!gameData.twist?.active) {
     updateTwistOverlay(); // 事件结束/不存在：确保遮罩收起
+    // 有排期时生成时刻完全由排期说了算（同大量出没，见 massTick 注释）
+    if (hasSchedule()) {
+      const cur = activeSlot('twist');
+      const nxt = cur || nextSlot('twist');
+      gameData.twistNextGenAt = nxt ? nxt.from : now + 60000;
+    }
     if (now >= gameData.twistNextGenAt) spawnTwist();
     return;
+  }
+  // 有全服排期：只认"当前这一段"（同大量出没，见 massTick 注释）
+  if (hasSchedule()) {
+    const cur = activeSlot('twist');
+    if (!cur || gameData.twist.slotFrom !== cur.from) { endTwist(); return; }
   }
   if (now >= gameData.twist.expiresAt) { endTwist(); return; }
   twistMsgTick(now);      // 时空扭曲提示文案轮播（远处 / 区域内）
@@ -619,15 +679,5 @@ function updateTwistSpawner(now) {
     if (Date.now() >= tw.nextSpawnAt) backgroundHitTwist();
     return;
   }
-  forceStopBikeInTwistZone();
   startTwistRaf();
-}
-
-// 时空扭曲区域内强制结束骑行状态（同大量出没）
-function forceStopBikeInTwistZone() {
-  if (!road.isBike()) return;
-  road.setBike(false);
-  if (road.isManualBike()) road.setManualBike(false);
-  endCycling();
-  setIdleCharacter('walk');
 }
