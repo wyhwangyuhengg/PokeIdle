@@ -22,7 +22,7 @@ import { endCycling } from './audio.js';
 import { MAP_EDGES, showGpsView } from './gps.js';
 import { startMassEncounter, startTwistEncounter, scheduleNextEncounter } from './battle.js';
 import { notifyMassStart, notifyMassEnd, massMsgTick, notifyTwistStart, notifyTwistEnd, twistMsgTick } from './messages.js';
-import { pickFamily, pickWeightedPokemon } from './items.js';
+import { pickFamily, pickFamilyBySeed, pickWeightedPokemon } from './items.js';
 import { hasSchedule, activeSlot, nextSlot, serverNow } from './server-events.js';
 
 // 扭曲池跨地区、条目多：均匀随机会让神兽过密（约占 7.5%），按稀有度加权后降到 2% 左右
@@ -97,14 +97,14 @@ function spawnMassOutbreak() {
     gameData.massNextGenAt = Date.now() + randInt(10, 30) * 60000; // 该地区无精灵则稍后重试
     return;
   }
-  // 家族归一：多变体家族（未知图腾、彩粉蝶等）按单个形态计，不因形态数叠加
-  // 有排期时用排期定死的那只（全服一致）；本地池里没有就退回家族随机
-  // 有排期时按种子取同一只（全服一致）；种子缺失/越界就退回家族随机
+  // 家族归一：多变体家族（未知图腾、彩粉蝶、花叶蒂这类）先折成一簇，抽到这一簇再在簇内二次抽一只，
+  // 不因形态数叠加放大。有排期时整条路径只由种子决定，全服看到同一只
   const poke = (slot && typeof slot.seed === 'number')
-    ? pool[slot.seed % pool.length]
+    ? pickFamilyBySeed(pool, slot.seed)
     : pickFamily(pool, () => 1);
   const pokeOrFamily = poke && poke.index ? poke : pickFamily(pool, () => 1);
   const remain = randInt(MASS_COUNT_MIN, MASS_COUNT_MAX);
+  gameData.massSpawnedSlot = slot ? slot.from : 0; // 记下"这一段已经生成过"，打光后不再重刷
   gameData.massOutbreak = {
     edge, t,                       // 事件路段 + 事件点在路段上的位置比例
     slotFrom: slot ? slot.from : 0, // 来源排期段的起点（0 = 本地随机兜底），用来识别过期的旧事件
@@ -173,11 +173,12 @@ export function massTick() {
   const now = hasSchedule() ? serverNow() : Date.now();
   if (!gameData.massOutbreak?.active) {
     // 有排期时生成时刻完全由排期说了算：存档里那个本地随机计时器（新档/离线时给的）作废。
-    // 排期是异步拉回来的，所以这里每 tick 重新算一次，排期一到就能立刻补上当前这一段。
+    // 排期是异步拉回来的，所以这里每 tick 重新算一次，排期一到就能立刻补上当前这一段；
+    // 但同一段只生成一次 —— 打光/结束后要等下一段，否则会在同一段里无限重刷
     if (hasSchedule()) {
       const cur = activeSlot('mass');
-      const nxt = cur || nextSlot('mass');
-      gameData.massNextGenAt = nxt ? nxt.from : now + 60000;
+      const p = cur && gameData.massSpawnedSlot !== cur.from ? cur : nextSlot('mass');
+      gameData.massNextGenAt = p ? p.from : now + 60000;
     }
     if (now >= gameData.massNextGenAt) spawnMassOutbreak();
     return;
@@ -388,6 +389,7 @@ function spawnTwist() {
     return;
   }
   const remain = randInt(TWIST_COUNT_MIN, TWIST_COUNT_MAX);
+  gameData.twistSpawnedSlot = slot ? slot.from : 0; // 同大量出没：这一段已经生成过，打光后不再重刷
   gameData.twist = {
     edge, t,                       // 事件路段 + 事件点在路段上的位置比例
     slotFrom: slot ? slot.from : 0, // 来源排期段的起点（0 = 本地随机兜底），用来识别过期的旧事件
@@ -441,11 +443,11 @@ export function twistTick() {
   const now = hasSchedule() ? serverNow() : Date.now();
   if (!gameData.twist?.active) {
     updateTwistOverlay(); // 事件结束/不存在：确保遮罩收起
-    // 有排期时生成时刻完全由排期说了算（同大量出没，见 massTick 注释）
+    // 有排期时生成时刻完全由排期说了算，且同一段只生成一次（见 massTick 注释）
     if (hasSchedule()) {
       const cur = activeSlot('twist');
-      const nxt = cur || nextSlot('twist');
-      gameData.twistNextGenAt = nxt ? nxt.from : now + 60000;
+      const p = cur && gameData.twistSpawnedSlot !== cur.from ? cur : nextSlot('twist');
+      gameData.twistNextGenAt = p ? p.from : now + 60000;
     }
     if (now >= gameData.twistNextGenAt) spawnTwist();
     return;

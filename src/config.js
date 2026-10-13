@@ -71,10 +71,6 @@ export const EVO_PRICES = {
 };
 export const EVO_EXCLUSIVE_PRICE = 2500; // 形态专属道具的统一基准价
 
-// 稀有掉落权重：派遣 / 钓鱼 / 对战的"进化道具档"从池子里抽一件时按这张表加权。
-// 不在这张表里的一律按 1 算 = 与原来的等概率平抽完全一致，只有王冠被压低
-export const RARE_DROP_WEIGHTS = { 'silver-crown': 0.25, 'golden-crown': 0.05 };
-
 // 今日道具：每天限 5 件、每件限买 1 个，价格就是基础价
 export const EVO_SHOP_DAILY = 5;
 export const EVO_SHOP_WEIGHTS = {
@@ -194,8 +190,6 @@ export const BOUNTY_BIG_RARE_CHANCE = 0.4; // 高阶档里给「稀有道具」�
 export const BOUNTY_EXCLUSIVE_CHANCE = 0.25; // 稀有档里给形态专属道具（100 种）的概率，其余给 4 种高价通用道具
 export const BOUNTY_MINT_CHANCE = 0.30;      // 稀有档里给薄荷的概率（最优先判）
 // 稀有档里的王冠：比薄荷更稀有，金冠再压一档（两条都排在薄荷之前判）
-export const BOUNTY_GOLD_CROWN_CHANCE = 0.04; // 给金色王冠的概率
-export const BOUNTY_CROWN_CHANCE = 0.12;      // 给银色王冠的概率
 export const BOUNTY_COMMON_QTY_MIN = 2; // 高阶档常见道具的数量范围
 export const BOUNTY_COMMON_QTY_MAX = 5;
 export const BOUNTY_EXP_CANDY_QTY = 5;  // 抽到经验糖果时固定给几颗

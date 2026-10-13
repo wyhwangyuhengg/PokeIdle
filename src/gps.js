@@ -4,7 +4,7 @@
 // 沿固定漫游路线自动选择下一站。到达目的地即结束导航（目的地回到"未设置"状态）。
 // 没有目的地时，定位图标在水平轴中央原地上下浮动。
 // 推进由主角实际移动驱动（gpsAddDistance），遇敌/钓鱼时道路暂停、导航也随之暂停。
-import { $, showView, setupFoodTooltip, updateBackpack } from './ui.js';
+import { $, showView, setupFoodTooltip, updateBackpack, showConfirmBar } from './ui.js';
 import { gameData, phase, saveGame, setDistMatrix, getCurrentRoadInfo, getMassOutbreak, getPokemonByIndex, getTwist, inMassZone, inTwistZone, walkedPxOnSegment, normalizeMassRemainToEnd, pushNav } from './state.js';
 import { REGION_CYCLE, ROAD_SPEED_WALK, PX_PER_METER } from './config.js';
 import { isFishing } from './fishing.js';
@@ -937,7 +937,20 @@ export function showGpsView() {
       return;
     }
     const cancel = e.target.closest('#gpsCancelBtn');
-    if (cancel) { cancelNavigation(); return; }
+    if (cancel) {
+      // 骑行中点「下车」：与背包下车同一套二次确认，且不关导航——
+      // 下车后照旧走路去目的地，按钮自己变回「退出」，免得误触直接断了导航
+      if (road.isManualBike()) {
+        showConfirmBar(
+          road.isRoadBike() ? '确认下车？无法获得自行车道具。' : '确认下车？不返还自行车',
+          () => { road.setManualBike(false); render(); },
+          null
+        );
+        return;
+      }
+      cancelNavigation();
+      return;
+    }
     // 点底部整条底栏（文字与留白都算）→ 弹出目的地选择对话框，导航途中也能改选目的地
     // （骑行中地图与目的地都锁着，改选要先下车，所以这里也不弹）
     const pick = e.target.closest('#gpsPickDest, #gpsDock');

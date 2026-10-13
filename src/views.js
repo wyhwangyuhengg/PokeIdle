@@ -10,6 +10,7 @@ import { TEAM_MAX } from './team.js';
 import { clearBattleTier } from './battle-view.js';
 import { showDetailCard, hideDetailCard } from './item-detail.js';
 import { APP_VERSION, BUILD_STAMP } from './build-info.js';
+import { hasUpdate } from './telemetry.js';
 import { LUCK_WINDOW } from './scoring.js';
 
 // ===== 欧气综合评定 =====
@@ -1645,13 +1646,21 @@ export function renderSettings(container, s) {
   };
   container.querySelector('#githubLink')?.addEventListener('click', (e) => openLink(e, 'https://github.com/ZTMYO/PokeIdle'));
   container.querySelector('#siteLink')?.addEventListener('click', (e) => openLink(e, 'https://pokeidle.shiliu.space'));
-  // 版本号与版本戳都来自 build-info.js（由构建脚本按 package.json 生成）
-  const versionEl = container.querySelector('#settingsVersion');
-  if (versionEl) versionEl.textContent = [`v${APP_VERSION}`, BUILD_STAMP].filter(Boolean).join(' · ');
+  // 版本号与版本戳都来自 build-info.js（由构建脚本按 package.json 生成）；
+  // 服务端回报有更新版本时补一个（可更新）—— 挂在下面那个每秒重绘里，拉到数据后自动亮起
+  const paintVersion = () => {
+    const el = container.querySelector('#settingsVersion');
+    if (!el) return;
+    const base = [`v${APP_VERSION}`, BUILD_STAMP].filter(Boolean).join(' · ');
+    el.innerHTML = `<span class="settings-ver-text">${base}</span>`
+      + (hasUpdate() ? '<span class="settings-update">（可更新）</span>' : '');
+  };
+  paintVersion();
   // 上次存档时间：停留期间每秒刷新这一行文字，离开设置页自动停表（不重建整页）
   const paintSaveTime = () => {
     const el = container.querySelector('#saveTimeHint');
     if (!el) return;
+    paintVersion(); // 版本号与（可更新）提示一起跟着刷新
     const t = gameData?.stats?.lastSaveTime || 0;
     if (!t) { el.textContent = '还没有存档记录'; return; }
     const sec = Math.max(0, Math.round((Date.now() - t) / 1000));

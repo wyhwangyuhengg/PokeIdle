@@ -197,6 +197,9 @@ html.mobile-app #quitHide { display: none !important; }
   width: 100%;
   height: 100%;
   flex-shrink: 0;
+  /* 各自成层叠上下文：上屏的粒子画布（z-index 9999）只在上屏内部生效，
+     不会飘到下屏的 app 面板上面去（双屏模式下的遮挡问题） */
+  isolation: isolate;
   background: var(--screen-bg);
   border-radius: 10px;
   border: 3px solid var(--screen-bg-dark);
@@ -4767,10 +4770,13 @@ html.mobile-app #quitHide { display: none !important; }
 .settings-version {
   text-align: center;
   font-size: 9px;
-  opacity: 0.5;
   padding: 0 0 2px;
   user-select: none;
 }
+/* 版本文字保持原来的灰淡；「可更新」用自己的颜色，不受那层透明度影响 */
+.settings-ver-text { opacity: 0.5; }
+.settings-update { color: #ff7b7b; font-weight: 700; margin-left: 3px; }
+
 .auto-catch-row {
   display: flex;
   align-items: center;

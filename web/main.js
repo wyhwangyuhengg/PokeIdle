@@ -794,9 +794,20 @@ const roadPart = s => (typeof s.pos === 'number' ? ` · ${roadLabel(s.pos)}` : '
 // 大量出没的归属地区：排期里带 region 就用它，没有就从位置反推（前半段归小号端，同一套规则）
 const regionOfPos = pos => { const p = twistPoint(pos); return p.t < 0.5 ? Math.min(p.a, p.b) : Math.max(p.a, p.b); };
 const massRegion = s => s.region || REGIONS[regionOfPos(s.pos)];
-const segLabel = s => `${hhmm(s.from)}~${hhmm(s.to)}　`
+// 距现在多久：x时x分后；已开始的不加后缀
+function untilText(from, now) {
+  const ms = from - now;
+  if (ms <= 0) return '';
+  const total = Math.round(ms / 60000);
+  const h = Math.floor(total / 60), m = total % 60;
+  if (h && m) return `（${h}时${m}分后）`;
+  if (h) return `（${h}时后）`;
+  return `（${Math.max(1, m)}分后）`;
+}
+const segLabel = (s, now) => `${hhmm(s.from)}~${hhmm(s.to)}　`
   + (s.kind === 'mass' ? `大量出没 · ${massName(s) || massRegion(s)}` : '时空扭曲')
-  + (s.pos === undefined ? '' : ` · ${roadLabel(s.pos)}`);
+  + (s.pos === undefined ? '' : ` · ${roadLabel(s.pos)}`)
+  + untilText(s.from, now ?? evNow());
 
 /* ---------- 大量出没的宝可梦：与游戏内同一套算法（该地区野池 + 种子的取模落点）---------- */
 const ICON_SPRITE = './pokeicons.png';
@@ -836,7 +847,17 @@ function massSpecies(s) {
     POOL_CACHE.set(region, DEX.filter(p => p.region === region && !p.legend && !isPowerForm(p) && !WILD_OUT.has(p.index)));
   }
   const pool = POOL_CACHE.get(region);
-  return pool.length ? pool[s.seed % pool.length] : null;
+  if (!pool.length) return null;
+  // 家族归一：与游戏内 pickFamilyBySeed 同一套 —— 形态折成一簇，种子前半定簇、后半定簇内形态
+  const groups = new Map();
+  for (const p of pool) {
+    const base = String(p.index).split('-')[0];
+    if (!groups.has(base)) groups.set(base, []);
+    groups.get(base).push(p);
+  }
+  const list = [...groups.values()];
+  const g = list[s.seed % list.length];
+  return g[Math.floor(s.seed / list.length) % g.length];
 }
 const massName = s => { const p = massSpecies(s); return p ? (p.form || p.name) : ''; };
 
@@ -961,7 +982,7 @@ function renderRail(now) {
     } else {
       bar.textContent = '✦';
     }
-    const on = () => { evPreview = s; document.getElementById('evHint').innerHTML = segLabel(s); renderMapMarkers(evNow()); };
+    const on = () => { evPreview = s; document.getElementById('evHint').innerHTML = `<div class="ev-hint-line">${segLabel(s, evNow())}</div>`; renderMapMarkers(evNow()); };
     const off = () => { evPreview = null; renderStatus(evNow()); renderMapMarkers(evNow()); };
     bar.addEventListener('mouseenter', on);
     bar.addEventListener('mouseleave', off);
@@ -1006,7 +1027,8 @@ function renderStatus(now) {
     parts.push(`${sp ? sp + ' ' : ''}${esc(massRegion(m))} 大量出没${roadPart(m)} · 剩 ${mins(m.to - now)}`);
   }
   if (t) parts.push(`${esc(REGIONS[regionOfPos(t.pos)])} 时空扭曲${roadPart(t)} · 剩 ${mins(t.to - now)}`);
-  if (parts.length) { hint.innerHTML = parts.join('<i>|</i>'); return; }
+  // 同时有两个事件就一行一个，不挤在一行
+  if (parts.length) { hint.innerHTML = parts.map(p => `<div class="ev-hint-line">${p}</div>`).join(''); return; }
 
   const next = [
     ...(evData.mass || []).map(s => ({ ...s, kind: 'mass' })),
@@ -1018,7 +1040,7 @@ function renderStatus(now) {
   const what = next.kind === 'mass'
     ? `${sp ? sp + ' ' : ''}${esc(massRegion(next))} 大量出没${roadPart(next)}`
     : `${esc(REGIONS[regionOfPos(next.pos)])} 时空扭曲${roadPart(next)}`;
-  hint.innerHTML = `下一场：${hhmm(next.from)}　${what}　${wait <= 0 ? '（即将开始）' : `（${wait} 分钟后）`}`;
+  hint.innerHTML = `<div class="ev-hint-line">下一场：${hhmm(next.from)}　${what}　${wait <= 0 ? '（即将开始）' : `（${wait} 分钟后）`}</div>`;
 }
 
 function renderEvents() {

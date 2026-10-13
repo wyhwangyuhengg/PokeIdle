@@ -1,5 +1,5 @@
 // ===== 道具相关逻辑 =====
-import { ITEM_NAMES, ITEM_DESC, CANDY_EXCHANGE, ITEM_SELL_RATE, ITEM_SELL_OVERRIDE, CANDY_DROP_MULT, SHINY_CHANCE, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, PX_PER_METER, EVO_PRICES, EVO_EXCLUSIVE_PRICE, EVO_SHOP_DAILY, EVO_SHOP_WEIGHTS, EVO_SHOP_EXCLUSIVE_SLOTS, EVO_SHOP_EXCLUSIVE_WEIGHT, EVO_SHOP_MINT_WEIGHT, EVO_SHOP_CROWNS, RARE_DROP_WEIGHTS, MINT_NATURES, MINT_PRICE, BREED_ONLY_IDS, LEGEND_POOL_DIVISOR, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, hatchSprite } from './config.js';
+import { ITEM_NAMES, ITEM_DESC, CANDY_EXCHANGE, ITEM_SELL_RATE, ITEM_SELL_OVERRIDE, CANDY_DROP_MULT, SHINY_CHANCE, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, PX_PER_METER, EVO_PRICES, EVO_EXCLUSIVE_PRICE, EVO_SHOP_DAILY, EVO_SHOP_WEIGHTS, EVO_SHOP_EXCLUSIVE_SLOTS, EVO_SHOP_EXCLUSIVE_WEIGHT, EVO_SHOP_MINT_WEIGHT, EVO_SHOP_CROWNS, MINT_NATURES, MINT_PRICE, BREED_ONLY_IDS, LEGEND_POOL_DIVISOR, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, hatchSprite } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, encounterMsg, setCurrentEncounter, setEncounterLevel, setEncounterBallsUsed, setCurrentEncounterBalls, setEncounterMsg, setCurrentIsShiny, setPhase, _itemDropActive, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, honeyCountdownInterval, charmCountdownInterval, honeyExpiryTimer, charmExpiryTimer, nextEncounterTimer, _charmEncounterCount, _eggHatching, saveGame, addSystemLog, addIncubatorLog, randInt, rand, getCurrentRegion, setNextEncounterTimer, setItemDropActive, setEggHatching, setIdleMsgIdx, setHoneyBuffActive, setHoneyCountdownEnd, setCharmBuffActive, setCharmGuaranteed, setCharmCountdownEnd, setHoneyPausedRemaining, setCharmPausedRemaining, setCharmEncounterCount, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, calcHatchDistance, getIncubatorUnlockCost, addRosterEntry, rarityLabel, setLastObtainedEntryId, getLastObtainedEntryId, isPokemon, rollGender, ensureGender, genderBadge, dexUnlocked, dexShinyOwned } from './state.js';
 import { $, updateTextBox, updateBackpack, updateStats, showView, isOnHatchView, isIdleStageVisible, isPageHidden, fitPokemonImage, tryLoadPokemonImage, setIdleCharacter, renderIncubatorView, updateIncubatorBadge, showConfirmBar, hideConfirmBar, isEvolutionShowActive } from './ui.js';
 import { showIdlePickup, showBuffExpired } from './messages.js';
@@ -148,16 +148,11 @@ const exclusivePool = () => (_exclusiveNames || []).filter((n) => EVO_PRICES[n] 
 export const evoExclusivePool = () => exclusivePool();
 // 掉落池：派遣与钓鱼共用（通用进化道具 + 形态专属道具 + 薄荷 + 王冠）
 export const evoDropPool = () => [...Object.keys(EVO_PRICES), ...exclusivePool(), ...MINT_KEYS];
-// 从掉落池按 RARE_DROP_WEIGHTS 抽一件（表里没有的按 1 = 等概率，与原来一致）；三处渠道共用这一个入口
+// 从掉落池等概率抽一件（王冠与薄荷同级）；对战 / 派遣 / 钓鱼三处共用这一个入口
 export function pickEvoDrop() {
   const pool = evoDropPool();
   if (!pool.length) return null;
-  const weightOf = (k) => RARE_DROP_WEIGHTS[k] ?? 1;
-  let total = 0;
-  for (const k of pool) total += weightOf(k);
-  let r = Math.random() * total;
-  for (const k of pool) { r -= weightOf(k); if (r < 0) return k; }
-  return pool[pool.length - 1];
+  return pool[randInt(0, pool.length - 1)];
 }
 
 // 进化表只拉一次：注入图标名、形态编号、专属道具名单
@@ -482,6 +477,16 @@ export function foldFamilies(pool) {
   return [...map.values()];
 }
 
+// 种子版家族采样：与 pickFamily 同一套归一规则，但整条路径只由种子决定 ——
+// 有全服排期时用它，保证所有玩家看到同一只
+export function pickFamilyBySeed(pool, seed) {
+  const source = pool || allPokemon;
+  if (source.length === 0) return null;
+  const groups = foldFamilies(source);
+  const g = groups[seed % groups.length];
+  return g[Math.floor(seed / groups.length) % g.length];
+}
+
 // 家族权重采样：家族权重取成员中单个最大权重（形态数量不叠加），
 // 命中家族后在家族内均匀随机选一个具体形态
 export function pickFamily(pool, weightOf) {
@@ -769,7 +774,9 @@ export function spawnItemDrop(itemKey, opts = {}) {
           el.remove();
           setItemDropActive(false);
           setIdleCharacter('walk');            // 姿势必须收回走路：动画收尾被战斗打断时不会卡在动作帧
-          if (phase === 'idle') road.resume();   // 路面恢复交给战斗/goIdle 统一处理
+          // 拾取时把路面停下了，这里要放回去：NPC 对战不占这一屏，路面本来就该继续走。
+          // 但上屏还压着野生遭遇时，暂停归遭遇（由 goIdle 统一恢复），不在这儿抢着启动
+          if (phase === 'idle' || (phase === 'battle' && !currentEncounter)) road.resume();
           gameData.roadItem = null; // 已拾取：清档
           grantItem(itemKey, qty);
           saveGame(); // 拾取入账立即存档，避免刷新时丢失最新掉落日志/道具
@@ -1573,17 +1580,29 @@ export function takeBuffForRenew(item) {
   return (gameData.items[item] || 0) > 0;
 }
 
+// 骑行期间到期的自动续杯先记账，等下车回到挂机再续：骑行不遇敌，续上就是白烧一瓶
+let _buffRenewPending = false;
+export function renewBuffAfterRide() {
+  if (!_buffRenewPending || road.isBike() || phase !== 'idle') return;
+  if (charmBuffActive || honeyBuffActive) return; // 另一个还在跑：等它自己到期时再谈续杯
+  _buffRenewPending = false;
+  if (takeBuffForRenew('sweet-honey')) { activateHoney(); return; }
+  if (takeBuffForRenew('shiny-charm')) activateShinyCharm();
+}
+
 export function handleHoneyExpired() {
   setHoneyBuffActive(false);
   setHoneyCountdownEnd(0);
   clearHoneyCountdown();
   $('idleText').textContent = '✦ 甜蜜蜜的效果渐渐褪去了';
-  if (!charmBuffActive && takeBuffForRenew('sweet-honey')) {
+  const riding = road.isBike();
+  if (riding) _buffRenewPending = true;
+  if (!riding && !charmBuffActive && takeBuffForRenew('sweet-honey')) {
     setHoneyExpiryTimer(null);
     activateHoney();
     return;
   }
-  if (!charmBuffActive && takeBuffForRenew('shiny-charm')) {
+  if (!riding && !charmBuffActive && takeBuffForRenew('shiny-charm')) {
     setHoneyExpiryTimer(null);
     activateShinyCharm();
     return;
@@ -1601,12 +1620,15 @@ export function handleCharmExpired() {
   setCharmCountdownEnd(0);
   clearCharmCountdown();
   showBuffExpired('charm');
-  if (takeBuffForRenew('sweet-honey')) {
+  // 骑行中到期：见 handleHoneyExpired 的同款处理
+  const riding = road.isBike();
+  if (riding) _buffRenewPending = true;
+  if (!riding && takeBuffForRenew('sweet-honey')) {
     setCharmExpiryTimer(null);
     activateHoney();
     return;
   }
-  if (takeBuffForRenew('shiny-charm')) {
+  if (!riding && takeBuffForRenew('shiny-charm')) {
     setCharmExpiryTimer(null);
     activateShinyCharm();
     return;

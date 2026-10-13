@@ -165,7 +165,7 @@ export function rollRewards(entry, durationMin) {
   return [...merged].map(([key, qty]) => ({ key, qty }));
 }
 
-// 进化道具/薄荷/王冠掉落：概率随档位线性上升（1h 2.5% → 24h 60%），命中就按稀有度权重抽一件
+// 进化道具/薄荷/王冠掉落：概率随档位线性上升（1h 2.5% → 24h 60%），命中就从池子里等概率抽一件
 function rollEvoDrop(durationMin) {
   const hours = durationMin / 60;
   const chance = Math.min(1, hours / 24) * DISPATCH_EVO_MAX_CHANCE;

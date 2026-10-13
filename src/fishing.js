@@ -294,7 +294,7 @@ function resumeBuffCountdown() {
 // 钓到道具：按掉率权重抽一种；另有 FISH_EVO_CHANCE 的概率改钓到一件进化道具/薄荷/王冠（只给 1 件）
 function pickFishingReward() {
   if (Math.random() < FISH_EVO_CHANCE) {
-    const key = pickEvoDrop(); // 按稀有度权重抽（王冠被压低）
+    const key = pickEvoDrop(); // 全池等概率抽（王冠与薄荷同级）
     if (key) return { key, qty: 1 };
   }
   const entries = Object.entries(ITEM_RATES);

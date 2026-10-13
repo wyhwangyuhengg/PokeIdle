@@ -1,7 +1,7 @@
 // ===== 地区悬赏 =====
 // 每天 0 点刷新：每地区指定若干只宝可梦（图鉴加权抽样），奖励糖果或道具。
 // 仓库里有该物种的在仓个体即可提交；只有今日到访过的地区能看到内容，提交必须到当地。
-import { REGION_CYCLE, ITEM_NAMES, BOUNTY_PER_REGION, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_JITTER, BOUNTY_RARE_WEIGHT, BOUNTY_COST_REF, BOUNTY_CANDY_CN, BOUNTY_BIG_CN, BOUNTY_BIG_RARE_CHANCE, BOUNTY_EXCLUSIVE_CHANCE, BOUNTY_MINT_CHANCE, BOUNTY_CROWN_CHANCE, BOUNTY_GOLD_CROWN_CHANCE, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BOUNTY_EXP_CANDY_QTY, EVO_PRICES } from './config.js';
+import { REGION_CYCLE, ITEM_NAMES, BOUNTY_PER_REGION, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_JITTER, BOUNTY_RARE_WEIGHT, BOUNTY_COST_REF, BOUNTY_CANDY_CN, BOUNTY_BIG_CN, BOUNTY_BIG_RARE_CHANCE, BOUNTY_EXCLUSIVE_CHANCE, BOUNTY_MINT_CHANCE, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BOUNTY_EXP_CANDY_QTY, EVO_PRICES } from './config.js';
 import { gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, getCurrentRegion, pushNav, saveGame, addSystemLog, ensureGender, genderBadge, isPokemon, randInt, ivOf, effIvTotal } from './state.js';
 import { $, showView, updateStats, tryLoadImage, logicViewport, popupBounds, showConfirmBar, watchOutsidePress } from './ui.js';
 import { showGoodbyeConfirm } from './animation.js';
@@ -78,13 +78,11 @@ function calcBountyCandy(c) {
 //   成本归一值 < BOUNTY_CANDY_CN → 糖果
 //   到 BOUNTY_BIG_CN 之前 → 1 件道具（常见档：10 种通用石 + 经验糖果）
 //   ≥ BOUNTY_BIG_CN → 1 件稀有道具（薄荷 / 形态专属道具 / 4 种高价通用道具）或 2~5 件常见道具
-const BOUNTY_COMMON_ITEMS = ['火之石', '水之石', '雷之石', '叶之石', '冰之石', '月之石', '日之石', '光之石', '暗之石', '觉醒之石', 'exp-candy'];
+// 王冠在常见表里与叶之石等同概率，不再单列稀有档
+const BOUNTY_COMMON_ITEMS = ['火之石', '水之石', '雷之石', '叶之石', '冰之石', '月之石', '日之石', '光之石', '暗之石', '觉醒之石', 'silver-crown', 'golden-crown', 'exp-candy'];
 const BOUNTY_RARE_ITEMS = ['心之石', '联系绳', '极巨汤', '奇异石'];
 function rollItemReward(big) {
   if (big && Math.random() < BOUNTY_BIG_RARE_CHANCE) {
-    // 王冠最稀（金冠再压一档），排在薄荷之前判；两者都比薄荷难出
-    if (Math.random() < BOUNTY_GOLD_CROWN_CHANCE) return { item: 'golden-crown', qty: 1 };
-    if (Math.random() < BOUNTY_CROWN_CHANCE) return { item: 'silver-crown', qty: 1 };
     if (Math.random() < BOUNTY_MINT_CHANCE) return { item: MINT_KEYS[randInt(0, MINT_KEYS.length - 1)], qty: 1 };
     const pool = evoExclusivePool();
     if (pool.length && Math.random() < BOUNTY_EXCLUSIVE_CHANCE) return { item: pool[randInt(0, pool.length - 1)], qty: 1 };
@@ -92,6 +90,7 @@ function rollItemReward(big) {
   }
   const key = BOUNTY_COMMON_ITEMS[randInt(0, BOUNTY_COMMON_ITEMS.length - 1)];
   if (key === 'exp-candy') return { item: key, qty: BOUNTY_EXP_CANDY_QTY };
+  if (key.endsWith('crown')) return { item: key, qty: 1 }; // 王冠按全局惯例只给 1 个
   return { item: key, qty: big ? randInt(BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX) : 1 };
 }
 

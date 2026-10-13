@@ -38,12 +38,49 @@ const ORIGINS = new Set([
 
 if (!SALT) console.warn('[server] 未设置 TELEMETRY_SALT（仅限本地调试）');
 
+// ---- 版本公告 ----
+// 客户端每次心跳带上自己的版本（`安装标识|版本|版本戳`），服务端记下见过的最新一份，
+// 并在响应里告诉这个客户端"你是不是旧的" —— 设置页据此显示（可更新）。
+// 想不等玩家先更新就公布，启动时钉一个即可：LATEST_VERSION=1.1.7 LATEST_STAMP=beta1
+const PIN_VER = process.env.LATEST_VERSION || '';
+const PIN_STAMP = process.env.LATEST_STAMP || '';
+const VER_RE = /^\d+(\.\d+){1,3}$/;
+function verRank(s) { // 版本号相同时的先后：正式版 > 其它标记 > betaN
+  if (!s) return 1e6;
+  const m = /^beta(\d*)$/i.exec(s);
+  return m ? (Number(m[1]) || 0) : 5e5;
+}
+function cmpVer(a, b) { // >0 表示 a 比 b 新
+  const pa = String(a.ver).split('.').map(Number);
+  const pb = String(b.ver).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return verRank(a.stamp) - verRank(b.stamp);
+}
+function latestVersion() {
+  if (PIN_VER) return { ver: PIN_VER, stamp: PIN_STAMP };
+  syncVersionFile();
+  return db.version;
+}
+function noteVersion(ver, stamp) {
+  if (PIN_VER || !VER_RE.test(ver || '')) return;
+  const next = { ver, stamp: String(stamp || '').slice(0, 16) };
+  if (!db.version || cmpVer(next, db.version) > 0) { db.version = next; save(); }
+}
+function isOutdated(ver, stamp) {
+  const cur = latestVersion();
+  if (!cur || !VER_RE.test(ver || '')) return false;
+  return cmpVer(cur, { ver, stamp: stamp || '' }) > 0;
+}
+
 // ---------- 在线统计 ----------
 const seen = new Map();  // hash -> { last, beats }
 const rate = new Map();  // ip -> { n, ts }
 // 落盘就一个文件 data/stats.json：{ days: { '2026-10-12': [哈希...] }, total: [哈希...] }
 const DB_FILE = path.join(DATA_DIR, 'stats.json');
-const db = { days: {}, total: [] };
+const db = { days: {}, total: [], version: null }; // version = 见过的最新版本（客户端心跳带上来的）
 const totalSet = new Set();
 let day = dayKey();
 let today = new Set();
@@ -56,14 +93,29 @@ function rollDay() { // 跨天：换一天的桶（历史留在 db.days 里）
   day = now;
   today = new Set(db.days[day] || []);
 }
+// 版本记录以文件为准：手动改了 stats.json 的 version，下一次读取/落盘就会采纳，
+// 既不用重启，也不会被内存里的旧值在 30 秒一次的落盘里顶掉
+let _verMtime = 0;
+function syncVersionFile() {
+  try {
+    const st = fs.statSync(DB_FILE);
+    if (st.mtimeMs === _verMtime) return;
+    _verMtime = st.mtimeMs;
+    const j = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    const v = j && j.version;
+    if (v === null) db.version = null;                      // 显式写成 null 视为清空
+    else if (v && typeof v.ver === 'string') db.version = v;
+  } catch (_) { /* 文件不存在或内容坏了：保持内存里的值 */ }
+}
 function save() {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
+    syncVersionFile();
     if (today.size) db.days[day] = [...today].sort();
     const days = {};
     for (const k of Object.keys(db.days).sort()) days[k] = [...db.days[k]].sort();
     db.total = [...totalSet].sort();
-    fs.writeFileSync(DB_FILE, JSON.stringify({ days, total: db.total }));
+    fs.writeFileSync(DB_FILE, JSON.stringify({ days, total: db.total, version: db.version }));
   } catch (e) { console.error('[server] 落盘失败:', e.message); }
 }
 function load() {
@@ -71,6 +123,7 @@ function load() {
     const j = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     if (j && typeof j.days === 'object') db.days = j.days || {};
     if (Array.isArray(j && j.total)) j.total.forEach((h) => totalSet.add(h));
+    if (j && j.version && typeof j.version.ver === 'string') db.version = j.version;
     today = new Set(db.days[day] || []);
     return;
   } catch (_) {}
@@ -163,17 +216,19 @@ function saveEvents() {
   } catch (e) { console.warn('[server] 事件排期落盘失败', e.message); }
 }
 
-// 保证有今天的排期，并只留最近两天
+// 保证「今天 + 明天」两份都在，并只留这两天。
+// 次日排期提前一整天备好：轴是水平滑动的，23 点后窗口会跨到次日，到点才生成会留一段空白。
 function ensureEvents(nowMs = Date.now()) {
   const key = dateKey(nowMs);
   let changed = false;
-  if (!eventDb.days[key]) {
-    const base = new Date(nowMs);
+  for (const [k, ts] of [[key, nowMs], [dateKey(nowMs + DAY_MS), nowMs + DAY_MS]]) {
+    if (eventDb.days[k]) continue;
+    const base = new Date(ts);
     base.setHours(0, 0, 0, 0);
-    const data = buildDay(key, base.getTime());
-    eventDb.days[key] = data;
+    const data = buildDay(k, base.getTime());
+    eventDb.days[k] = data;
     changed = true;
-    console.log(`[server] 已生成 ${key} 事件排期：大量出没 ${data.mass.length} 场 / 时空扭曲 ${data.twist.length} 场`);
+    console.log(`[server] 已生成 ${k} 事件排期：大量出没 ${data.mass.length} 场 / 时空扭曲 ${data.twist.length} 场`);
   }
   const keys = Object.keys(eventDb.days).sort();
   for (const k of keys.slice(0, Math.max(0, keys.length - EVENT_KEEP_DAYS))) {
@@ -182,6 +237,14 @@ function ensureEvents(nowMs = Date.now()) {
   }
   if (changed) saveEvents();
   return eventDb.days[key] || null;
+}
+
+// 对外排期：今天 + 明天平铺成一个按开始时刻排序的列表。
+// 客户端与官网都按绝对时间戳判断，拿到连续两天就等于轴滑到哪儿都有数据。
+function mergedSchedule(nowMs = Date.now()) {
+  const days = [eventDb.days[dateKey(nowMs)], eventDb.days[dateKey(nowMs + DAY_MS)]];
+  const cat = (k) => days.flatMap((d) => d?.[k] || []).sort((a, b) => a.from - b.from);
+  return { date: dateKey(nowMs), mass: cat('mass'), twist: cat('twist') };
 }
 
 // 跨天时自动换页：日期没变就直接返回，不做多余 IO
@@ -216,15 +279,19 @@ const ROUTES = [
       else if (++r.n > RATE_BURST) { rate.set(ip, r); return json(res, 429, { ok: false }, allowOrigin(req)); }
       rate.set(ip, r);
 
-      const id = body.trim();
-      if (!/^[0-9a-f]{16,64}$/.test(id)) return json(res, 400, { ok: false }, allowOrigin(req));
+      // body 是 `安装标识|版本|版本戳`；老客户端只发标识，照样接受（只是不知道它的版本）
+      const [id, ver, stamp] = body.trim().split('|');
+      if (!/^[0-9a-f]{16,64}$/.test(id || '')) return json(res, 400, { ok: false }, allowOrigin(req));
+      if (ver) noteVersion(ver, stamp);
       const h = hashOf(id);
       const cur = seen.get(h);
       if (cur) { cur.last = now; cur.beats++; } else seen.set(h, { last: now, beats: 1 });
       rollDay();
       if (today.size < 500000) today.add(h);
       if (totalSet.size < 500000) totalSet.add(h);
-      json(res, 200, { ok: true }, allowOrigin(req)); // 不回统计值：客户端不需要，也少一个被探测的口子
+      // 不回统计值：客户端不需要，也少一个被探测的口子；只回报版本，设置页据此提示可更新
+      const latest = latestVersion();
+      json(res, 200, { ok: true, update: isOutdated(ver, stamp), latest: latest ? latest.ver : null, stamp: latest ? latest.stamp : null }, allowOrigin(req));
     },
   },
   {
@@ -242,8 +309,9 @@ const ROUTES = [
     method: 'GET',
     path: '/api/events',
     handle(req, res) {
-      const data = ensureEvents();
-      if (!data) return json(res, 503, { ok: false });
+      ensureEvents();
+      const data = mergedSchedule();
+      if (!data.mass.length && !data.twist.length) return json(res, 503, { ok: false });
       json(res, 200, { ...data, serverNow: Date.now() }, {
         'Access-Control-Allow-Origin': '*',      // 公开只读数据，官网/客户端都能取
         'Cache-Control': 'public, max-age=60',   // 客户端自己会缓存整天，这层只防连点
