@@ -12,6 +12,7 @@ export function bgCatchupEnabled() {
 // 隐藏开始时间戳 / 停摆累计秒数 / 停摆时步态(是否骑行) / 停摆时 buff 剩余毫秒快照
 let _hiddenAt = 0;
 let _bgSecAccum = 0;
+let _statSecAccum = 0;   // 同一会话里切后台的秒数：补记"挂机时长"用；离线秒数已由 calcOffline 记过，不进这个桶
 let _hiddenIsBike = false;
 let _hiddenBuffRemainingMs = 0;
 
@@ -29,6 +30,13 @@ export function bgPeekAccum() { return _bgSecAccum; }
 export function bgTakeAccum() {
   const s = _bgSecAccum;
   _bgSecAccum = 0;
+  return s;
+}
+
+// 读取"该补记挂机时长"的停摆秒数并清零（只有同一会话切后台才往里加）
+export function bgTakeStatSeconds() {
+  const s = _statSecAccum;
+  _statSecAccum = 0;
   return s;
 }
 
@@ -71,6 +79,7 @@ export function startBackgroundCatchup() {
     } else if (_hiddenAt) {
       const awaySec = (Date.now() - _hiddenAt) / 1000;
       _bgSecAccum += awaySec;
+      _statSecAccum += awaySec;   // 挂机时长也要算上这段：这段时间没有 tick，逐秒累加走不到
       _hiddenAt = 0;
       deps.onShown(awaySec); // 停摆窗口内刷出的遭遇还压在屏幕上：回前台按当前模式结掉
     }

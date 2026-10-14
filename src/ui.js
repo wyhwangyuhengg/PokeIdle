@@ -53,7 +53,7 @@ export function showNowPlaying(title, artist) {
 
 // ---------- 视图切换 ----------
 // 全部全屏视图 id：显示切换与"记录返回来源"共用同一份列表
-const VIEW_IDS = ['idleView','introView','phoneView','musicView','pokedexView','encounterView','hatchView','hatchAllView','gpsView','bountyView','dataView','achievementView','shopView','settingsView','tutorialView','declarationView','systemLogView','incubatorView','incubatorEggView','mixerView','berryView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','casinoGameView','mahjongView','gachaView','gachaHistoryView','casinoHistoryView','albumView','itemBoxView','followerView','followerDexView','dispatchView','evoView'];
+const VIEW_IDS = ['idleView','introView','phoneView','musicView','pokedexView','encounterView','hatchView','hatchAllView','gpsView','bountyView','dataView','achievementView','shopView','settingsView','tutorialView','declarationView','systemLogView','incubatorView','incubatorEggView','mixerView','berryView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','casinoGameView','mahjongView','gachaView','gachaHistoryView','casinoHistoryView','albumView','itemBoxView','followerView','followerDexView','dispatchView','evoView','activityView','memoryView'];
 const CASINO_VIEWS = new Set(['casinoView', 'casinoGameView', 'mahjongView', 'gachaView', 'gachaHistoryView', 'casinoHistoryView']);
 // 舞台类视图 = 游戏画面（挂机/遇敌），其余都是下屏的应用类
 const STAGE_VIEWS = new Set(['idleView', 'encounterView']);
@@ -83,7 +83,7 @@ export function closeAppArea() {
 }
 
 // 当前页标记与入口按钮高亮：showView 与「下半屏回手机首页」共用同一套记账
-const PHONE_VIEWS = new Set(['phoneView','gpsView','pokedexView','incubatorView','hatchView','hatchAllView','berryView','mixerView','dataView','achievementView','systemLogView','tutorialView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','albumView','itemBoxView','musicView']);
+const PHONE_VIEWS = new Set(['phoneView','gpsView','pokedexView','incubatorView','hatchView','hatchAllView','berryView','mixerView','dataView','achievementView','systemLogView','tutorialView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','albumView','itemBoxView','musicView','activityView','memoryView']);
 export function syncViewChrome(id) {
   document.documentElement.dataset.view = id;
   _currentView = id;
@@ -241,8 +241,9 @@ export function showView(id) {
   if (mobileDual) {
     if (targetStage) { if (hideStageBox) hideTextBox('stage'); }
     else hideTextBox('app');
-  } else if (hideStageBox) {
-    hideTextBox();
+  } else {
+    if (hideStageBox) hideTextBox('stage');
+    if (!targetStage) hideTextBox('app'); // 经典布局：app 文案也在 App 屏上，离开时一并收掉
   }
   if (id === 'encounterView' && phase === 'encounter' && currentEncounter) {
     const box = $('textBox');
@@ -275,19 +276,40 @@ export function showView(id) {
     title.innerHTML = '口袋挂机';
     title.dataset.action = '';
   } else {
-    const names = { phoneView:'手机', pokedexView:'图鉴', gpsView:'导航', bountyView:'地区悬赏', dataView:'统计', achievementView:'成就', shopView:'商店', settingsView:'设置', tutorialView:'教程', declarationView:'版权声明', systemLogView:'系统日志', incubatorView:'孵蛋器', incubatorEggView:'放入蛋', followerDexView:'随从图鉴', hatchView:'孵化', hatchAllView:'孵化全部', evoView:'进化', mixerView:'混合器', berryView:'农场', rosterView:'宝可梦', moveEditView:'配招', tradeView:'交换', battleView:'对战', teamView:'配队', trainView:'训练', nurseryView:'饲育屋', dispatchView:'派遣', casinoView:'游戏厅', casinoGameView:'21 点', mahjongView:'口袋麻将', gachaView:'抽卡机', gachaHistoryView:'抽卡记录', casinoHistoryView:'战绩记录', albumView:'卡册', itemBoxView:'道具盒', musicView:'音乐', followerView:'随从' };
+    const names = { phoneView:'手机', pokedexView:'图鉴', gpsView:'导航', bountyView:'地区悬赏', dataView:'统计', achievementView:'成就', shopView:'商店', settingsView:'设置', tutorialView:'教程', declarationView:'版权声明', systemLogView:'系统日志', incubatorView:'孵蛋器', incubatorEggView:'放入蛋', followerDexView:'随从图鉴', hatchView:'孵化', hatchAllView:'孵化全部', evoView:'进化', mixerView:'混合器', berryView:'农场', rosterView:'宝可梦', moveEditView:'配招', tradeView:'交换', battleView:'对战', teamView:'配队', trainView:'训练', nurseryView:'饲育屋', dispatchView:'派遣', casinoView:'游戏厅', casinoGameView:'21 点', mahjongView:'口袋麻将', gachaView:'抽卡机', gachaHistoryView:'抽卡记录', casinoHistoryView:'战绩记录', albumView:'卡册', itemBoxView:'道具盒', musicView:'音乐', followerView:'随从', activityView:'限时活动', memoryView:'宝可翻牌' };
     title.innerHTML = `<svg style="width:16px;height:16px;vertical-align:middle;fill:var(--ui-color);transform:translateY(-1px);" viewBox="0 0 1024 1024"><use xlink:href="#icon-back"/></svg> ${names[chromeId]||''}`;
     title.dataset.action = 'back';
   }
 }
 
 // ---------- 底部文字框 ----------
-// 文案宿主：手游舞台文案走上屏、app 文案走下屏；经典只有一个屏，都走 #textBox
+// 文案宿主：舞台文案走舞台屏的文字框，app 文案一律走 App 屏自己的那个。
+// 经典（单屏）布局下 App 屏是盖在舞台屏上的，走舞台框会被 App 页整片压住；
+// 双屏下两块屏各用各的，同理。
 function textBoxHost(owner) {
-  const useAppBox = owner === 'app' && isDualLayout();
+  const useAppBox = owner === 'app';
   return useAppBox
     ? { box: $('appTextBox'), content: $('appTextBoxContent'), arrow: $('appTextBoxArrow') }
     : { box: $('textBox'), content: $('textBoxContent'), arrow: $('textBoxArrow') };
+}
+
+// 入场动画统一入口：等两帧再动（让 transition 生效），但页面不可见或被冻结时 rAF 可能一直不来，
+// 那样弹框会永远停在屏幕外 —— 补一个定时器兜底，且保证只跑一次
+function afterPaint(fn) {
+  let done = false;
+  const run = () => { if (done) return; done = true; fn(); };
+  if (document.hidden) { run(); return; }
+  requestAnimationFrame(() => requestAnimationFrame(run));
+  setTimeout(run, 350);
+}
+
+// 直接把文字框放到位（不走升起动画）：切后台恢复、尺寸变化补场时用，动画那套在不可见页面会卡住
+export function showTextBoxNow(owner = 'stage') {
+  const { box } = textBoxHost(owner);
+  if (!box) return;
+  box.style.display = 'flex';
+  box.classList.add('show');
+  box.style.transform = 'translateY(0)';
 }
 
 export function updateTextBox(text, showArrow, owner = 'stage') {
@@ -299,7 +321,7 @@ export function updateTextBox(text, showArrow, owner = 'stage') {
   if (arrow) arrow.style.display = showArrow ? 'flex' : 'none';
   if (box.classList.contains('show')) return;
   box.style.display = 'flex';
-  requestAnimationFrame(() => {
+  afterPaint(() => {
     box.style.transform = 'translateY(100%)';
     void box.offsetHeight;
     box.classList.add('show');
@@ -353,12 +375,8 @@ export function showConfirmBar(text, onYes, onNo, opts = {}) {
   }
   bar.style.display = 'flex';
   bar.style.transform = 'translateY(100%)'; // 先藏在底部
-  // 下一帧滑入，触发 .text-box 的 transition: transform 0.25s
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      bar.style.transform = '';
-    });
-  });
+  // 下一帧滑入，触发 .text-box 的 transition: transform 0.25s（被冻结时由 afterPaint 兜底落位）
+  afterPaint(() => { bar.style.transform = ''; });
   if (opts.height) bar.style.height = opts.height;
   if (!opts.noButtons) {
     bar.querySelector('[data-cb-yes]').addEventListener('click', (e) => {
@@ -556,8 +574,13 @@ export function setIdleCharacter(state, itemKey) {
 
 // ---------- 图片尺寸自适应 ----------
 let _stageCache = null;
+let _stageKey = '';
+// 尺寸变化（手机分屏 / 切小窗 / 旋转 / 布局缩放）后必须重算：
+// 原来只判断"够不够大"，量过一次就永远返回旧值，贴图/浮层会按旧尺寸摆位
+export function invalidateStageSize() { _stageCache = null; _stageKey = ''; }
 export function getStageSize() {
-  if (_stageCache && _stageCache.w >= 280 && _stageCache.h >= 250) return _stageCache;
+  const key = `${window.innerWidth}x${window.innerHeight}`;
+  if (_stageCache && _stageKey === key && _stageCache.w >= 280 && _stageCache.h >= 250) return _stageCache;
   const innerRect = $('screenInner')?.getBoundingClientRect();
   let w = innerRect?.width || 0;
   let h = innerRect?.height || 0;
@@ -570,8 +593,21 @@ export function getStageSize() {
     w = window.innerWidth;
     h = window.innerHeight;
   }
-  if (w >= 280 && h >= 250) _stageCache = { w, h };
+  if (w >= 280 && h >= 250) { _stageCache = { w, h }; _stageKey = key; }
   return { w, h };
+}
+
+// 尺寸变化后重排舞台：贴图按新尺寸重算、遭遇文字框按当前状态补上。
+// 手机分屏 / 切小窗 / 旋转都会走这里（否则随从、主角、路面道具会各按各的旧尺寸摆位）
+export function relayoutStage() {
+  invalidateStageSize();
+  road.refreshSize(); // 路面画布按新的容器宽度重算，晚一拍量能拿到缩放落定后的尺寸
+  const encImg = document.getElementById('encounterGif');
+  if (encImg && encImg.naturalWidth) fitPokemonImage(encImg);
+  if (phase === 'encounter' && currentEncounter && isOnGameView()) {
+    const box = document.getElementById('textBox');
+    if (box && !box.classList.contains('show')) showTextBoxNow('stage');
+  }
 }
 
 export function fitPokemonImage(img) {

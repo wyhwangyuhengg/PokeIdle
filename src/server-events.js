@@ -2,7 +2,6 @@
 // 服务端每天生成一份排期（大量出没 / 时空扭曲），所有玩家共用：同一时刻看到同一个事件。
 // 时间一律以"服务器时间"为准 —— 拿到排期后用单调时钟推进，玩家改系统时间无效。
 // 拉不到（离线 / 服务器故障）时 hasSchedule() 为 false，游戏退回本地随机事件，照常能玩。
-import { DEV } from './build-info.js';
 const EVENTS_ENDPOINT = 'https://pokeidle.shiliu.space/api/events/';   // 末尾斜杠直连，避开 nginx 的 301
 const CACHE_KEY = 'pokeidle_events_cache_v1';
 const RETRY_MIN = 10;   // 轮询间隔（分钟）：正常情况下只靠回前台与跨天补拉
@@ -82,9 +81,6 @@ export function loadEventsFromCache() {
 
 // 开机：先吃缓存再拉最新；之后每分钟看一眼，跨天/跑完立刻重拉，否则每 10 分钟对一次
 export function startEventRefresh() {
-  // 开发运行（npm run dev）不联网：直接退回本地随机事件，不拉排期、读缓存也一并跳过。
-  // 想在开发时联调全服事件，控制台执行 localStorage.setItem('pokeidle_online','1')
-  if (DEV && localStorage.getItem('pokeidle_online') !== '1') return;
   loadEventsFromCache();
   loadEvents(true);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadEvents(); });

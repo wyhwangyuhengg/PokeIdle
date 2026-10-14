@@ -773,10 +773,20 @@ nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; position: r
 .ev-title { font-weight: 700; color: var(--ui-color-darker); letter-spacing: 1px; flex-shrink: 0; }
 .ev-span { margin-left: auto; font-size: 10px; color: var(--color-muted); }
 
-.ev-lane { display: flex; align-items: center; gap: 7px; margin-top: 5px; }
+/* 时间带：窄屏不压缩时间轴，整条横向滚动（左侧的泳道标签吸附住不动），
+   否则一刻度挤在一起、块里的名字也会被裁断 */
+.ev-rail { overflow-x: auto; overflow-y: hidden; padding-bottom: 3px; }
+/* 这条横向滚动条比全局那条再细一档，拇指也调淡，别抢面板内容的视线 */
+.ev-rail { scrollbar-width: thin; scrollbar-color: rgba(55, 109, 86, .35) transparent; }
+.ev-rail::-webkit-scrollbar { height: 4px; }
+.ev-rail::-webkit-scrollbar-track { background: transparent; }
+.ev-rail::-webkit-scrollbar-thumb { background: rgba(55, 109, 86, .3); border-radius: 2px; }
+.ev-rail::-webkit-scrollbar-thumb:hover { background: rgba(55, 109, 86, .6); }
+.ev-lane { display: flex; align-items: center; gap: 7px; margin-top: 5px; min-width: 520px; }
 .ev-tag {
   flex: 0 0 30px; text-align: center; font-size: 9.5px; line-height: 15px;
   color: #f2fbf7; background: var(--ui-color); border-radius: 2px; flex-shrink: 0;
+  position: sticky; left: 0; z-index: 1;
 }
 .ev-tag-twist { background: #6f57b5; }
 .ev-tag-empty { background: none; }
@@ -793,7 +803,7 @@ nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; position: r
   display: flex; align-items: center; justify-content: center; gap: 3px;
   font-size: 9.5px; line-height: 15px; color: #fff; text-align: center;
   overflow: hidden; white-space: nowrap; box-sizing: border-box;
-  cursor: default; transition: filter .15s;
+  cursor: pointer; transition: filter .15s;
 }
 .ev-bar-mass { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35); }
 .ev-bar.is-now { box-shadow: 0 0 0 2px #b3423a, inset 0 0 0 1px rgba(255, 255, 255, .5); }

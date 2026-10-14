@@ -1,5 +1,7 @@
 // ===== 开场剧情（首次进入游戏） =====
 // 流程：选择角色 → 主角与小田卷正面碰上（主角左、小田卷右，面对面停住）→ 底部文字框逐句剧情 → 小田卷询问 → 点击确定开始
+// 剧情画面长在 App 屏（#introView 在 #appScreen 里），文字框必须用 App 屏那个：
+// 单屏模式下两屏重合、app 屏压着舞台屏，用舞台框会被剧情画面盖住（#screen 还是独立层叠上下文）
 // 开场完成前不保存 introDone，中途退出下次进入需重新播放
 import { $, showView, applyCharSprites } from './ui.js';
 import { gameData } from './state.js';
@@ -162,7 +164,7 @@ function playerEnter() {
     p.style.animation = 'none';
     p.style.backgroundPosition = '75% 0';
     // 主角停稳后，显示继续按钮
-    $('textBoxArrow').style.display = 'flex';
+    $('appTextBoxArrow').style.display = 'flex';
   }, 1150);
 }
 
@@ -170,7 +172,7 @@ function playerEnter() {
 function enterScene() {
   const player = $('introPlayerWrap');
   const wrap = $('introBirchWrap');
-  $('textBoxArrow').style.display = 'none';
+  $('appTextBoxArrow').style.display = 'none';
   player.style.opacity = '1';
   wrap.style.opacity = '1';
   wrap.style.transition = 'none';
@@ -192,9 +194,9 @@ function enterScene() {
 }
 
 function showIntroText(text, done, instant) {
-  const box = $('textBox');
-  $('textBoxContent').textContent = '';
-  $('textBoxArrow').style.display = 'none';
+  const box = $('appTextBox');
+  $('appTextBoxContent').textContent = '';
+  $('appTextBoxArrow').style.display = 'none';
   if (box.classList.contains('show')) {
     startType(text, done, instant);
     return;
@@ -207,20 +209,29 @@ function showIntroText(text, done, instant) {
   startType(text, done, instant);
 }
 
-let _typeTimer = null; // 打字机定时器
+let _typeTimer = null; // 开场剧情里的两个提问（「好！」/「准备好了」）：按钮得挂在剧情自己那个框里。
+// #catchConfirmBtns 平时长在舞台框内部，而剧情画面在 App 屏、舞台框被压住，不挪过来就点不到
+function showIntroChoice(yesText) {
+  $('confirmYes').textContent = yesText;
+  $('confirmNo').style.display = 'none';
+  $('appTextBox').appendChild($('catchConfirmBtns'));
+  $('catchConfirmBtns').style.display = 'flex';
+}
+
+// 打字机定时器
 let _typeFull = null;  // 当前打字中的完整文案 { text, done }
 
 // 打字机逐字显示，全部打完才显示继续箭头；instant=true 时整句直接显示（不逐字）
 function startType(text, done, instant) {
   if (_typeTimer) clearInterval(_typeTimer);
-  const content = $('textBoxContent');
+  const content = $('appTextBoxContent');
   _typeFull = { text, done };
   content.textContent = '';
   if (instant) {
     content.textContent = text;
     _typeTimer = null;
     _typeFull = null;
-    if (done === true) $('textBoxArrow').style.display = 'flex';
+    if (done === true) $('appTextBoxArrow').style.display = 'flex';
     else if (typeof done === 'function') done();
     return;
   }
@@ -232,7 +243,7 @@ function startType(text, done, instant) {
       clearInterval(_typeTimer);
       _typeTimer = null;
       _typeFull = null;
-      if (done === true) $('textBoxArrow').style.display = 'flex';
+      if (done === true) $('appTextBoxArrow').style.display = 'flex';
       else if (typeof done === 'function') done();
     }
   }, 40);
@@ -246,8 +257,8 @@ function finishType() {
   const full = _typeFull;
   _typeFull = null;
   if (full) {
-    $('textBoxContent').textContent = full.text;
-    if (full.done === true) $('textBoxArrow').style.display = 'flex';
+    $('appTextBoxContent').textContent = full.text;
+    if (full.done === true) $('appTextBoxArrow').style.display = 'flex';
     else if (typeof full.done === 'function') full.done();
   }
 }
@@ -256,26 +267,24 @@ function hideIntroText() {
   if (_typeTimer) clearInterval(_typeTimer);
   _typeTimer = null;
   _typeFull = null;
-  $('textBox').classList.remove('show');
-  $('textBox').style.transform = 'translateY(100%)';
-  $('textBox').style.display = 'none';
-  $('textBoxArrow').style.display = 'none';
+  $('appTextBox').classList.remove('show');
+  $('appTextBox').style.transform = 'translateY(100%)';
+  $('appTextBox').style.display = 'none';
+  $('appTextBoxArrow').style.display = 'none';
 }
 
 function showNextLine() {
   if (_birchTimer) {
     clearTimeout(_birchTimer);
     _birchTimer = null;
-    $('textBoxArrow').style.display = 'none';
+    $('appTextBoxArrow').style.display = 'none';
   }
   if (_step > SCRIPT.length + 1) return;
   if (_step <= SCRIPT.length) {
     if (_step === CHOICE_LINE) {
       showIntroText(SCRIPT[_step - 1], () => {
         _choiceOpen = true;
-        $('confirmYes').textContent = '好！';
-        $('confirmNo').style.display = 'none';
-        $('catchConfirmBtns').style.display = 'flex';
+        showIntroChoice('好！');
       });
     } else if (_step === PHONE_LINE) {
       showIntroText(SCRIPT[_step - 1], false);
@@ -285,9 +294,7 @@ function showNextLine() {
     }
   } else {
     showIntroText(ASK_LINE, false);
-    $('confirmYes').textContent = '准备好了';
-    $('confirmNo').style.display = 'none';
-    $('catchConfirmBtns').style.display = 'flex';
+    showIntroChoice('准备好了');
   }
   _step++;
 }
@@ -307,7 +314,7 @@ function birchStepForward() {
     _birchTimer = null;
     b.style.animation = 'none';
     b.style.backgroundPosition = '75% 0';
-    $('textBoxArrow').style.display = 'flex';
+    $('appTextBoxArrow').style.display = 'flex';
   }, 1150);
 }
 
@@ -328,11 +335,11 @@ export function advanceIntro() {
 // 开场剧情中点击画面任意位置推进对话：
 // 按钮（角色选择/顶栏）、倒三角箭头、确认按钮区各走自身交互，不当作“任意位置”
 function onIntroGlobalClick(e) {
-  if (e.target.closest('button, #textBoxArrow, #catchConfirmBtns')) return;
+  if (e.target.closest('button, #appTextBoxArrow, #catchConfirmBtns')) return;
   if (_choiceOpen) { confirmIntro(); return; }      // 询问句：任意位置视为点「好！」
   if (_typeTimer) { finishType(); return; }          // 打字中：先补全整句，不推进
   // 主角/小田卷入场的过渡动画期间（倒三角箭头未亮）不推进
-  if (_step === 1 && $('textBoxArrow').style.display !== 'flex') return;
+  if (_step === 1 && $('appTextBoxArrow').style.display !== 'flex') return;
   advanceIntro();
 }
 
@@ -345,7 +352,8 @@ export async function confirmIntro() {
   }
   hideIntroText();
   document.removeEventListener('click', onIntroGlobalClick);
-  // 恢复游戏内确认按钮的默认文本与布局（intro 期间被改成「准备好了」/「好！」）
+  // 恢复游戏内确认按钮：放回舞台框、文案复位（intro 期间挪到了剧情框并改成「准备好了」/「好！」）
+  $('textBox').appendChild($('catchConfirmBtns'));
   $('confirmYes').textContent = '确定';
   $('confirmNo').style.display = '';
   $('catchConfirmBtns').style.display = 'none';

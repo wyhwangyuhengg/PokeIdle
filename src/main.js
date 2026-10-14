@@ -2,11 +2,11 @@
 // 禁用全局右键菜单（桌面端 webview 的原生右键菜单）
 document.addEventListener('contextmenu', e => e.preventDefault());
 import { CATCH_RATES, SAVE_INTERVAL, ITEM_RATES, ITEM_NAMES, ROAD_SPECIAL_CHANCE, ROAD_WIDTH_MIN, ROAD_WIDTH_MAX, ROAD_SWITCH_CYCLES, BIKE_RESTORE_MAX_GAP_MS, PX_PER_METER, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
-import { allPokemon, gameData, phase, currentEncounter, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, getPokemonByIndex, ensureGpsState, restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer , setSimClock, _eggHatching  } from './state.js';
+import { allPokemon, gameData, phase, currentEncounter, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, getPokemonByIndex, ensureGpsState, restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, addAwaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer , setSimClock, _eggHatching  } from './state.js';
 import { migrateEncounterScores } from './scoring.js';
 import { massTick, ensureMassInit as ensureMassInitEvents, twistTick, ensureTwistInit } from './events.js';
-import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, isEvolutionShowActive, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView } from './ui.js';
-import { spawnItemDrop, hasActiveDrop, activateHoney, activateShinyCharm, restoreHoneyRecord, restoreCharmRecord, grantItem, cancelItemDrop, rollCandyMult, ensureEvoMeta, renewBuffAfterRide } from './items.js';
+import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, isEvolutionShowActive, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView, relayoutStage } from './ui.js';
+import { spawnItemDrop, hasActiveDrop, activateHoney, activateShinyCharm, restoreHoneyRecord, restoreCharmRecord, grantItem, cancelItemDrop, rollCandyMult, ensureEvoMeta, renewBuffLater } from './items.js';
 import { syncBlockVisual, startBlockCountdown, clearBlockCountdown, showMixerView } from './mixer.js';
 import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, settleStaleEncounter, ensureEncounterTextBox, setEncounterAt, syncBattleMusic, encState, setEncPhase, autoCatch } from './battle.js';
 import { startIdleRotation } from './messages.js';
@@ -32,8 +32,9 @@ import { retreatBattle, isBattleActive, isBattleSettled, restoreBattleTier, clea
 import { backFromBattlePick, isBattlePicking, migrateTeams, isTeamEditing, closeTeamEdit, isTeamPicking, leaveTeamPick, showTeamView } from './team.js';
 import { showCasinoView } from './casino.js';
 import * as road from './road.js';
-import { initBackgroundCatchup, startBackgroundCatchup, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds, bgPeekAccum } from './background-catchup.js';
+import { initBackgroundCatchup, startBackgroundCatchup, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds, bgPeekAccum, bgTakeStatSeconds } from './background-catchup.js';
 import { startEventRefresh } from './server-events.js';
+import { startActivityRefresh } from './activity.js';
 
 let ROAD_PRESETS = null;
 let ROAD_ALL = []; // 真正能当路段用的下标（road-data.json 里还混着场景地图，见下面筛选）
@@ -244,6 +245,8 @@ function goBack() {
     import('./battle-view.js').then(m => m.showBattleView());
     return;
   }
+  // 神经衰弱牌桌：返回 = 结算本局（币照给）并回活动页
+  if ($('memoryView')?.style.display === 'flex') { import('./memory-game.js').then(m => m.leaveMemoryGame()); return; }
   const target = popNav();
   // 手游双屏：弹回舞台页时下半屏若还停在 app 页面，退回手机首页
   if (isDualLayout() && isStageView(target) && getAppChannelView() !== 'phoneView') {
@@ -373,6 +376,15 @@ function onBagClick(itemKey) {
 
 // ---------- 游戏 Tick ----------
 let _lastLogTs = -1; // 上次渲染时最新日志的时间戳（新日志或清空日志才会重渲染日志页）
+
+// 后台停摆的秒数补记"挂机时长"：累计值与今日分别入账（跨 0 点只把今天那段算进今日）。
+// 停摆期间游戏 tick 不跑，这两项统计只能在这里补，否则挂了一晚上数字不动
+function creditAwaySeconds(sec) {
+  const s = Math.round(sec || 0);
+  if (!(s > 0) || !gameData?.stats) return;
+  gameData.stats.totalPlaySeconds = (gameData.stats.totalPlaySeconds || 0) + s;
+  addAwaySeconds(gameData, s);
+}
 // 后台挂机停摆记账与补发入口统一收敛在 background-catchup.js（含开关、visibilitychange 记账、
 // 步态/buff 快照），onGameTick 只负责取秒数折算入账；安卓端可通过该模块的 BACKGROUND_CATCHUP 整体关闭
 async function onGameTick() {
@@ -451,8 +463,9 @@ async function onGameTick() {
         ? catchFilterResult() !== 'stop'
         : !!gameData.settings?.autoFlee;
       if (bgCatchupEnabled() && !autoHandled) {
+        // 收益作废，但人确实挂着：这段时间照记挂机时长
+        creditAwaySeconds(Math.max(bgTakeStatSeconds(), road.takeAfkSeconds()));
         bgTakeAccum();
-        road.takeAfkSeconds();
         bgTakeBike();
         bgTakeBuffRemainingMs();
       }
@@ -467,7 +480,10 @@ async function onGameTick() {
   // 非道路页面也有效），road 帧间隔检测作兜底（Tauri 端若 visibility 不触发仍可补）。
   // 遇敌/钓鱼等 road 暂停时两者均为 0，不会误补。Tauri 端窗口可见时均不触发
   // 后台补发开关关闭时（如安卓沿用离线暂停哲学）停摆秒数不参与任何补算，主循环保持前台原行为
-  const afkSec = bgCatchupEnabled() ? Math.max(bgTakeAccum(), road.takeAfkSeconds()) : 0;
+  const afkRoadSec = bgCatchupEnabled() ? road.takeAfkSeconds() : 0;   // road 帧间隔兜底（Tauri 最小化可能不发 visibilitychange）
+  const afkSec = bgCatchupEnabled() ? Math.max(bgTakeAccum(), afkRoadSec) : 0;
+  // 挂机时长补记：停摆期间没有 tick，逐秒累加走不到；离线那段的秒数由 calcOffline 记过，这里不重复
+  if (bgCatchupEnabled()) creditAwaySeconds(Math.max(bgTakeStatSeconds(), afkRoadSec));
   // 骑行停摆期间不产生掉落/遭遇（骑行不遇敌、不拾取），里程仍按骑行速度补算：
   // 只把行走时段的停摆秒数计入掉落/遭遇补算，避免骑行结束瞬间的骑行秒数被误补
   const idleAfkSecRaw = bgTakeBike() ? 0 : afkSec;
@@ -517,8 +533,8 @@ async function onGameTick() {
     scheduleNextEncounter();
   }
 
-  // 骑行期间到期的自动续杯：下车回到挂机后再续上（骑行不遇敌，续上等于白烧一瓶）
-  renewBuffAfterRide();
+  // 骑行 / 蹲扭曲点期间到期的自动续杯：等离开那儿回到挂机再续上
+  renewBuffLater();
 
   // 过渡完成：应用新路段的骑行状态（骑行/行走与骑行音乐一起切换）
   // 兜底分支：onTransitionCharReach 未触发时（过渡结束仍未消费 _pendingBike）同样结算"离开自行车路段"奖励
@@ -808,8 +824,15 @@ async function init() {
     }
   }
   fitLayout();
-  window.addEventListener('resize', fitLayout);
-  window.visualViewport?.addEventListener('resize', fitLayout);
+  // 尺寸变化后补一次舞台重排：布局缩放要先落定，所以延后一点再量
+  let _relayoutTimer = null;
+  const onViewportChanged = () => {
+    fitLayout();
+    clearTimeout(_relayoutTimer);
+    _relayoutTimer = setTimeout(() => relayoutStage(), 60);
+  };
+  window.addEventListener('resize', onViewportChanged);
+  window.visualViewport?.addEventListener('resize', onViewportChanged);
   // 设置页切换「手游模式」后：重新布局 + 道路重算画布尺寸（canvas 宽度随容器变化）
   window.addEventListener('ui-mode-changed', () => {
     fitLayout();
@@ -1527,6 +1550,7 @@ async function init() {
   });
   startBackgroundCatchup();
   startEventRefresh(); // 全服事件排期：先吃缓存再拉最新（拉不到就退回本地随机事件）
+  startActivityRefresh(); // 限时活动：服务端发开关+时间段，入口长在手机首页左上角（拉不到就不显示）
 
   // 回前台：后台期间遭遇可能已结算完，校准战斗曲，避免残留的战斗曲与地区曲叠加播放
   document.addEventListener('visibilitychange', () => {

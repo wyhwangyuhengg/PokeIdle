@@ -1,5 +1,6 @@
 // 一次构建两端：PC（Tauri/NSIS 安装包）+ 安卓（Capacitor 签名 APK），产物统一收进 dist/，只留两个文件。
 // 用法：npm run build            —— PC + 安卓
+//       npm run build:pc         —— 只出 PC（就是本脚本 --skip-android，产物同样收进 dist/）
 //       npm run build -- --skip-pc       —— 只出安卓（dist 里已有的 PC 包保持不动）
 //       npm run build -- --skip-android  —— 只出 PC
 import { spawnSync } from 'node:child_process';
@@ -18,7 +19,7 @@ const args = process.argv.slice(2);
 const skipPc = args.includes('--skip-pc') || process.env.SKIP_PC === '1';
 const skipAndroid = args.includes('--skip-android') || process.env.SKIP_ANDROID === '1';
 
-const { version } = await syncVersion(); // 版本号/版本戳：package.json 是唯一手改处
+const { version, stamp } = await syncVersion(); // 版本号/版本戳：package.json 是唯一手改处
 
 function run(title, script) {
   console.log(`\n===== ${title} =====`);
@@ -30,8 +31,8 @@ function run(title, script) {
 const sha256 = async path => createHash('sha256').update(await readFile(path)).digest('hex');
 
 // 两端各自构建；一个失败不拦另一个，最后统一报（失败的端不收集产物）
-const pcOk = skipPc || run('1/2 构建 PC 版（Tauri · NSIS 安装包）', 'build:pc');
-const apkOk = skipAndroid || run('2/2 构建安卓版（Capacitor · 签名 APK）', 'android:build');
+const pcOk = skipPc || run(`${skipAndroid ? '' : '1/2 '}构建 PC 版（Tauri · NSIS 安装包）`, 'build:pc-tauri');
+const apkOk = skipAndroid || run(`${skipPc ? '' : '2/2 '}构建安卓版（Capacitor · 签名 APK）`, 'android:build');
 if (skipPc) console.log('\n[release] 已跳过 PC 构建（--skip-pc）');
 if (skipAndroid) console.log('\n[release] 已跳过安卓构建（--skip-android）');
 
@@ -50,7 +51,9 @@ if (pcOk) {
   if (!picked) {
     console.log(`[release] 没在 ${nsisDir} 找到安装包`);
   } else {
-    const target = join(distDir, basename(picked));
+    // 收进 dist 时文件名带上版本戳（与安卓包一致）：口袋挂机_<version>_x64<stamp>-setup.exe
+    const named = stamp && !picked.includes(stamp) ? picked.replace('-setup', `${stamp}-setup`) : picked;
+    const target = join(distDir, basename(named));
     await copyFile(join(nsisDir, picked), target);
     await utimes(target, new Date(), new Date()).catch(() => {});   // 同 APK：时间戳记成拷贝时刻
     const [a, b] = [await sha256(join(nsisDir, picked)), await sha256(target)];
@@ -74,4 +77,5 @@ if (failed.length) {
   console.log(`\n[release] 失败：${failed.join(' / ')} —— 标「未更新」的是上一次的产物，别发包。`);
   process.exit(1);
 }
-console.log(`\n[release] 完成：v${version}，两个包都在 ${distDir}`);
+const done = [pcOk && !skipPc && 'PC 包', apkOk && !skipAndroid && '安卓包'].filter(Boolean);
+console.log(`\n[release] 完成：v${version}${done.length ? `，${done.join(' / ')}已收进 ${distDir}` : `（本次只跑收尾，产物在 ${distDir}）`}`);

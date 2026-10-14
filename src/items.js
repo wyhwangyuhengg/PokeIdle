@@ -1580,10 +1580,11 @@ export function takeBuffForRenew(item) {
   return (gameData.items[item] || 0) > 0;
 }
 
-// 骑行期间到期的自动续杯先记账，等下车回到挂机再续：骑行不遇敌，续上就是白烧一瓶
+// 骑行中到期的自动续杯先记账，等下车回到挂机再续：骑行不遇敌，续上就是白烧一瓶
 let _buffRenewPending = false;
-export function renewBuffAfterRide() {
-  if (!_buffRenewPending || road.isBike() || phase !== 'idle') return;
+const buffWastedNow = () => road.isBike();
+export function renewBuffLater() {
+  if (!_buffRenewPending || buffWastedNow() || phase !== 'idle') return;
   if (charmBuffActive || honeyBuffActive) return; // 另一个还在跑：等它自己到期时再谈续杯
   _buffRenewPending = false;
   if (takeBuffForRenew('sweet-honey')) { activateHoney(); return; }
@@ -1595,14 +1596,14 @@ export function handleHoneyExpired() {
   setHoneyCountdownEnd(0);
   clearHoneyCountdown();
   $('idleText').textContent = '✦ 甜蜜蜜的效果渐渐褪去了';
-  const riding = road.isBike();
-  if (riding) _buffRenewPending = true;
-  if (!riding && !charmBuffActive && takeBuffForRenew('sweet-honey')) {
+  const wasted = buffWastedNow();
+  if (wasted) _buffRenewPending = true;
+  if (!wasted && !charmBuffActive && takeBuffForRenew('sweet-honey')) {
     setHoneyExpiryTimer(null);
     activateHoney();
     return;
   }
-  if (!riding && !charmBuffActive && takeBuffForRenew('shiny-charm')) {
+  if (!wasted && !charmBuffActive && takeBuffForRenew('shiny-charm')) {
     setHoneyExpiryTimer(null);
     activateShinyCharm();
     return;
@@ -1620,15 +1621,15 @@ export function handleCharmExpired() {
   setCharmCountdownEnd(0);
   clearCharmCountdown();
   showBuffExpired('charm');
-  // 骑行中到期：见 handleHoneyExpired 的同款处理
-  const riding = road.isBike();
-  if (riding) _buffRenewPending = true;
-  if (!riding && takeBuffForRenew('sweet-honey')) {
+  // 用不上的场合到期：见 handleHoneyExpired 的同款处理
+  const wasted = buffWastedNow();
+  if (wasted) _buffRenewPending = true;
+  if (!wasted && takeBuffForRenew('sweet-honey')) {
     setCharmExpiryTimer(null);
     activateHoney();
     return;
   }
-  if (!riding && takeBuffForRenew('shiny-charm')) {
+  if (!wasted && takeBuffForRenew('shiny-charm')) {
     setCharmExpiryTimer(null);
     activateShinyCharm();
     return;

@@ -700,6 +700,14 @@ export function addPlaySeconds(save, sec) {
   save.stats.playSecondsToday = (save.stats.playSecondsToday || 0) + sec;
 }
 
+// 后台/最小化停摆的秒数补记"今日挂机时长"：窗口是 [now-sec, now]，跨 0 点时今天只算 0 点之后那段（口径同 calcOffline）
+export function addAwaySeconds(save, sec) {
+  if (!save?.stats || !(sec > 0)) return;
+  const now = Date.now();
+  const midnight = new Date(now).setHours(0, 0, 0, 0);
+  addPlaySeconds(save, Math.min(sec, Math.max(0, (now - midnight) / 1000)));
+}
+
 // ---------- 离线处理：仅推进 0 点刷新的内容，其余机制保持存档原样 ----------
 export function calcOffline(save) {
   const now = Date.now();

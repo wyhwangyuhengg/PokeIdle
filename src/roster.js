@@ -101,7 +101,7 @@ let _detailFromView = null; // 详情跳转来源（捕获/孵蛋后“查看详
 let _detailReturnFn = null; // 从悬赏提交/交换选择列表进入详情时注册的返回回调（返回时恢复来源列表）
 let _detailJumpedToPokedex = false; // 详情页跳转图鉴中（返回键应先回详情页，再按来源返回）
 let _detailEvoAllowed = false; // 详情页是否允许「改性格 / 点进化」：只有从宝可梦 app 列表点行进来才允许；进化链本身各处都展示，挑一只来用的入口只是不给操作
-let _picker = null; // 选取模式：配队/训练点击空位跳转仓库选择，{ mode:'team'|'train', slot, from, exclude[] }
+let _picker = null; // 选取模式：配队/训练/限时活动点击空位跳转仓库选择，{ mode:'team'|'train'|'activity', slot, from, exclude[] }
 let _renderSeq = 0; // 列表分片渲染版本号：新一轮渲染作废旧一轮，避免快速切换筛选时乱序
 let _rosterIconObs = null; // 列表图标懒加载观察器：滚动进入视口（含预载带）才加载，避免大仓库并发请求打爆资源
 
@@ -300,9 +300,11 @@ function renderList() {
         ? `选择加入队伍 · 共 ${pool.length} 只`
         : _picker.mode === 'train'
           ? `选择放入训练 · 共 ${pool.length} 只`
-          : _picker.mode === 'expcandy'
-            ? `选择宝可梦使用经验糖果 · 共 ${pool.length} 只`
-            : `选择放入饲育屋 · 共 ${pool.length} 只`;
+          : _picker.mode === 'activity'
+            ? `选择要上交的宝可梦 · 共 ${pool.length} 只`
+            : _picker.mode === 'expcandy'
+              ? `选择宝可梦使用经验糖果 · 共 ${pool.length} 只`
+              : `选择放入饲育屋 · 共 ${pool.length} 只`;
     } else if (_batchRelease) {
       prog.textContent = '请点击选中你要放生的宝可梦';
     } else {
@@ -2465,7 +2467,8 @@ export function showRosterPicker(picker) {
 export function leaveRosterPicker() {
   const p = _picker;
   _picker = null;
-  if (p?.mode === 'team') import('./team.js').then(m => m.restoreTeamView());
+  if (p?.mode === 'activity') import('./activity.js').then(m => m.reopenActivity());
+  else if (p?.mode === 'team') import('./team.js').then(m => m.restoreTeamView());
   else if (p?.mode === 'train') import('./train.js').then(m => m.showTrainView());
   else if (p?.mode === 'nursery') import('./nursery.js').then(m => m.showNurseryView());
   else if (p?.mode === 'expcandy') {
@@ -2492,6 +2495,7 @@ function pickRow(rid) {
   if (!p) return;
   if (p.mode === 'team') import('./team.js').then(m => m.addToTeam(rid, p.slot));
   else if (p.mode === 'train') import('./train.js').then(m => m.addToTraining(rid, p.slot));
+  else if (p.mode === 'activity') import('./activity.js').then(m => m.pickForActivity(rid, p.slot));
   else if (p.mode === 'nursery') import('./nursery.js').then(m => m.addToNursery(rid, p.slot));
   else if (p.mode === 'expcandy') import('./exp-candy.js').then(m => m.useExpCandyOn(rid, false, p.from));
 }

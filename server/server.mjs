@@ -41,7 +41,7 @@ if (!SALT) console.warn('[server] 未设置 TELEMETRY_SALT（仅限本地调试�
 // ---- 版本公告 ----
 // 客户端每次心跳带上自己的版本（`安装标识|版本|版本戳`），服务端记下见过的最新一份，
 // 并在响应里告诉这个客户端"你是不是旧的" —— 设置页据此显示（可更新）。
-// 想不等玩家先更新就公布，启动时钉一个即可：LATEST_VERSION=1.1.7 LATEST_STAMP=beta1
+
 const PIN_VER = process.env.LATEST_VERSION || '';
 const PIN_STAMP = process.env.LATEST_STAMP || '';
 const VER_RE = /^\d+(\.\d+){1,3}$/;
@@ -69,6 +69,25 @@ function noteVersion(ver, stamp) {
   const next = { ver, stamp: String(stamp || '').slice(0, 16) };
   if (!db.version || cmpVer(next, db.version) > 0) { db.version = next; save(); }
 }
+// ---- 限时活动 ----
+// 只发"开关 + 时间段 + 参数"，玩法在客户端（和全服事件同构）。
+// 活动清单放 DATA_DIR/activity.json：{ "list": [ { id, from, to, payload } ] }，空数组 = 没有活动。
+// 按 mtime 热读：改完存盘即生效，连重启都省了。
+const ACTIVITY_FILE = path.join(DATA_DIR, 'activity.json');
+let _actList = [], _actMtime = -1;
+function loadActivities() {
+  try {
+    const st = fs.statSync(ACTIVITY_FILE);
+    if (st.mtimeMs === _actMtime) return _actList;
+    _actMtime = st.mtimeMs;
+    const j = JSON.parse(fs.readFileSync(ACTIVITY_FILE, 'utf8'));
+    const list = (j && Array.isArray(j.list)) ? j.list : [];
+    _actList = list.filter((a) => a && typeof a.id === 'string' && Number(a.from) > 0 && Number(a.to) > Number(a.from));
+    console.log(`[server] 已载入 ${_actList.length} 个限时活动：${_actList.map((a) => a.id).join(', ') || '（无）'}`);
+  } catch (_) { /* 没有这个文件 = 没有活动，正常 */ }
+  return _actList;
+}
+
 function isOutdated(ver, stamp) {
   const cur = latestVersion();
   if (!cur || !VER_RE.test(ver || '')) return false;
@@ -315,6 +334,16 @@ const ROUTES = [
       json(res, 200, { ...data, serverNow: Date.now() }, {
         'Access-Control-Allow-Origin': '*',      // 公开只读数据，官网/客户端都能取
         'Cache-Control': 'public, max-age=60',   // 客户端自己会缓存整天，这层只防连点
+      });
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/activity',
+    handle(req, res) {
+      json(res, 200, { list: loadActivities(), serverNow: Date.now() }, {
+        'Access-Control-Allow-Origin': '*',      // 公开只读数据，官网/客户端都能取
+        'Cache-Control': 'public, max-age=60',
       });
     },
   },

@@ -143,9 +143,10 @@ if (variant === 'release' && !await exists(join(here, 'keystore.properties'))) {
 const apk = await assemble(variant, env);
 
 if (mode === 'release') {
-  const { version } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+  const { version, buildStamp } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   const outDir = join(root, 'dist');
-  const outPath = join(outDir, `口袋挂机_${version}.apk`);
+  // dist 里的文件名带上版本戳：口袋挂机_<version><stamp>.apk
+  const outPath = join(outDir, `口袋挂机_${version}${buildStamp || ''}.apk`);
   await mkdir(outDir, { recursive: true });
   await copyFile(apk, outPath);
   // copyFile 在 Windows 上会保留源文件时间，这里改成拷贝时刻，dist 里的时间才是"这次构建刷出来的"

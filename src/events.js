@@ -10,7 +10,7 @@ import {
   REGION_CYCLE,
   TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION,
   TWIST_COUNT_MIN, TWIST_COUNT_MAX,
-  TWIST_SPAWN_MIN, TWIST_SPAWN_MAX,
+  TWIST_SPAWN_MIN, TWIST_SPAWN_MAX, TWIST_SPAWN_HONEY_MIN, TWIST_SPAWN_HONEY_MAX,
   TWIST_SHINY_CHANCE, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, massShinyChance,
 } from './config.js';
 import {
@@ -433,7 +433,10 @@ export function onTwistEncounterEnded() {
   if (!tw || !tw.active) return;
   tw.remain--;
   if (tw.remain <= 0) { endTwist(); return; }
-  tw.nextSpawnAt = Date.now() + rand(TWIST_SPAWN_MIN, TWIST_SPAWN_MAX) * 1000;
+  // 甜甜蜜生效时同样加速（与大量出没同口径）：只是把打完这几只的时间缩短，数量不多给
+  const min = honeyBuffActive ? TWIST_SPAWN_HONEY_MIN : TWIST_SPAWN_MIN;
+  const max = honeyBuffActive ? TWIST_SPAWN_HONEY_MAX : TWIST_SPAWN_MAX;
+  tw.nextSpawnAt = Date.now() + rand(min, max) * 1000;
 }
 
 // 主循环 tick（main.js 每秒调用）：生成 / 到期 / 滚动出现

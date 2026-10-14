@@ -174,6 +174,18 @@ window.__nextEncounter = (idx, shiny = false) => {
 };
 
 // 一键刷新：对战/交换/大量出没/时空扭曲/悬赏/商店每日限量货（只重置生成与倒计时，不改变当前位置）
+// 限时活动状态快照：拿到了哪些活动、哪些就绪、入口显不显示
+window.__activity = () => import('./activity.js').then(m => { const d = m.activityDebug(); console.log(d); return d; });
+
+// 开发预览活动（不动服务器那份配置）：__act('poke-flip', { hours: 24, payload: { seed: 7 } })
+//   __act()                看当前预览与可用活动
+//   __act(null)            取消预览
+//   __act(id, { reset:true })  重开一份存档槽（气球/进度清零）
+window.__act = (id, opts) => import('./activity.js').then(m => {
+  if (id === undefined) { const d = m.activityDebug(); console.log(d); return d; }
+  return m.setDevPreview(id, opts || {});
+});
+
 window.__refreshAll = () => {
   const stock = clearDailyStock();
   refreshNpcs();

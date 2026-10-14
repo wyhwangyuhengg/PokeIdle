@@ -805,7 +805,7 @@ function untilText(from, now) {
   return `（${Math.max(1, m)}分后）`;
 }
 const segLabel = (s, now) => `${hhmm(s.from)}~${hhmm(s.to)}　`
-  + (s.kind === 'mass' ? `大量出没 · ${massName(s) || massRegion(s)}` : '时空扭曲')
+  + (s.kind === 'mass' ? `大量出没 · ${speciesHtml(s, 15) || massRegion(s)}` : '时空扭曲')
   + (s.pos === undefined ? '' : ` · ${roadLabel(s.pos)}`)
   + untilText(s.from, now ?? evNow());
 
@@ -859,7 +859,6 @@ function massSpecies(s) {
   const g = list[s.seed % list.length];
   return g[Math.floor(s.seed / list.length) % g.length];
 }
-const massName = s => { const p = massSpecies(s); return p ? (p.form || p.name) : ''; };
 
 function iconHtml(index, box) {
   const rect = DEX_ICONS && DEX_ICONS.icons[index];
