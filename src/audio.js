@@ -467,10 +467,10 @@ function flushPendingShiny() {
   a.play().catch(() => {});
 }
 
-// ---------- 麻将瞬发音效 ----------
-// 短促音效不打断背景音乐，单独 Audio 叠加；受音乐总开关控制
+// ---------- 麻将 / 游戏厅瞬发音效 ----------
+// 短促音效不打断背景音乐，单独 Audio 叠加；归类「音效」开关（_sfxEnabled），独立于音乐开关
 export function playMahjongSfx(name) {
-  if (!_musicEnabled) return;
+  if (!_sfxEnabled) return;
   if (document.hidden) return; // 页面不可见：不在后台响
   if (_splashLocked || _bulkQuiet) return; // splash/批量结算期间禁声
   const url = `./audio/mahjong/${encodeURIComponent(name)}.mp3`;
@@ -619,7 +619,7 @@ export function setMusicEnabled(on) {
 
 export function isMusicEnabled() { return _musicEnabled; }
 
-// 音效开关（设置页声音分组）：只控制短促效果音（闪光登场等），独立于音乐开关
+// 音效开关（设置页声音分组）：只控制短促效果音（闪光登场、麻将/21点等），独立于音乐开关
 export function setSfxEnabled(on) { _sfxEnabled = on !== false; }
 
 // 战斗音乐开关（设置页切换）：关闭后 playBattle 直接忽略，战斗期间地区曲不受影响

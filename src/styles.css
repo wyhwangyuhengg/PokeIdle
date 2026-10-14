@@ -5412,16 +5412,20 @@ html.mobile-app #quitHide { display: none !important; }
   flex: 0 0 55px; /* 名称列固定宽：宝可梦名最多 5 字，超长省略 */
   max-width: none;
 }
-/* 蛋仓库只有 3 列，名称列容纳 7 字（XX的蛋），个体值列容纳 31/31/31/31/31/31 */
+/* 蛋仓库只有 3 列：名称列可压缩（窄屏/大字号时先给个体值让位，超出用省略号），
+   个体值列按内容宽度完整显示（31/31/31/31/31/31 放不下时不再被裁掉） */
 .nursery-egg-header .pokedex-name,
-.nursery-egg-row .pokedex-name { flex: 0 0 95px; max-width: none; }
+.nursery-egg-row .pokedex-name { flex: 0 1 95px; max-width: none; }
 .nursery-egg-header .roster-iv,
 .nursery-egg-row .roster-iv {
-  width: 96px;
+  width: auto;
+  min-width: 96px;
+  flex: 0 0 auto;
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
 }
-.nursery-egg-row .pokedex-name { display: flex; align-items: center; }
+.nursery-egg-row .pokedex-name { display: flex; align-items: center; overflow: hidden; }
+.nursery-egg-row .pokedex-name .egg-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nursery-egg-row .bounty-trade-btn { margin-right: 6px; max-width: 100%; box-sizing: border-box; } /* 蛋列表丢弃按钮不贴右缘，且不越出自己的列 */
 .nursery-egg-header .bounty-trade-btn-col { padding-right: 6px; } /* 表头「丢弃」文字同步左移对齐 */
 .roster-header, .roster-row { gap: 2px; }

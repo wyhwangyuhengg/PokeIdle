@@ -238,7 +238,7 @@ function startIdleDemo() {
     if (stopped || !_demoActive) return;
     // 页面切走时停止
     if ($('mixerView')?.style.display === 'none') { stopIdleDemo(); return; }
-    const n = 2 + randInt(0, 2); // 每批随机 2~4 颗
+    const n = 2 + randInt(0, 1); // 每批随机 2~3 颗（配方只有 1/2/3 颗三档）
     const pool = BERRY_ICONS.map((_, i) => i);
     for (let i = pool.length - 1; i > 0; i--) { // 洗牌取前 n，同批不重复
       const j = Math.floor(Math.random() * (i + 1));

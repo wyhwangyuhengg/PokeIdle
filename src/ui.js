@@ -1036,7 +1036,7 @@ function renderEggPickList() {
             const name = poke ? poke.name : `#${eg.species}`;
             return `
               <div class="pokedex-entry roster-row nursery-egg-row" data-egg-pick="${eg.id}">
-                <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
+                <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" /><span class="egg-name-text">${name}的蛋${eg.shiny ? ' ★' : ''}</span></span>
                 <span class="roster-iv">${eggIvSlash(eg)}</span>
               </div>`;
           }).join('');
@@ -1081,7 +1081,7 @@ function renderEggPickList() {
               const name = poke ? poke.name : `#${eg.species}`;
               return `
                 <div class="pokedex-entry roster-row nursery-egg-row" data-egg-pick="${eg.id}">
-                  <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" />${name}的蛋${eg.shiny ? ' ★' : ''}</span>
+                  <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" /><span class="egg-name-text">${name}的蛋${eg.shiny ? ' ★' : ''}</span></span>
                   <span class="roster-iv">${eggIvSlash(eg)}</span>
                 </div>`;
             }).join('')}

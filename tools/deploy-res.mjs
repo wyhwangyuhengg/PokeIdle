@@ -6,8 +6,9 @@
 // 用法（项目根目录）：
 //   node tools/deploy-res.mjs            生成清单 + 补齐差异文件 + 传清单 + 自检
 //   node tools/deploy-res.mjs --dry      只看要传哪些文件，不连服务器
-//   node tools/deploy-res.mjs --local    把要传的文件铺到 hot-upload/（项目根目录，已 gitignore），手工上传用
+//   node tools/deploy-res.mjs --local    把缺的文件铺到 hot-upload/（项目根，已 gitignore）：先走 443 问服务器已有哪几个，只铺缺的
 //   node tools/deploy-res.mjs --all      不管差异，清单里所有文件全传一遍（换机器/重建服务器时用）
+//   node tools/deploy-res.mjs --check    只验服务器：清单是不是最新、该传的文件是不是都传上去了（走 443，不用 ssh）
 //
 // 依赖 tools/deploy.config.json（和 deploy-web.mjs 共用）：key / host / user / port / hotDir / apiBase
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync, mkdirSync, copyFileSync } from 'node:fs';
@@ -91,24 +92,71 @@ if (dry) {
   process.exit(0);
 }
 
+// --check：只验服务器（走 443，不传任何东西）。手工上传后用它确认"清单和文件都对得上"，
+// 免得出现"清单是新的、某个文件还是旧的"——那种情况下客户端校验不过会一直弹更新
+if (args.includes('--check')) {
+  console.log('[3/3] --check：验服务器（不传文件）');
+  let remote = null;
+  try {
+    const r = await fetch(`${apiBase}/manifest.json?t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(12000) });
+    if (r.ok) remote = await r.json();
+  } catch (_) {}
+  if (!remote || !remote.files) {
+    console.log(`      ✘ 拉不到服务器清单（${apiBase}/manifest.json）—— 服务器上没有清单时客户端不会弹更新，属正常静默状态`);
+    process.exit(0);
+  }
+  const sameManifest = JSON.stringify(remote.files) === JSON.stringify(local.files);
+  console.log(`      服务器清单 gen ${new Date(remote.gen).toLocaleString('zh-CN')}｜${sameManifest ? '和本地最新一致 ✔' : '和本地最新不一致 ✘（该重传清单）'}`);
+  if (!sameManifest) {
+    const stale = Object.keys(local.files).filter((p) => !remote.files[p] || remote.files[p].hash !== local.files[p].hash);
+    console.log(`      清单里和本地不同的：${stale.length} 个 ${stale.slice(0, 6).join(' ')}${stale.length > 6 ? ' …' : ''}`);
+  }
+  const bad = await probe(need);
+  if (!bad.length) console.log(`      该传的 ${need.length} 个文件服务器上都能下到、哈希一致 ✔`);
+  else {
+    console.log(`      ✘ 还有 ${bad.length} 个文件没传上去 / 版本不对：`);
+    for (const p of bad) console.log(`         ${p}  ${kb(local.files[p].size)}`);
+    console.log('      客户端会一直弹「发现新资源」（下到了但校验不过 → 跳过 → 下次再问）');
+  }
+  process.exit(bad.length || !sameManifest ? 1 : 0);
+}
+
 // --local：不连服务器，把"要传的文件 + 改名后的清单"铺到一个本地目录，手动往宝塔面板里传
 if (args.includes('--local')) {
   const li = args.indexOf('--local');
   const dir = args[li + 1] && !args[li + 1].startsWith('--') ? resolve(args[li + 1]) : join(ROOT, 'hot-upload');
+  // 先走 443 问问服务器上已经有哪几个（探测不需要 ssh，封禁期间也能用），只铺缺的
+  let missing = need, already = [];
+  if (need.length) {
+    let reach = false;
+    try {
+      const r = await fetch(`${apiBase}/manifest.json?t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      reach = r.ok;
+    } catch (_) { reach = false; }
+    if (!reach) {
+      console.log(`      ⚠ 拉不到 ${apiBase}（没网或服务器不通）—— 按"这些都要传"给你铺`);
+    } else {
+      const bad = new Set(await probe(need));
+      missing = need.filter((p) => bad.has(p));
+      already = need.filter((p) => !bad.has(p));
+      console.log(`      服务器上已经有 ${already.length} 个${already.length ? `（${already.join('、')}）` : ''}，要传 ${missing.length} 个`);
+    }
+  }
   rmSync(dir, { recursive: true, force: true });   // 清掉上次铺的，免得把已经不需要的文件一起传上去
   rmSync(join(ROOT, 'hot-upload.tar.gz'), { force: true });
   mkdirSync(dir, { recursive: true });
-  for (const rel of need) {
+  for (const rel of missing) {
     const to = join(dir, rel);
     mkdirSync(dirname(to), { recursive: true });
     copyFileSync(join(SRC, rel), to);
   }
   copyFileSync(MANIFEST, join(dir, 'manifest.json'));   // 服务器上这份要叫 manifest.json
-  console.log(`[3/3] --local：${need.length} 个文件 + 清单已铺到 ${dir}`);
-  for (const rel of need) {
+  console.log(`[3/3] --local：${missing.length} 个文件 + 清单已铺到 ${dir}`);
+  for (const rel of missing) {
     const buf = readFileSync(join(dir, rel));
     console.log(`      ${rel}  ${kb(buf.length)}  ${sha1(buf) === local.files[rel].hash ? '✔' : '✘ 拷贝损坏'}`);
   }
+  if (!missing.length) console.log('      文件服务器上都是最新，只需传 manifest.json');
   console.log(`      传到 ${hotDir}/：先传上面这些文件，最后传 manifest.json（顺序不能反）`);
   if (need.includes('build-info.js')) console.log('      ⚠ build-info.js 也在列表里：传了，老包玩家设置页会显示新版号（无害）；不传，他们每次进游戏都会被再问一次（清单里有、文件下不到）');
   if (need.some((p) => p.includes('/'))) {

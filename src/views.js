@@ -1791,7 +1791,7 @@ async function toggleBackgroundService() {
   saveGame();
 }
 
-// 音效开关：独立于音乐，只控制短促效果音（闪光登场等）
+// 音效开关：独立于音乐，只控制短促效果音（闪光登场、麻将/21点等）
 function toggleSfxEnabled() {
   ensureSettings();
   gameData.settings.sfxEnabled = !(gameData.settings.sfxEnabled !== false);
