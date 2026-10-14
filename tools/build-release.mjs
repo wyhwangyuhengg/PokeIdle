@@ -21,6 +21,14 @@ const skipAndroid = args.includes('--skip-android') || process.env.SKIP_ANDROID 
 
 const { version, stamp } = await syncVersion(); // 版本号/版本戳：package.json 是唯一手改处
 
+// 资源清单：必须在构建之前生成，src/ 里带着它一起进包，作为玩家端热更的对比基线；
+// 同一份再存到 tools/hot-baseline.json，deploy-res.mjs 拿它算"玩家端要下载哪些文件"
+{
+  const r = spawnSync(process.execPath, [join(root, 'tools', 'gen-manifest.mjs')], { cwd: root, stdio: 'inherit' });
+  if (r.status !== 0) { console.error('gen-manifest 失败，中止构建'); process.exit(1); }
+  await copyFile(join(root, 'src', 'res-manifest.json'), join(root, 'tools', 'hot-baseline.json'));
+}
+
 function run(title, script) {
   console.log(`\n===== ${title} =====`);
   const r = spawnSync('npm', ['run', script], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });

@@ -632,6 +632,8 @@ const BUY_QTY_OPTIONS = [5, 10, 20, 50];
 const SELL_QTY_OPTIONS = [5, 20, 50, 100];
 // 出售模式开关：顶部按钮切换「兑换 / 出售」两种列表
 let _shopSellMode = false;
+// 商店重绘序号（每次 showShopView 递增），异步区块补完后的滚动恢复据此判断是否已过期
+let _shopSeq = 0;
 
 // ===== 商店兑换确认（行内二次确认，替代弹框） =====
 let _pendingExchange = null; // { item, qty } 待确认的兑换项
@@ -726,6 +728,7 @@ export function showShopView(opts) {
   }
   const content = $('shopContent');
   // 结算后的重渲染会重建整个列表：带上原滚动位置，否则买完东西会被弹回顶部（商店下半部尤其明显）
+  const seq = ++_shopSeq; // 重绘序号：异步区块补完后还要再恢复一次，用它挡掉过期的那次
   const keepScroll = opts?.keepScroll ? (content?.scrollTop || 0) : 0;
   const candy = gameData.items['candy'] || 0;
 
@@ -819,17 +822,22 @@ export function showShopView(opts) {
     showShopContextMenu(item.dataset.item, e.clientX, e.clientY, _shopSellMode ? 'sell' : 'buy');
   };
   showView('shopView');
-  if (keepScroll && content) content.scrollTop = keepScroll;
+  const restoreScroll = () => { if (keepScroll && seq === _shopSeq && content) content.scrollTop = keepScroll; };
+  restoreScroll();
   startShopLiveTick();
   if (!isReRender) hideDetailCard(); // 真正进入商店：关掉上次残留的详情弹框
   // 招式机区块：每天轮换的招式机（异步填内容，招式数据不在商店首帧拉取）
   if (!_shopSellMode) {
+    const fills = [];
     const tmBox = $('shopTmBox');
-    if (tmBox) import('./tm.js').then((m) => m.renderShopTmSection(tmBox, { onBought: refreshShopCandy, onDetail: (d) => showDetailCard(d, 'shopView') }));
+    if (tmBox) fills.push(import('./tm.js').then((m) => m.renderShopTmSection(tmBox, { onBought: refreshShopCandy, onDetail: (d) => showDetailCard(d, 'shopView') })));
     // 今日道具（放在招式机下面）
     const evoBox = $('shopEvoBox');
-    if (evoBox) import('./items.js').then((m) => m.renderShopEvoSection(evoBox, { onBought: refreshShopCandy, onDetail: (d) => showDetailCard(d, 'shopView') }));
+    if (evoBox) fills.push(import('./items.js').then((m) => m.renderShopEvoSection(evoBox, { onBought: refreshShopCandy, onDetail: (d) => showDetailCard(d, 'shopView') })));
+    // 重建的瞬间这两个区块还是空的，列表比屏幕短，上面那次恢复会被夹到 0；填完再恢复一次
+    if (fills.length) Promise.all(fills).then(restoreScroll);
   }
+  _shopLiveSig = shopLiveSig(); // 刚按最新数据重绘过，指纹记下来别再被每秒对账重绘一次
   // 出售模式：标题栏显示「出售」，切回兑换模式时由 showView 恢复「商店」
   if (_shopSellMode) {
     const t = $('appTitle');

@@ -11800,3 +11800,34 @@ html.ui-dual .app-host { /* 下屏容器要真实盒子，app 页才撑得满、
 .share-btn:hover { background: var(--console-border); }   /* 悬停只把底色压深一档，别做透明 */
 [data-theme="dark"] .share-btn:hover { background: #000; }
 .share-btn:active { transform: scale(0.95); }
+
+/* === 资源热更：更新进度遮罩（hot-update.js 动态挂到 body） === */
+.hot-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.hot-box {
+  min-width: 200px;
+  padding: 16px 18px;
+  border-radius: 8px;
+  background: var(--console-body, #e8dcc0);
+  color: var(--ui-color, #376d56);
+  text-align: center;
+}
+.hot-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.hot-text { font-size: 11px; line-height: 1.7; opacity: 0.9; margin-bottom: 12px; }
+.hot-btns { display: flex; justify-content: center; gap: 12px; }
+.hot-btns .catch-confirm-btn { font-size: 12px; padding: 5px 18px; }
+.hot-bar {
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.12);
+}
+.hot-bar i { display: block; height: 100%; width: 0; background: var(--ui-color, #376d56); transition: width 0.15s; }
+.hot-num { margin-top: 8px; font-size: 10px; opacity: 0.8; font-variant-numeric: tabular-nums; }

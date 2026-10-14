@@ -174,12 +174,23 @@ export function reopenActivity() {
 // 活动窗口：清单条目用自己的 from/to；开发预览用假窗口（一小时前开始、一天后结束），
 // 一个会话内固定不变——窗口每次都变的话会把活动存档槽来回重置
 let _previewWin = null;
+const PREVIEW_WIN_KEY = 'pokeidle_activity_preview_v1';
+// 预览窗口固定住（存进 localStorage）：否则每次启动都算"新开一次活动"，目标会跟着种子变
+function previewWin() {
+  if (_previewWin) return _previewWin;
+  try {
+    const saved = JSON.parse(localStorage.getItem(PREVIEW_WIN_KEY) || 'null');
+    if (saved && saved.from > 0 && saved.to > saved.from) { _previewWin = saved; return _previewWin; }
+  } catch (_) {}
+  _previewWin = { from: Date.now() - 3600000, to: Date.now() + 86400000 };
+  try { localStorage.setItem(PREVIEW_WIN_KEY, JSON.stringify(_previewWin)); } catch (_) {}
+  return _previewWin;
+}
 function winOf(a, id) {
   if (a && a.dev) return devWin(devPreview() || {});
   if (a && a.from) return { from: a.from, to: a.to };
   if (id !== DEV_PREVIEW) return null;
-  if (!_previewWin) _previewWin = { from: Date.now() - 3600000, to: Date.now() + 86400000 };
-  return _previewWin;
+  return previewWin();
 }
 
 // 活动可选的就绪检查：ready() 返回 false（比如拿不到排期）时入口不显示，免得点进去是个空页。

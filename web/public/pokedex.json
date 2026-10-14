@@ -44470,7 +44470,7 @@
         "index": "0818-1",
         "name": "千面避役",
         "name_en": "Inteleon",
-        "image": "pokemon-data/images/0818-1-超极巨化千面避役.png",
+        "image": "pokemon-data/images/0818-1-超极巨化千面避役.gif",
         "icon": "pokemon-data/icon/0818-1-超极巨化千面避役.png",
         "types": [
             "水"
@@ -52771,7 +52771,7 @@
         "index": "0990",
         "name": "铁辙迹",
         "name_en": "Iron Treads",
-        "image": "pokemon-data/images/0990-铁辙迹.png",
+        "image": "pokemon-data/images/0990-铁辙迹.gif",
         "icon": "pokemon-data/icon/0990-铁辙迹.png",
         "types": [
             "地面",
@@ -52806,7 +52806,7 @@
         "index": "0991",
         "name": "铁包袱",
         "name_en": "Iron Bundle",
-        "image": "pokemon-data/images/0991-铁包袱.png",
+        "image": "pokemon-data/images/0991-铁包袱.gif",
         "icon": "pokemon-data/icon/0991-铁包袱.png",
         "types": [
             "冰",
@@ -52876,7 +52876,7 @@
         "index": "0993",
         "name": "铁脖颈",
         "name_en": "Iron Jugulis",
-        "image": "pokemon-data/images/0993-铁脖颈.png",
+        "image": "pokemon-data/images/0993-铁脖颈.gif",
         "icon": "pokemon-data/icon/0993-铁脖颈.png",
         "types": [
             "恶",
@@ -53562,7 +53562,7 @@
         "index": "1010",
         "name": "铁斑叶",
         "name_en": "Iron Leaves",
-        "image": "pokemon-data/images/1010-铁斑叶.png",
+        "image": "pokemon-data/images/1010-铁斑叶.gif",
         "icon": "pokemon-data/icon/1010-铁斑叶.png",
         "types": [
             "草",
@@ -53715,7 +53715,7 @@
         "index": "1014",
         "name": "够赞狗",
         "name_en": "Okidogi",
-        "image": "pokemon-data/images/1014-够赞狗.png",
+        "image": "pokemon-data/images/1014-够赞狗.gif",
         "icon": "pokemon-data/icon/1014-够赞狗.png",
         "types": [
             "毒",
@@ -54110,7 +54110,7 @@
         "index": "1022",
         "name": "铁磐岩",
         "name_en": "Iron Boulder",
-        "image": "pokemon-data/images/1022-铁磐岩.png",
+        "image": "pokemon-data/images/1022-铁磐岩.gif",
         "icon": "pokemon-data/icon/1022-铁磐岩.png",
         "types": [
             "岩石",
@@ -54145,7 +54145,7 @@
         "index": "1023",
         "name": "铁头壳",
         "name_en": "Iron Crown",
-        "image": "pokemon-data/images/1023-铁头壳.png",
+        "image": "pokemon-data/images/1023-铁头壳.gif",
         "icon": "pokemon-data/icon/1023-铁头壳.png",
         "types": [
             "钢",

@@ -1,11 +1,12 @@
 // ===== 口袋挂机 · 后端服务（Node，无依赖） =====
-// 功能：在线统计 /api/telemetry/*；每日事件排期 /api/events（大量出没 / 时空扭曲全服共用）。加新功能就在下面 ROUTES 里加一条。
+// 功能：在线统计 /api/telemetry/*；每日事件排期 /api/events（大量出没 / 时空扭曲全服共用）；资源热更 /api/hot/*。加新功能就在下面 ROUTES 里加一条。
 // 环境变量：PORT（默认 4000）/ DATA_DIR（默认 ./data）/ TELEMETRY_SALT（生产必填）/ TELEMETRY_ORIGINS（额外跨域来源）
 // 数据全在一个文件里：DATA_DIR/stats.json
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 // 事件参数与客户端同源：优先读仓库里的 src/config.js（部署时把它一起放上去即可）。
 // 读不到就用内置兜底值 —— 服务端不会因为目录结构不同而启动失败。
@@ -30,6 +31,17 @@ const MIN_BEATS = 2;        // 两次心跳才算在线：随机刷 id 只能骗
 const RATE_MS = 10000;      // 单 IP 最快 10 秒一次（客户端节奏 60 秒）
 const RATE_BURST = 6;
 const MAX_BODY = 128;
+// 资源热更：客户端要的文件都放 DATA_DIR/hot/ 下（按原相对路径摆），manifest.json 是清单。
+// 路径用查询参数传（路由是精确匹配，不改成前缀匹配，免得动到别的路由）
+const HOT_DIR = path.join(DATA_DIR, 'hot');
+const HOT_MIME = {
+  '.gif': 'image/gif', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav',
+  '.json': 'application/json; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.svg': 'image/svg+xml',
+  '.ttf': 'font/ttf', '.woff2': 'font/woff2',
+};
+
 const ORIGINS = new Set([
   'tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost',
   'capacitor://localhost', 'http://localhost', 'https://localhost',
@@ -352,6 +364,38 @@ const ROUTES = [
     path: '/healthz',
     handle(req, res) {
       json(res, 200, { ok: true, online: onlineCount(), today: today.size, total: totalSet.size }, { 'Cache-Control': 'no-store' });
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/hot/manifest.json',
+    handle(req, res) {
+      let body;
+      try { body = fs.readFileSync(path.join(HOT_DIR, 'manifest.json')); } catch (_) { return json(res, 404, { ok: false }); }
+      // no-store：清单绝不能被中间层缓存（否则刚推的更新会被缓存里的旧清单/旧 404 挡住）
+      const head = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store', 'Vary': 'Accept-Encoding' };
+      if (/gzip/.test(req.headers['accept-encoding'] || '')) {
+        res.writeHead(200, { ...head, 'Content-Encoding': 'gzip' });
+        return res.end(zlib.gzipSync(body));
+      }
+      res.writeHead(200, head);
+      res.end(body);
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/hot/file',
+    handle(req, res) {
+      const q = (req.url || '').split('?')[1] || '';
+      let rel = '';
+      try { rel = decodeURIComponent(new URLSearchParams(q).get('p') || '').replace(/^\/+/, ''); } catch (_) { return json(res, 400, { ok: false }); }
+      if (!rel || rel.includes('..') || rel.startsWith('.')) return json(res, 400, { ok: false });
+      const file = path.join(HOT_DIR, rel);
+      if (file !== HOT_DIR && !file.startsWith(HOT_DIR + path.sep)) return json(res, 400, { ok: false });
+      let body;
+      try { body = fs.readFileSync(file); } catch (_) { return json(res, 404, { ok: false }); }
+      res.writeHead(200, { 'Content-Type': HOT_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=300' });
+      res.end(body);
     },
   },
 ];
