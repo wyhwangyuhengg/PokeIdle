@@ -18,7 +18,7 @@ import { restorePokedex, setupRegionDropdown, setupStatusDropdown, setupTypeFilt
 import { showRosterView, isRosterPicking, leaveRosterPicker, isRosterInDetail, isRosterDetailFromObtain, leaveRosterDetailToSource, restoreRosterList, isRosterDetailFromList, leaveRosterDetailToList, isRosterDetailJumpedToPokedex, returnRosterDetailFromPokedex, isRosterInMoveEdit, leaveMoveEditor, isBatchReleasing, cancelBatchRelease } from './roster.js';
 import { isTradeInDetail, restoreTradeList, showTradeView } from './trade.js';
 import { showShopView, showSettingsView, showSystemLogs, showAchievementView, renderSystemLogs, applyWindowScale } from './views.js';
-import { showPhoneView, updateTradeBadge, updateBerryBadge, updateAchievementBadge, updatePhoneBadge, updateNurseryBadge, showIncubatorView } from './phone.js';
+import { showPhoneView, refreshPhoneBadges, updatePhoneBadge, isPhoneEditing, exitEdit, showIncubatorView } from './phone.js';
 import { gpsAddDistance, showGpsView, setRoamEnabled, startBikeTarget, abandonBikeTarget, dropRideRoute } from './gps.js';
 import { closeShareCardIfOpen } from './share-card.js';
 import { initAudio, playRegion, playCycling, endCycling, stopVictory, stopCongratulation, setMusicEnabled, isMusicEnabled, setSplashLocked, setShowCardOnEncounterEnd, setBattleMusic, setSfxEnabled } from './audio.js';
@@ -168,6 +168,8 @@ function goBack() {
     import('./exp-candy.js').then(m => m.cancelExpCandyScene());
     return;
   }
+  // 手机桌面编辑态：返回 = 先退出编辑态，不离开手机页
+  if (isPhoneEditing()) { exitEdit(); return; }
   // 手机页面是导航的"安全出口"：无论之前从哪进来、栈里压了什么，在手机页点返回一律回挂机页
   if ($('phoneView')?.style.display === 'flex') {
     resetNav();
@@ -279,7 +281,7 @@ function goBack() {
   // 其它情况（含挑战结算页返回）：清除屏幕难度背景色，避免其它页面沿用战斗配色
   clearBattleTier();
   // 返回手机主页时兜底同步红点（showView 不重建页面，避免漏刷新）
-  if (target === 'phoneView') { updateTradeBadge(); updateBerryBadge(); updateAchievementBadge(); updatePhoneBadge(); }
+  if (target === 'phoneView') { refreshPhoneBadges(); }
 }
 
 // ---------- 背包点击 ----------
@@ -686,12 +688,8 @@ async function onGameTick() {
   // badge 同步
   if (gameTick % 5 === 0) {
     updateIncubatorBadge();
-    updateTradeBadge();
-    updateBerryBadge();
-    updateAchievementBadge();
     updateBountyBadge();
-    updateNurseryBadge();
-    updatePhoneBadge();
+    refreshPhoneBadges();
   }
 }
 
@@ -1456,6 +1454,9 @@ async function init() {
   });
 
   // 关闭二次确认（右上角叉 / 任务栏关闭共用，由 Rust 拦截后触发）
+  // 外壳里它挂在 app 屏内部（屏幕是隔离的层叠上下文），会被屏内浮层压住 —— 挪到 body，配合 CSS 抬到最上层
+  const quitEl = $('quitDialog');
+  if (quitEl && quitEl.parentElement !== document.body) document.body.appendChild(quitEl);
   const openQuitDialog = () => $('quitDialog')?.classList.add('open');
   const closeQuitDialog = () => $('quitDialog')?.classList.remove('open');
 

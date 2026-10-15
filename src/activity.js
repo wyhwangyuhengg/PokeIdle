@@ -146,7 +146,10 @@ export function activityDebug() {
     进行中: activeActivities().map(a => a.id),
     就绪: Object.keys(ACTIVITIES).map(id => ({ id, ready: readyOf(id, ACTIVITIES[id]) })),
     入口: currentEntry(),
-    入口在手机上的状态: (() => { const el = $('phoneAppActivity'); return el ? (el.style.display === 'none' ? '被隐藏' : '亮着') : '未渲染（手机页未打开/无活动）'; })(),
+    入口在手机上的状态: (() => {
+      const el = document.querySelector('.phone-app[data-app="activity"]');
+      return el ? '亮着' : '未渲染（手机页未打开/无活动）';
+    })(),
     开发预览: DEV_PREVIEW,
     本地预览: devPreview(),
   };
@@ -226,24 +229,15 @@ export function openActivityFromEntry() {
   if (e) openActivity(e.id);
 }
 
-// 入口状态刷新：手机 app 的名字与可见性（页面重渲染时 phone.js 会重新问一次 activityEntry）
+// 入口状态刷新：名字与可见性都由 apps.js 现场问 activityEntry()，这里只在状态真的变了时重画手机页
+let _entryKey = null;
 function refreshEntry() {
-  const el = $('phoneAppActivity');
   const e = currentEntry();
-  if (!e) {
-    if (el) el.style.display = 'none';
-    if (_open) closeActivity(); // 正开着却被下架/条件不满足：退回首页
-    return;
-  }
-  if (!el) {
-    // 数据晚到会导致这个 app 没渲染出来：重画一次手机页
-    import('./phone.js').then((m) => m.refreshPhoneHome()).catch(() => {});
-    return;
-  }
-  el.style.display = '';
-  el.title = e.count > 1 ? `${e.name}（另有 ${e.count - 1} 个活动）` : e.name;
-  const nameEl = el.querySelector('.phone-app-name');
-  if (nameEl) nameEl.textContent = e.name;
+  const key = e ? `${e.id}|${e.name}|${e.count}` : '';
+  if (key === _entryKey) return;
+  _entryKey = key;
+  if (!e && _open) closeActivity(); // 正开着却被下架/条件不满足：退回首页
+  import('./phone.js').then((m) => m.refreshPhoneHome()).catch(() => {});
 }
 
 function openActivity(id) {

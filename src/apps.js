@@ -1,0 +1,71 @@
+// ===== 手机应用注册表 =====
+// 桌面顺序存在存档的 phoneLayout 里，这里只描述"应用是什么"：名字、图标、怎么打开、有没有红点。
+// available() 为 false 的应用不渲染（例如没有限时活动时的活动入口），但仍留在布局里不删。
+import { pushNav, anyIncubatorReady } from './state.js';
+import { hasTradableOffers } from './trade.js';
+import { hasDryBerries } from './berry.js';
+import { hasClaimableAchievements } from './achievements.js';
+import { hasUnclaimedTutorialRewards } from './views.js';
+import { activityEntry } from './activity.js';
+
+// 红点：返回布尔或 Promise<boolean>（nursery / dispatch 体积大，保持按需加载）
+export const APPS = [
+  { id: 'gps', name: '导航', icon: 'icon-gps',
+    open: () => import('./gps.js').then((m) => { pushNav('gpsView'); m.showGpsView(); }) },
+  { id: 'book', name: '图鉴', icon: 'icon-book',
+    open: () => import('./pokedex.js').then((m) => m.showPokedex()) },
+  { id: 'roster', name: '宝可梦', icon: 'icon-owned',
+    open: () => import('./roster.js').then((m) => m.showRosterView()) },
+  { id: 'trade', name: '交换', icon: 'icon-trade', dot: hasTradableOffers,
+    open: () => import('./trade.js').then((m) => m.showTradeView()) },
+  { id: 'incubator', name: '孵蛋器', icon: 'icon-egg', dot: anyIncubatorReady,
+    open: () => import('./phone.js').then((m) => m.showIncubatorView()) },
+  { id: 'berry', name: '农场', icon: 'icon-tree', dot: hasDryBerries,
+    open: () => import('./berry.js').then((m) => m.showBerryView()) },
+  { id: 'mixer', name: '混合器', icon: 'icon-mixer',
+    open: () => import('./mixer.js').then((m) => m.showMixerView()) },
+  { id: 'achievement', name: '成就', icon: 'icon-achievement', dot: hasClaimableAchievements,
+    open: () => import('./views.js').then((m) => m.showAchievementView()) },
+  { id: 'data', name: '统计', icon: 'icon-data',
+    open: () => import('./views.js').then((m) => m.showDataView()) },
+  { id: 'tutorial', name: '教程', icon: 'icon-tutorial', dot: hasUnclaimedTutorialRewards,
+    open: () => import('./views.js').then((m) => m.showTutorialView()) },
+  { id: 'log', name: '日志', icon: 'icon-log',
+    open: () => import('./views.js').then((m) => m.showSystemLogs()) },
+  { id: 'nursery', name: '饲育屋', icon: 'icon-heart',
+    dot: () => import('./nursery.js').then((m) => m.hasNurseryDot()),
+    open: () => import('./nursery.js').then((m) => m.showNurseryView()) },
+  { id: 'train', name: '训练', icon: 'icon-train',
+    open: () => import('./train.js').then((m) => m.showTrainView()) },
+  { id: 'team', name: '配队', icon: 'icon-edit',
+    open: () => import('./team.js').then((m) => m.showTeamView()) },
+  { id: 'battle', name: '对战', icon: 'icon-versus',
+    open: () => import('./battle-view.js').then((m) => m.showBattleView()) },
+  { id: 'casino', name: '游戏厅', icon: 'icon-casino',
+    open: () => import('./casino.js').then((m) => m.showCasinoView()) },
+  { id: 'album', name: '卡册', icon: 'icon-album',
+    open: () => import('./album.js').then((m) => m.showAlbumView()) },
+  { id: 'itembox', name: '道具盒', icon: 'icon-itembox',
+    open: () => import('./itembox.js').then((m) => m.showItemBoxView()) },
+  { id: 'follower', name: '随从', icon: 'icon-follower',
+    open: () => import('./follower.js').then((m) => m.showFollowerView()) },
+  { id: 'dispatch', name: '派遣', icon: 'icon-dispatch',
+    dot: () => import('./dispatch.js').then((m) => m.hasDispatchRewards()),
+    open: () => import('./dispatch.js').then((m) => m.showDispatchView()) },
+  // 限时活动：有活动才出现（名字跟着活动走），没活动时留在布局里不渲染
+  { id: 'activity', name: '限时活动', icon: 'icon-activity',
+    available: () => !!activityEntry(),
+    nameOf: () => activityEntry()?.name || '限时活动',
+    titleOf: () => { const e = activityEntry(); return e && e.count > 1 ? `${e.name}（另有 ${e.count - 1} 个活动）` : (e?.name || ''); },
+    open: () => import('./activity.js').then((m) => m.openActivityFromEntry()) },
+  { id: 'events', name: '全服事件', icon: 'icon-events',
+    open: () => import('./events-view.js').then((m) => m.showEventsView()) },
+];
+
+export function appById(id) {
+  return APPS.find((a) => a.id === id) || null;
+}
+
+export function appAvailable(a) {
+  return !a.available || !!a.available();
+}

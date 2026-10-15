@@ -1,8 +1,7 @@
 // ===== 资源热更（客户端） =====
-// 进游戏时问一句：发现新资源就弹一个居中对话框——
-//   取消 → 本次运行不再问，照常玩；下次进游戏还会再问一遍；
-//   更新 → 对话框里就地显示进度，把差异文件下载进本地缓存（CacheStorage），
-//          下完自动重启游戏，重启后由 sw.js 优先返回这些新文件，等于"更新完再进游戏"。
+// 进游戏时静默比对一次服务器清单：有差异就在手机页右上角闪「可更新」，点它才弹对话框。
+// 取消只关掉，下次还能再点；更新则就地显示进度，把差异文件下载进本地缓存（CacheStorage），
+// 下完自动重启游戏，重启后由 sw.js 优先返回这些新文件，等于"更新完再进游戏"。
 // 没有 Service Worker 的环境（老 WebView / file://）静默跳过，游戏照常跑。
 //
 // 服务器侧接口：GET /api/hot/manifest.json、GET /api/hot/file?p=<相对路径>
@@ -19,8 +18,23 @@ const CONCURRENCY = 4;
 // DEV 开关——被热更成 DEV=true 的一版就会关掉热更、把客户端锁死在开发态（自己清不掉）
 const SKIP = new Set(['res-manifest.json', 'sw.js', 'build-info.js']);
 
-let _busy = false;
-let _skippedGen = 0;   // 本次运行取消/没下成的清单 gen：只在内存里，大退重进还会再问
+let _busy = false;       // 正在下载/应用，防重入
+let _checking = false;   // 进游戏时那次静默比对
+
+// 轻提示：复用全局提示条，1.6 秒自动收；动态引入避免和 ui.js 成环
+function toast(msg) {
+  import('./ui.js').then((m) => {
+    m.showConfirmBar(msg, null, null, { noButtons: true });
+    const bar = document.getElementById('confirmBar');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { if (document.getElementById('confirmBar') === bar) m.hideConfirmBar(); }, 1600);
+  }).catch(() => {});
+}
+
+// ready 可能永远不兑现（注册被顶掉 / SW 装不上），给它一个上限
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('超时')), ms))]);
+}
 
 function hotBase() {
   try { return localStorage.getItem('pokeidle_hot_base') || HOT_BASE; } catch (_) { return HOT_BASE; }
@@ -73,14 +87,19 @@ async function reconcile(cache, stored, remote) {
   return next;
 }
 
-// 比对：服务器清单 vs（包里基线 + 已下过的）。没有差异、或这份已经拒绝过 → null
+// 比对：服务器清单 vs（包里基线 + 已下过的）。返回 { ok, reason, changes }
+// ok=false（离线 / 接口挂了）时角标先收起来，等下次进游戏再比
 async function findChanges() {
   const bundled = await jsonOrNull('./res-manifest.json');
-  if (!bundled || !bundled.files) return null;
+  if (!bundled || !bundled.files) return { ok: false, reason: '包内清单读不到' };
   const remote = await jsonOrNull(`${hotBase()}/manifest.json?t=${Date.now()}`);   // 带时间戳：绕过中间层缓存
   const cache = await caches.open(CACHE);
   const applied = await reconcile(cache, await readApplied(cache), remote && remote.files ? remote : null);
-  if (!remote || !remote.files) return null;
+  if (!remote || !remote.files) {
+    const meta = readMeta();
+    if (meta) lsSet(META_KEY, JSON.stringify({ ...meta, pending: 0, stale: true }));
+    return { ok: false, reason: '连不上更新服务器' };
+  }
   const list = [];
   let bytes = 0;
   for (const [path, info] of Object.entries(remote.files)) {
@@ -91,10 +110,9 @@ async function findChanges() {
   // 记一笔"本机资源状态"给设置页那个小圆点用：pending = 还没更上的文件数（0 = 已是最新）
   lsSet(META_KEY, JSON.stringify({
     app: remote.app || '', gen: remote.gen, at: Date.now(), applied: Object.keys(applied).length,
-    pending: list.length,
+    pending: list.length, stale: false,
   }));
-  if (_skippedGen && _skippedGen === remote.gen) return null;   // 本次运行已经拒绝过这份清单
-  return list.length ? { gen: remote.gen, app: remote.app || '', list, bytes } : null;
+  return { ok: true, changes: list.length ? { gen: remote.gen, app: remote.app || '', list, bytes } : null };
 }
 
 // 读取热更记录（设置页那行的绿/红小圆点用）
@@ -190,26 +208,62 @@ async function download(changes, ui) {
   return done;
 }
 
-// 进游戏时调用：有更新就问一句，确认后下完自动重启（重启后就是新资源）
+// 待更新的资源数（读那条记录）：手机页右上角据此显示「可更新」
+export function hotPendingCount() {
+  const meta = readMeta();
+  return meta ? (meta.pending || 0) : 0;
+}
+
+// 玩家点「更新」：先落盘存档，再下载差异、重启交回 SW 提供新文件
+async function applyChanges(changes) {
+  try { window.__saveLastChance && window.__saveLastChance(); } catch (_) {}
+  const ui = showProgress();
+  const done = await download(changes, ui);
+  if (done > 0) location.reload();
+  else hideOverlay();
+}
+
+// 进游戏时只做一次静默的比对，不打扰玩家；有更新就在手机页右上角闪「可更新」。
+// 老外壳里没有那个角标（index.html 换不掉，包里那个 sw.js 也不认根路径），这时退回自动弹框
 export async function startHotUpdate() {
-  if (_busy || !enabled()) return;
-  _busy = true;
+  if (_checking || !enabled()) return;
+  _checking = true;
   try {
-    await navigator.serviceWorker.register('./sw.js');
-    await navigator.serviceWorker.ready;
-    const changes = await findChanges();
-    if (!changes) return;
-    askUpdate(changes,
-      async () => {
-        try { window.__saveLastChance && window.__saveLastChance(); } catch (_) {}   // 重启前把存档同步落盘
-        const ui = showProgress();
-        const ok = await download(changes, ui);
-        if (ok > 0) { location.reload(); return; }            // 交给 SW 提供新文件
-        _skippedGen = changes.gen;                            // 一个都没下成：这次先算了
-        hideOverlay();
-      },
-      () => { _skippedGen = changes.gen; hideOverlay(); });   // 取消：本次不再问，下次进游戏再弹
+    await withTimeout(navigator.serviceWorker.register('./sw.js'), 10000);
+    await withTimeout(navigator.serviceWorker.ready, 10000);
+    const { ok, changes } = await findChanges();
+    if (ok && changes) {
+      if (document.getElementById('phoneUpdate')) {
+        window.dispatchEvent(new CustomEvent('hot-pending'));   // 让手机页把角标亮起来，点它才弹
+      } else {
+        askUpdate(changes, () => applyChanges(changes), () => hideOverlay());
+      }
+    }
   } catch (e) {
     console.warn('[热更] 出错（忽略，游戏照常跑）：', e && e.message);
+  } finally {
+    _checking = false;
+    window.dispatchEvent(new CustomEvent('hot-pending'));   // 比对完，让手机页刷新角标
+  }
+}
+
+// 点「可更新」时调用：现算一次差异再弹对话框（玩家可以取消，下次还能再点）
+export async function openHotUpdateNotice() {
+  console.log('[热更] 点了可更新角标');
+  if (_busy) { toast('正在更新资源…'); return; }
+  if (!enabled()) { console.warn('[热更] 当前环境不支持热更'); toast('当前环境不支持热更'); return; }
+  _busy = true;
+  try {
+    const { ok, reason, changes } = await findChanges();
+    console.log('[热更] 比对结果', ok ? 'ok' : reason, changes ? `${changes.list.length} 个文件` : '无差异');
+    window.dispatchEvent(new CustomEvent('hot-pending'));    // 角标按最新结果收起来
+    if (!ok) { toast(`检查更新失败：${reason}`); return; }
+    if (!changes) { toast('资源已是最新'); return; }
+    askUpdate(changes,
+      () => applyChanges(changes),
+      () => hideOverlay());                                   // 取消：只关掉，角标留着下次再点
+  } catch (e) {
+    console.warn('[热更] 出错（忽略，游戏照常跑）：', e && e.message);
+    toast('检查更新出错');
   } finally { _busy = false; }
 }

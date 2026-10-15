@@ -13,6 +13,7 @@
   --console-body: #e8dcc0;
   --console-border: #c4b692;
   --console-shadow: #b8a88a;
+  --phone-box: #e8dcc0;   /* 合集窗口底色：亮色下跟机身同色，暗色下要提亮才分得出来 */
   --splash-text: #e8dcc0;
   --item-bg: rgba(255,255,255,0.15);
   --item-hover-bg: rgba(255,255,255,0.32);
@@ -35,6 +36,7 @@
   --console-body: #0a0a0a;
   --console-border: #1f1f1f;
   --console-shadow: #000000;
+  --phone-box: #1e352b;   /* 比屏幕底色（#12211a）亮一档：合集窗口压在屏上才看得出边界 */
   --splash-text: #a79e89;
   --item-bg: rgba(255,255,255,0.06);
   --item-hover-bg: rgba(255,255,255,0.14);
@@ -1901,10 +1903,12 @@ html.mobile-app #quitHide { display: none !important; }
 }
 
 /* ===== 关闭确认框（右上角叉 / 任务栏关闭时弹出） ===== */
+/* 退出游戏的确认框要压在所有弹层之上：它挂在 body（main.js 启动时从 app 屏里挪出来），
+   层级按整个页面的最高档给，否则会被屏内的浮层压住，玩家就没法确认退出了 */
 #quitDialog {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 99;
+  z-index: 20000;
   display: none;
   align-items: center;
   justify-content: center;
@@ -2186,6 +2190,18 @@ html.mobile-app #quitHide { display: none !important; }
 /* 手机头部：时钟照常占满整行、文字居中；活动图标绝对定位贴左侧，
    不参与排布（不挤时钟），也不会和居中的时间重叠 */
 .phone-head { position: relative; }
+.phone-update {
+  position: absolute;
+  right: 0;
+  top: 2px;
+  z-index: 2;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ui-color-dark);
+  cursor: pointer;
+  animation: hotBlink 1.4s ease-in-out infinite;
+}
+@keyframes hotBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 .phone-head .phone-clock { width: 100%; }
 /* 限时活动容器：标题 + 活动徽标 + 倒计时 + 活动自己画的内容 */
 .act-head {
@@ -2336,7 +2352,8 @@ html.mobile-app #quitHide { display: none !important; }
 #phoneView.has-music .phone-clock .date { font-size: 9px; }
 #phoneView.has-music .phone-clock .time { font-size: 17px; line-height: 1.2; }
 #phoneContent { display: flex; flex-direction: column; min-height: 0; }
-/* 手机 App 分页：多页横排，scroll-snap 原生翻页（滚动条隐藏） */
+/* 手机 App 分页：多页横排。平时就走原生横向滚动（跟手），松手吸附整页；
+   只有编辑态因为 touch-action: none 关掉了原生滚动，才由 phone.js 接管手势 */
 .phone-pages {
   flex: 1;
   min-height: 0;
@@ -2344,7 +2361,9 @@ html.mobile-app #quitHide { display: none !important; }
   display: flex;
   overflow-x: auto;
   overflow-y: hidden;
+  touch-action: pan-x;        /* 只认横向手势 */
   scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;   /* 滑到头别把外层的滚动带着走 */
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -2353,6 +2372,7 @@ html.mobile-app #quitHide { display: none !important; }
   flex-shrink: 0;
   width: 100%;
   scroll-snap-align: start;
+  scroll-snap-stop: always;   /* 一次滑动最多翻一页，甩得再猛也不会一滑好几页 */
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   grid-template-rows: repeat(2, 1fr);
@@ -2395,7 +2415,7 @@ html.mobile-app #quitHide { display: none !important; }
 /* 「现在」标记 */
 .evp-now { position: absolute; left: 0; right: 0; top: -1px; height: 1px; background: rgba(var(--ui-color-rgb), 0.35); }
 /* 每个事件：1px 细引线从"自己那条轴"上拉出来，接两行文字（事件一行、时间一行） */
-.evp-item { position: absolute; display: flex; align-items: center; box-sizing: border-box; }
+.evp-item { position: absolute; display: flex; align-items: center; box-sizing: border-box; cursor: pointer; }
 .evp-item.left { left: 0; width: 50%; padding-right: 4px; flex-direction: row-reverse; }
 .evp-item.right { left: 50%; width: 50%; padding-left: 2px; }
 /* 引线：细线，一头正好压在各自的轴上，另一头接文字 */
@@ -2410,6 +2430,38 @@ html.mobile-app #quitHide { display: none !important; }
 .evp-poke { font-size: 9.5px; opacity: 0.85; white-space: nowrap; }
 .evp-time { font-size: 8px; opacity: 0.5; color: var(--ui-color); white-space: nowrap; }
 .evp-item.now .evp-poke, .evp-item.now .evp-time { font-weight: 700; opacity: 0.95; }
+.evp-map-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+.evp-map-box {
+  width: min(94%, 260px);
+  padding: 7px 9px 8px;
+  border-radius: 8px;
+  background: var(--console-body, #e8dcc0);
+  color: var(--ui-color, #376d56);
+  text-align: center;
+}
+.evp-map-title { font-size: 11.5px; font-weight: 700; }
+.evp-map-time { font-size: 9px; opacity: 0.65; margin-top: 1px; }
+.evp-map-svg { margin: 4px 0; aspect-ratio: 320 / 176; }
+/* 弹框里地图小一圈：地区名放大一档，描边用卡片底色 */
+.evp-map-svg .gps-map-node text { font-size: 13px; stroke: var(--console-body, #e8dcc0); }
+/* 只强调事件涉及的两个地区，其余淡下去（透明度在两种主题下都成立） */
+.evp-map-svg .gps-map-node { opacity: 0.38; }
+.evp-map-svg .gps-map-node.dest { opacity: 1; }
+.evp-map-svg .gps-map-node.dest text { font-weight: 800; }
+/* 事件点圆点的描边用自己的配色 */
+.evp-map-svg .gps-mass-dot { stroke: var(--ui-color); }
+.evp-map-svg .gps-twist-dot { stroke: #8c5290; }
+[data-theme="dark"] .evp-map-svg .gps-twist-dot { stroke: #6d3a72; }
+.evp-map-where { font-size: 9.5px; opacity: 0.85; }
+.evp-map-hint { font-size: 9px; opacity: 0.5; margin-top: 5px; }
 .phone-dots {
   flex-shrink: 0;
   display: flex;
@@ -2675,6 +2727,154 @@ html.mobile-app #quitHide { display: none !important; }
   border-radius: 50%;
   z-index: 2;
 }
+/* === 手机桌面整理：长按进编辑态，拖拽换位 / 拖到图标上建合集 === */
+#phoneContent { position: relative; }   /* 新建页提示等浮层按它定位 */
+@keyframes phoneJiggle { 0%, 100% { transform: rotate(-1.4deg); } 50% { transform: rotate(1.4deg); } }
+#phoneView.editing .phone-app { animation: phoneJiggle 0.3s ease-in-out infinite; }
+#phoneView.editing .phone-app:active { transform: none; }   /* 编辑态别缩放，免得和抖动打架 */
+/* 编辑态手势全给拖拽；翻页这时是 phone.js 手动写 scrollLeft 跟手的，
+   吸附会一路把人往回拽，所以这里必须关掉 */
+#phoneView.editing .phone-pages { touch-action: none; scroll-snap-type: none; }
+.phone-app.dragging { visibility: hidden; }   /* 拖起来那格留个空洞占着位置：不补位、也不多画东西 */
+/* 落在图标上：只描一圈边提示"会合成合集"，图标本身不缩放 */
+.phone-app.drag-into .phone-app-icon::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--ui-color);
+  border-radius: 12px;
+}
+.phone-folder-box.drag-into { outline: 2px solid var(--ui-color); outline-offset: 2px; }
+/* 拖拽裁剪层：铺满手机应用屏、挂在屏内（与手机页同一层叠上下文，幽灵才不会被网格盖住）。
+   选择器带 #appScreen 是为了压过 html.ui-classic 那条 `.app-screen > * { pointer-events: auto }`，
+   否则经典布局下这层会接管整个屏的命中测试，elementFromPoint 就再也拿不到磁贴了 */
+#appScreen > .phone-drag-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4000;
+  overflow: hidden;
+  pointer-events: none;
+}
+.phone-drag-ghost {
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1.1);
+  opacity: 0.9;
+}
+.phone-drag-ghost .phone-app-icon { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); }
+/* 拖到最后一页右边缘：提示松手会新建一页 */
+.phone-newpage-tip {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 31;
+  padding: 4px 7px;
+  border: 1px dashed var(--ui-color);
+  border-radius: 8px;
+  background: var(--phone-box, #e8dcc0);
+  color: var(--ui-color);
+  font-size: 9.5px;
+  font-weight: 700;
+  pointer-events: none;
+}
+/* 拖拽贴边翻页：手指停在边缘区时亮起，提示再停一下就翻页 */
+.phone-edge-tip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  z-index: 31;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.phone-edge-tip.on { opacity: 1; }
+.phone-edge-tip.left { left: 0; background: linear-gradient(to right, rgba(var(--ui-color-rgb), 0.3), transparent); }
+.phone-edge-tip.right { right: 0; background: linear-gradient(to left, rgba(var(--ui-color-rgb), 0.3), transparent); }
+/* 合集磁贴：最多 9 个迷你图标（3×3） */
+.phone-folder-icon { flex-wrap: wrap; gap: 1px; padding: 4px; }
+.phone-folder-icon i { width: 9px; height: 9px; display: flex; align-items: center; justify-content: center; }
+.phone-folder-icon i svg { width: 9px; height: 9px; }
+/* 合集窗口：整块由 JS 生成，限在手机屏内，正方形（3×3 放满 9 个） */
+.phone-folder-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+#phoneView.editing .phone-folder-mask { pointer-events: none; }   /* 编辑态让拖拽能落到桌面上 */
+.phone-folder-box {
+  pointer-events: auto;
+  touch-action: none;
+  width: min(84%, 202px);
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: var(--phone-box, #e8dcc0);
+  color: var(--ui-color, #376d56);
+}
+.phone-folder-title { text-align: center; font-size: 11px; font-weight: 700; flex-shrink: 0; cursor: pointer; }
+.phone-folder-name-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 2px;
+  font: inherit;
+  text-align: center;
+  color: inherit;
+  background: rgba(var(--ui-color-rgb), 0.12);
+  border: none;
+  border-bottom: 1px solid var(--ui-color);
+  border-radius: 3px 3px 0 0;
+  outline: none;
+  touch-action: auto;
+  user-select: text;
+}
+.phone-folder-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  justify-items: center;
+  align-items: center;
+  margin: 4px 0;
+}
+/* 窗口里的图标收小一档，3×3 放满也不挤 */
+.phone-folder-grid .phone-app { gap: 1px; }
+.phone-folder-grid .phone-app-icon { width: 30px; height: 30px; border-radius: 8px; }
+.phone-folder-grid .phone-app-icon svg { width: 18px; height: 18px; }
+.phone-folder-grid .phone-app-name { font-size: 9px; }
+/* 窗口里的红点：描边用窗口底色，才是"从卡片上挖出来"的效果 */
+.phone-folder-grid .phone-app-badge { width: 7px; height: 7px; border-width: 1px; border-color: var(--phone-box, #e8dcc0); }
+/* 编辑态底部工具条：不压底色，按钮跟着应用图标一个配色（绿底白字） */
+.phone-edit-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3000;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+}
+.phone-edit-btn {
+  padding: 4px 12px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--screen-bg-dark);
+  color: #fff;
+}
+.phone-edit-btn:active { transform: scale(0.96); }
 
 /* === 树果农场 === */
 .berry-wrap {
@@ -5568,13 +5768,13 @@ html.mobile-app #quitHide { display: none !important; }
 .dg-blocker {
   position: fixed;
   inset: 0;
-  z-index: 3300;
+  z-index: 10000;
   cursor: pointer;
 }
 /* 高亮环：挂在目标的定位父级里，位置用 offset 像素 */
 .dg-ring {
   position: absolute;
-  z-index: 3301;
+  z-index: 10001;
   border-radius: 7px;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
   outline: 2px solid rgba(255, 255, 255, 0.85);
@@ -5582,21 +5782,22 @@ html.mobile-app #quitHide { display: none !important; }
 }
 /* 气泡：左右各留 8px，跟高亮环同一个父级 */
 .dg-bubble {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  z-index: 3302;
+  position: fixed;
+  width: max-content;
+  max-width: 232px;
+  z-index: 10002;
   box-sizing: border-box;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border-radius: 6px;
   background: var(--console-body, #e8dcc0);
   color: var(--ui-color);
   border: 1px solid rgba(var(--ui-color-rgb), 0.22);
   text-align: left;
+  line-height: 1.35;
 }
-.dg-title { font-size: 11px; font-weight: 700; }
-.dg-text { font-size: 10px; line-height: 1.5; opacity: 0.9; }
-.dg-hint { font-size: 9px; margin-top: 2px; opacity: 0.6; }
+.dg-title { font-size: 10px; font-weight: 700; }
+.dg-text { font-size: 9.5px; opacity: 0.85; }
+.dg-hint { font-size: 9px; margin-top: 2px; opacity: 0.55; }
 /* 详情页个体状态标签：训练中 / 繁育中 / 队伍中（跟在属性徽章右侧，高度与 type-badge 对齐） */
 .roster-status-tag {
   display: inline-flex;

@@ -205,6 +205,8 @@ export function showTrainView() {
   render();
   showView('trainView');
   startTimer();
+  // 首次进训练场：指一下纸箱（树果）与告示牌（管理）
+  import('./guide.js').then((m) => m.maybeShowGuide('train'));
 }
 
 // 训练/队伍互斥：入队后把该个体从所有训练槽移除（取出前把饱食度记回个体，放回时沿用）

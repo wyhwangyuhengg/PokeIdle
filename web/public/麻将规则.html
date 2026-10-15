@@ -5,68 +5,61 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>口袋麻将 · 玩法说明</title>
 <style>
-/* ===== 配色与字体：直接取游戏的掌机主题变量 ===== */
+/* ===== 配色：跟官网同一套（平铺机身米色 + 深绿强调，不用渐变/毛玻璃） ===== */
 :root {
   --screen-bg: #73c5a4;
   --screen-bg-dark: #4c8d73;
   --screen-bg-light: #96d0b9;
   --ui-color: #376d56;
   --ui-color-dark: #24563f;
+  --ui-color-darker: #1d4937;
   --console-body: #e8dcc0;
   --console-border: #c4b692;
-  --ink: #1d4937;
-  --ink-soft: #3f6f5c;
-  --tile-edge: #2f6a4a;
-  --card: rgba(255, 255, 255, 0.72);
-  --card-line: rgba(47, 106, 74, 0.18);
+  --console-edge: #b3a27f;
+  --mono: "Courier New", ui-monospace, "SFMono-Regular", monospace;
+  --tile-edge: #1d4937;
+  --card-bg: rgba(255, 255, 255, 0.55);
+  --line: rgba(55, 109, 86, 0.28);
+  --line-soft: rgba(55, 109, 86, 0.16);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, sans-serif;
-  color: var(--ink);
-  background:
-    radial-gradient(circle at 12% 8%, rgba(255,255,255,0.5), transparent 45%),
-    radial-gradient(circle at 88% 92%, rgba(255,255,255,0.35), transparent 40%),
-    var(--screen-bg);
-  background-attachment: fixed;
-  padding: 28px 16px 64px;
-  line-height: 1.75;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: var(--color-text, #1f1f1f);
+  background: var(--console-body);
+  padding: 26px 16px 64px;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
 }
 .page { max-width: 860px; margin: 0 auto; }
 
-/* ===== 标题 ===== */
-.hero { text-align: center; margin-bottom: 26px; }
-.hero h1 {
-  font-size: 30px; letter-spacing: 3px; color: #f4fff9;
-  text-shadow: 0 2px 0 var(--screen-bg-dark), 0 4px 12px rgba(29,73,55,0.35);
-}
-.hero .sub { margin-top: 8px; font-size: 13px; color: #eafff5; opacity: 0.92; letter-spacing: 1px; }
+/* ===== 标题：跟官网 .hero 一样平铺，底下一道深绿粗线 ===== */
+.hero { text-align: center; margin-bottom: 22px; padding-bottom: 18px; border-bottom: 3px solid var(--ui-color-darker); }
+.hero h1 { font-size: 28px; font-weight: 800; letter-spacing: 6px; color: var(--ui-color-darker); }
+.hero .sub { margin-top: 8px; font-size: 13px; color: var(--color-muted, #7c7c7c); letter-spacing: 1px; }
 .hero .tiles { margin: 16px auto 0; }
 
-/* ===== 区块 ===== */
+/* ===== 区块：浅卡片，不加阴影和模糊 ===== */
 section {
-  background: var(--card);
-  border: 1px solid var(--card-line);
-  border-radius: 14px;
-  padding: 16px 18px 18px;
-  margin-bottom: 16px;
-  box-shadow: 0 6px 18px rgba(29, 73, 55, 0.12);
-  backdrop-filter: blur(2px);
+  background: var(--card-bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 15px 17px 17px;
+  margin-bottom: 14px;
 }
 h2 {
-  font-size: 17px; color: var(--ui-color-dark); letter-spacing: 1px;
-  padding-left: 11px; margin-bottom: 10px;
-  border-left: 4px solid var(--ui-color);
+  font-size: 17px; font-weight: 800; color: var(--ui-color-darker); letter-spacing: 2px;
+  padding-bottom: 6px; margin-bottom: 10px;
+  border-bottom: 2px solid rgba(55, 109, 86, 0.25);
 }
-h3 { font-size: 13.5px; color: var(--ui-color-dark); margin: 14px 0 7px; }
-p { font-size: 13px; color: var(--ink-soft); }
+h3 { font-size: 13.5px; font-weight: 700; color: var(--ui-color-dark); margin: 14px 0 7px; }
+p { font-size: 13px; color: var(--color-text, #1f1f1f); }
 p + p { margin-top: 6px; }
-b, strong { color: var(--ink); }
-em { font-style: normal; color: #b4522f; font-weight: 700; }
+b, strong { color: var(--ui-color-darker); }
+em { font-style: normal; color: var(--ui-color-dark); font-weight: 700; }
 ul { margin: 6px 0 0 18px; }
-li { font-size: 13px; color: var(--ink-soft); margin: 3px 0; }
-li b { color: var(--ink); }
+li { font-size: 13px; color: var(--color-text, #1f1f1f); margin: 3px 0; }
+li b { color: var(--ui-color-darker); }
 .kv { font-variant-numeric: tabular-nums; }
 
 /* ===== 麻将牌：扁平牌（属性色底 + 描边 + 图标 + 点数） ===== */
@@ -79,7 +72,7 @@ li b { color: var(--ink); }
   background: var(--tc, #fff);
 }
 .tile img { width: 19px; height: 19px; image-rendering: pixelated; object-fit: contain; }
-.tile .pts { font-style: normal; font-size: 9px; font-weight: 700; line-height: 1; color: rgba(255, 255, 255, 0.85); }
+.tile .pts { font-style: normal; font-size: 9px; font-weight: 700; line-height: 1; color: rgba(255, 255, 255, 0.88); }
 /* 神兽牌：描边换成粉色 */
 .tile-legend { border-color: #b23a72; }
 /* 一组刻子（3 张）；组与组之间留大间隙 */
@@ -95,38 +88,37 @@ li b { color: var(--ink); }
 /* ===== 小徽章 / 表格 ===== */
 .badge {
   display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .5px;
-  padding: 1px 7px; border-radius: 999px; background: rgba(55,109,86,0.14); color: var(--ui-color-dark);
+  padding: 1px 7px; border-radius: 999px; background: rgba(55, 109, 86, 0.14); color: var(--ui-color-darker);
 }
-.badge.hot { background: rgba(203,73,77,0.16); color: #a63a3e; }
-.badge.big { background: rgba(255,126,179,0.2); color: #b23a72; }
+.badge.hot { background: rgba(203, 73, 77, 0.16); color: #a63a3e; }
+.badge.big { background: rgba(178, 58, 114, 0.16); color: #b23a72; }
 table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-th, td { text-align: left; font-size: 12.5px; padding: 6px 8px; border-bottom: 1px solid var(--card-line); vertical-align: middle; }
-th { font-size: 11.5px; color: var(--ui-color-dark); letter-spacing: .5px; }
-td.fans { white-space: nowrap; font-weight: 700; color: var(--ui-color-dark); width: 66px; }
+th, td { text-align: left; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 11.5px; font-weight: 700; color: var(--ui-color-darker); background: rgba(55, 109, 86, 0.12); letter-spacing: .5px; }
+td.fans { white-space: nowrap; font-weight: 700; color: var(--ui-color-darker); width: 66px; }
 td.cards { width: 1px; white-space: nowrap; }
-tr:last-child td { border-bottom: none; }
 
 /* ===== 流程条 ===== */
 .flow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .step {
-  flex: 1 1 120px; background: rgba(255,255,255,0.66); border: 1px solid var(--card-line);
-  border-radius: 10px; padding: 9px 10px; font-size: 12.5px; color: var(--ink-soft);
+  flex: 1 1 120px; background: rgba(255, 255, 255, 0.5); border: 1px solid var(--line-soft);
+  border-radius: 10px; padding: 9px 10px; font-size: 12.5px;
 }
-.step .no { display: block; font-size: 11px; font-weight: 700; color: var(--ui-color); letter-spacing: 1px; }
-.step b { display: block; font-size: 13px; margin: 2px 0; }
+.step .no { display: block; font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--ui-color); letter-spacing: 1px; }
+.step b { display: block; font-size: 13px; margin: 2px 0; color: var(--ui-color-darker); }
 
 /* ===== 例子框 ===== */
-.demo { background: rgba(255,255,255,0.55); border: 1px dashed rgba(47,106,74,0.35); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+.demo { background: rgba(255, 255, 255, 0.45); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
 .demo .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .demo .label { font-size: 12px; font-weight: 700; color: var(--ui-color-dark); min-width: 74px; }
-.demo .note { font-size: 12px; color: var(--ink-soft); }
+.demo .note { font-size: 12px; color: var(--color-muted, #7c7c7c); }
 .plus { font-size: 16px; color: var(--ui-color); font-weight: 700; }
 
-.tip { background: rgba(255,255,255,0.6); border-left: 4px solid var(--ui-color); border-radius: 0 8px 8px 0; padding: 8px 12px; margin-top: 10px; font-size: 12.5px; color: var(--ink-soft); }
-.foot { text-align: center; font-size: 11.5px; color: #eafff5; opacity: .8; margin-top: 18px; }
+.tip { background: rgba(55, 109, 86, 0.1); border-left: 4px solid var(--ui-color); border-radius: 0 8px 8px 0; padding: 8px 12px; margin-top: 10px; font-size: 12.5px; }
+.foot { text-align: center; font-size: 11.5px; color: var(--color-muted, #7c7c7c); margin-top: 18px; }
 @media (max-width: 520px) {
   body { padding: 18px 10px 44px; }
-  .hero h1 { font-size: 23px; letter-spacing: 2px; }
+  .hero h1 { font-size: 22px; letter-spacing: 3px; }
   section { padding: 13px 12px 15px; }
   table { font-size: 12px; }
 }

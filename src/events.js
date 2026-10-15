@@ -50,11 +50,19 @@ function edgeAtPos(pos) {
 // 排期段 → 这一段的宝可梦（野池 + 种子，与事件生成时同一套算法）；只有大量出没有
 // 手机第三页「全服事件」页用，纯展示、不碰存档
 export function pokeOfSlot(kind, slot) {
-  if (kind !== 'mass' || !slot || typeof slot.pos !== 'number' || typeof slot.seed !== 'number' || MAP_EDGES.length === 0) return null;
-  const { edge, t } = edgeAtPos(slot.pos);
+  if (kind !== 'mass' || !slot || typeof slot.seed !== 'number') return null;
+  const spot = spotOfSlot(slot);
+  if (!spot) return null;
+  const { edge, t } = spot;
   const region = REGION_CYCLE[t < 0.5 ? Math.min(edge[0], edge[1]) : Math.max(edge[0], edge[1])];
   const pool = allPokemon.filter((p) => p.region === region && !p.legend && !isPowerForm(p) && !isWildExcluded(p));
   return pool.length ? pickFamilyBySeed(pool, slot.seed) : null;
+}
+
+// 排期段 → 路段与段上位置，两类事件共用同一套换算
+export function spotOfSlot(slot) {
+  if (!slot || typeof slot.pos !== 'number' || MAP_EDGES.length === 0) return null;
+  return edgeAtPos(slot.pos);
 }
 
 // 随机选一条事件路段：大量出没与时空扭曲可同时活跃，必须避开另一事件所在路段，

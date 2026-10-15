@@ -112,6 +112,8 @@ export function showCasinoView() {
   showView('casinoView');
   playCasino();
   renderScene();
+  // 首次进游戏厅：依次指一下赌桌 / 麻将桌 / 抽卡机 / 兑换
+  import('./guide.js').then((m) => m.maybeShowGuide('casino'));
 }
 
 // 游戏厅首页：仿训练/饲育屋整页场景布局 + 赌桌/麻将桌热区（data-tip 走游戏统一 tooltip，点击分别跳转 21 点/口袋麻将）

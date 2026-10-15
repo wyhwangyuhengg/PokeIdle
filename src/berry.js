@@ -229,6 +229,8 @@ export function showBerryView() {
   render();
   showView('berryView');
   startTimer();
+  // 首次进农场：指一下纸箱 / 告示牌 / 地块
+  import('./guide.js').then((m) => m.maybeShowGuide('farm'));
 }
 
 // 外部刷新（调试辅助/联动）：同步手机主页红点，农场页可见时直接按最新数据重绘

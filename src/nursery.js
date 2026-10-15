@@ -183,6 +183,8 @@ export function showNurseryView() {
   showView('nurseryView');
   startTimer();
   if (produced > 0) notifyNewEggs(produced);
+  // 首次进饲育屋：引导指一下纸箱与告示牌
+  import('./guide.js').then((m) => m.maybeShowGuide('nursery'));
   // 完成后来访一次即已读红点（本次进入也视为造访）
   markNurseryBreedVisited();
 }

@@ -255,7 +255,7 @@ export function showEncounterLogs(pokemonIndex, fromLogsBack = false) {
           <button class="poke-img-shiny" id="logShinyBtn" type="button" title="切换闪光"><svg viewBox="0 0 1024 1024" width="11" height="11"><use xlink:href="#icon-star"/></svg></button>
         </div>
         ${(poke && poke.genus) ? `<div style="font-size:9px;${locked ? 'opacity:.4;' : ''}">${locked ? '？？？' : poke.genus}</div>` : ''}
-        ${(poke && poke.eggGroup && poke.eggGroup.length) ? `<div style="font-size:9px;white-space:nowrap;${locked ? 'opacity:.4;' : ''}">${locked ? '？？？' : poke.eggGroup.join(' ')}</div>` : ''}
+        ${(poke && ((poke.eggGroup && poke.eggGroup.length) || poke.noEggGroup)) ? `<div style="font-size:9px;white-space:nowrap;${locked ? 'opacity:.4;' : ''}">${locked ? '？？？' : (poke.noEggGroup ? '未发现蛋组' : poke.eggGroup.join(' '))}</div>` : ''}
       </div>
       <div style="min-width:0;">
         <div style="display:flex;gap:2px;flex-wrap:wrap;margin-bottom:2px;">

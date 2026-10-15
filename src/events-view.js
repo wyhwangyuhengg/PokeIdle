@@ -3,9 +3,11 @@
 // 条长＝持续时间；两侧处在同一段纵向位置，就是这两类事件的时间段重叠，一眼能看出来。
 // 数据就是游戏在拉的 /api/events/ 排期，拉不到（离线）时整页显示"还没有排期"。
 import { $, showView, tryLoadImage } from './ui.js';
-import { pushNav } from './state.js';
+import { pushNav, getRoadNumForEdge } from './state.js';
+import { REGION_CYCLE } from './config.js';
 import { allSlots, hasSchedule, serverNow } from './server-events.js';
-import { pokeOfSlot } from './events.js';
+import { pokeOfSlot, spotOfSlot } from './events.js';
+import { eventMapSvg } from './gps.js';
 
 const WIN_HOURS = 6;       // 只画从现在起 6 小时
 const PX_PER_HOUR = 50;     // 时间轴比例
@@ -16,24 +18,28 @@ const hhmm = (ms) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-// 老外壳里没有这个页面容器，自己补一个（与其它页面同级）
+// 老外壳里没有这个页面容器，自己补一个
 function ensureEventsView() {
-  if ($('eventsView')) return;
-  const host = $('phoneView')?.parentElement;
-  if (!host) return;
-  const view = document.createElement('div');
-  view.id = 'eventsView';
-  view.className = 'view-fixed view-list';
-  view.style.display = 'none';
-  const content = document.createElement('div');
-  content.id = 'eventsContent';
-  content.className = 'list-scroll';
-  view.appendChild(content);
-  host.appendChild(view);
+  let view = $('eventsView');
+  if (!view) {
+    const host = $('phoneView')?.parentElement;
+    if (!host) return null;
+    view = document.createElement('div');
+    view.id = 'eventsView';
+    view.className = 'view-fixed view-list';
+    view.style.display = 'none';
+    const content = document.createElement('div');
+    content.id = 'eventsContent';
+    content.className = 'list-scroll';
+    view.appendChild(content);
+    host.appendChild(view);
+  }
+  view.style.position = 'relative';   // 位置弹框按它定位，只盖这一屏
+  return view;
 }
 
 export function showEventsView() {
-  ensureEventsView();
+  if (!ensureEventsView()) return;
   pushNav('eventsView');
   showView('eventsView');
   renderEventsView();
@@ -56,16 +62,19 @@ function renderEventsView() {
   const px = (ms) => (ms - now) / 3600e3 * PX_PER_HOUR;   // 时刻 → 纵向像素
   const canvasH = WIN_HOURS * PX_PER_HOUR;
   const running = (kind) => allSlots(kind).some((s) => now >= s.from && now < s.to);   // 这一类的时段正在走
+  // 每侧要画的时段：点击时按同样的下标取回原始段
+  const lanes = {};
+  for (const kind of ['mass', 'twist']) {
+    lanes[kind] = allSlots(kind).filter((s) => s.to > now && s.from < end).sort((a, b) => a.from - b.from);
+  }
 
-  // 一侧：轴上一段"有时长的段"，从段的中点拉一根细线出来，右侧接一行文字（图标 + 名字 + 时间）
+  // 一侧：轴上的一段时长条，从段中点拉一根细线接到文字
   const laneHtml = (kind, side) => {
-    return allSlots(kind)
-      .filter((s) => s.to > now && s.from < end)
-      .sort((a, b) => a.from - b.from)
-      .map((s) => {
+    return lanes[kind]
+      .map((s, i) => {
         const poke = pokeOfSlot(kind, s);
         const species = poke ? (poke.form || poke.name) : '';
-        // 已经开始的段：从"现在"往下画到它真正结束，别把已经过去的那段也算进来（否则会盖住下一段）
+        // 已经开始的段：从"现在"往下画到它真正结束，别把过去的那段算进来
         const from = Math.max(0, px(Math.max(s.from, now)));
         const to = Math.min(canvasH, px(s.to));
         const raw = Math.max(MIN_BAR_H, to - from);
@@ -74,7 +83,7 @@ function renderEventsView() {
         // 引线锚在段的正中（夹在段内），保证线一定落在这一段上
         const anchor = Math.min(from + raw - 1, Math.max(from + 1, from + raw / 2));
         return `<div class="evp-seg ${kind}" style="top:${segTop.toFixed(1)}px;height:${segH.toFixed(1)}px"></div>`
-          + `<div class="evp-item ${side}${s.from <= now ? ' now' : ''}" data-anchor="${anchor.toFixed(1)}">`
+          + `<div class="evp-item ${side}${s.from <= now ? ' now' : ''}" data-lane="${kind}" data-idx="${i}" data-anchor="${anchor.toFixed(1)}">`
           + `<i class="evp-lead"></i>`
           + `<span class="evp-label">`
           + (poke ? `<span class="evp-row"><img class="evp-icon" data-icon="${poke.icon}" alt=""><span class="evp-poke">${species}</span></span>` : '')
@@ -90,7 +99,7 @@ function renderEventsView() {
     + `<div class="evp-now"></div>`
     + laneHtml('mass', 'left')
     + laneHtml('twist', 'right')
-    + `</div></div>`;
+    + `</div>`;
   // 位置自适应：先按引线锚点摆，撞上上一个就往下推；引线跟着文字走
   for (const side of ['left', 'right']) {
     let cursor = 0;
@@ -106,4 +115,39 @@ function renderEventsView() {
   }
   // 宝可梦图标：路径含中文，走统一的编码加载
   box.querySelectorAll('img[data-icon]').forEach((img) => tryLoadImage(img, img.dataset.icon));
+  // 点时段条：弹小地图看它落在哪条路上
+  box.onclick = (e) => {
+    const item = e.target.closest('.evp-item');
+    if (!item) return;
+    const slot = (lanes[item.dataset.lane] || [])[Number(item.dataset.idx)];
+    if (slot) openSpotPopup(item.dataset.lane, slot);
+  };
 }
+
+// 事件位置弹框：位置由排期 pos 换算，与游戏内事件点一致
+function openSpotPopup(kind, slot) {
+  const view = $('eventsView');
+  const spot = spotOfSlot(slot);
+  if (!view || !spot) return;
+  const poke = pokeOfSlot(kind, slot);
+  const name = poke ? (poke.form || poke.name) : '';
+  const num = getRoadNumForEdge(spot.edge, spot.t);
+  const [ea, eb] = spot.edge;
+  const where = num != null ? `${num}#道路`
+    : `${REGION_CYCLE[Math.min(ea, eb)]}↔${REGION_CYCLE[Math.max(ea, eb)]}之间的道路`;
+  closeSpotPopup();
+  const el = document.createElement('div');
+  el.id = 'evpMapMask';
+  el.className = 'evp-map-mask';
+  el.innerHTML = `<div class="evp-map-box">
+      <div class="evp-map-title">${kind === 'twist' ? '时空扭曲' : '大量出没'}${name ? ` · ${name}` : ''}</div>
+      <div class="evp-map-time">${hhmm(slot.from)}–${hhmm(slot.to)}${slot.from <= serverNow() ? ' · 进行中' : ''}</div>
+      <div class="evp-map-svg">${eventMapSvg(spot.edge, spot.t, kind)}</div>
+      <div class="evp-map-where">出现位置：${where}</div>
+      <div class="evp-map-hint">点击任意处关闭</div>
+    </div>`;
+  el.addEventListener('click', closeSpotPopup);
+  view.appendChild(el);
+}
+
+function closeSpotPopup() { $('evpMapMask')?.remove(); }

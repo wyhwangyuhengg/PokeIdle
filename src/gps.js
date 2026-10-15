@@ -215,15 +215,11 @@ function buildMiniMap(g) {
     const [x, y] = MAP_POS[i];
     const isCur = !currentRoad && i === markerIdx;
     const isDest = g.destIdx === i;
-    // 标签方位按 MAP_LABEL 配置：水平一侧或 右上(tr)/左下(bl)
-    const pos = MAP_LABEL[i] || 'right';
-    const dx = pos === 'right' || pos === 'tr' ? 10 : -10;
-    const dy = pos === 'bl' ? 14 : pos === 'tr' ? -10 : 3.5;
-    const anchor = pos === 'right' || pos === 'tr' ? 'start' : 'end';
+    const lp = labelPlacement(i);
     return `
       <g class="gps-map-node${isCur ? ' current' : ''}${isDest ? ' dest' : ''}" data-region="${i}" style="cursor:pointer">
         <circle cx="${x}" cy="${y}" r="${isCur ? 6 : 5}"></circle>
-        <text x="${x + dx}" y="${y + dy}" text-anchor="${anchor}">${name}</text>
+        <text x="${lp.x}" y="${lp.y}" text-anchor="${lp.anchor}">${name}</text>
       </g>`;
   }).join('');
 
@@ -273,6 +269,33 @@ function twistMarkerSvg() {
       <circle r="3.5" class="gps-twist-dot"></circle>
       <text x="${lp.dx}" y="${lp.dy}" text-anchor="${lp.anchor}" class="gps-twist-label">时空扭曲</text>
     </g>`;
+}
+
+// 地区名标签的方位偏移（MAP_LABEL 配置）
+function labelPlacement(i) {
+  const pos = MAP_LABEL[i] || 'right';
+  const dx = pos === 'right' || pos === 'tr' ? 10 : -10;
+  const dy = pos === 'bl' ? 14 : pos === 'tr' ? -10 : 3.5;
+  return { x: MAP_POS[i][0] + dx, y: MAP_POS[i][1] + dy, anchor: pos === 'right' || pos === 'tr' ? 'start' : 'end' };
+}
+
+// 事件位置小地图：复用 GPS 路网，高亮事件所在路段并标出点位
+export function eventMapSvg(edge, t, kind) {
+  const [ea, eb] = edge;
+  const [x, y] = lerpPoint(MAP_POS[ea], MAP_POS[eb], t);
+  const lines = MAP_EDGES.map(([a, b]) => {
+    const on = (a === ea && b === eb) || (a === eb && b === ea);
+    return `<line class="gps-map-edge${on ? ' active' : ''}" x1="${MAP_POS[a][0]}" y1="${MAP_POS[a][1]}" x2="${MAP_POS[b][0]}" y2="${MAP_POS[b][1]}"></line>`;
+  }).join('');
+  const nodes = REGION_CYCLE.map((name, i) => {
+    const on = i === ea || i === eb;
+    const lp = labelPlacement(i);
+    return `<g class="gps-map-node${on ? ' dest' : ''}"><circle cx="${MAP_POS[i][0]}" cy="${MAP_POS[i][1]}" r="${on ? 5 : 3.5}"></circle>`
+      + `<text x="${lp.x}" y="${lp.y}" text-anchor="${lp.anchor}">${name}</text></g>`;
+  }).join('');
+  const cls = kind === 'twist' ? 'gps-twist' : 'gps-mass';
+  return `<svg viewBox="${MAP_VIEWBOX}" class="gps-minimap-svg" aria-hidden="true">${lines}${nodes}`
+    + `<g transform="translate(${x} ${y})"><circle class="${cls}-ring" r="8"></circle><circle class="${cls}-dot" r="3.5"></circle></g></svg>`;
 }
 
 // 事件点 label 避让：默认放点位上方（text-anchor=middle，y 下移 -13）；

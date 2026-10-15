@@ -32,7 +32,10 @@ function seedOf(ctx) {
   const raw = (ctx.payload || {}).seed;
   const n = Number(raw);
   const s = raw != null && raw !== '' && Number.isFinite(n) ? n : null;   // 手写配置里写成字符串也认
-  const str = `${ctx.id}|${s != null ? s : Math.round(Number(ctx.from) || 0)}`;
+  return strSeed(`${ctx.id}|${s != null ? s : Math.round(Number(ctx.from) || 0)}`);
+}
+// 字符串 → 32 位种子（FNV-1a）
+function strSeed(str) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
   return h >>> 0;
@@ -57,6 +60,7 @@ function rngFrom(seed) {
 const EVO_REWARD_POOL = Object.keys(EVO_PRICES).filter(k => !k.endsWith('crown'));
 const MINT_CROWN_POOL = [...MINT_KEYS, 'silver-crown', 'golden-crown'];
 const RARE_POOL = ['master-ball', 'shiny-charm'];
+const CROWN_POOL = ['silver-crown', 'golden-crown'];
 const EGG_SPECIES_POOL = () => allPokemon.filter(p => !p.legend && !isPowerForm(p));   // 神兽与超级/超极巨形态不发蛋
 const REWARD_V = 2;   // 奖励结构版本：v1 是三条槽，对不上就重摇（不用管老存档）
 
@@ -184,25 +188,32 @@ function tierHtml(ctx, i, rw, per, done) {
 
 // ===== 宝可翻牌（id: poke-flip）：玩配对翻牌赚气球，在兑换所换道具（每样限一次，换完即止）=====
 const BALLOON_ICON = './items/goods/balloon-cyan.png';
-// 兑换表：价格按"一周活动能换完"配（合计 5800）；每样限一次，所以不用怕刷
+// 兑换表：价格按"一周活动能换完"配（合计 4250）；每样限一次，所以不用怕刷。
+// 没写 name 的那几项是随机货，具体摇到哪个由活动种子定（见 shopGrantOf），页面上直接把那个摆出来
 const SHOP_ITEMS = [
-  { id: 'ball',   price: 100,  qty: 10, name: '精灵球 ×10',       icon: 'poke-ball' },
-  { id: 'honey',  price: 150,  qty: 1,  name: '甜甜蜜',           icon: 'sweet-honey' },
-  { id: 'candy',  price: 150,  qty: 2,  name: '经验糖果 ×2',      icon: 'exp-candy' },
-  { id: 'ultra',  price: 200,  qty: 5,  name: '高级球 ×5',        icon: 'ultra-ball' },
-  { id: 'mint',   price: 300,  qty: 1,  name: '薄荷（随机）',     icon: MINT_KEYS[0] },
-  { id: 'stone',  price: 400,  qty: 1,  name: '进化道具（随机）', icon: EVO_REWARD_POOL[0] },
-  { id: 'silver', price: 500,  qty: 1,  name: '银色王冠',         icon: 'silver-crown' },
-  { id: 'golden', price: 700,  qty: 1,  name: '金色王冠',         icon: 'golden-crown' },
-  { id: 'master', price: 900,  qty: 1,  name: '大师球',           icon: 'master-ball' },
-  { id: 'charm',  price: 900,  qty: 1,  name: '闪耀护符',         icon: 'shiny-charm' },
-  { id: 'egg',    price: 1500, qty: 1,  name: '闪光蛋',           egg: true },
+  { id: 'candy', price: 150,  qty: 2, name: '经验糖果 ×2', icon: 'exp-candy' },
+  { id: 'ultra', price: 200,  qty: 5, name: '高级球 ×5',   icon: 'ultra-ball' },
+  { id: 'mint',  price: 300,  qty: 1, icon: MINT_KEYS[0] },
+  { id: 'stone', price: 400,  qty: 1, icon: EVO_REWARD_POOL[0] },
+  { id: 'crown', price: 700,  qty: 1, icon: 'golden-crown' },
+  { id: 'rare',  price: 1000, qty: 1, icon: 'master-ball' },
+  { id: 'egg',   price: 1500, qty: 1, egg: true },
 ];
 
 const coinsOf = ctx => Math.max(0, Math.round(Number(ctx.slot && ctx.slot.coins) || 0));
 function boughtOf(ctx) {
   if (!ctx.slot.bought || typeof ctx.slot.bought !== 'object') ctx.slot.bought = {};
   return ctx.slot.bought;
+}
+// 随机货最终给哪个道具：种子只挂在"活动 + 商品 id"上，不掺购买顺序 ——
+// 所以能提前算出来直接摆给玩家看，领取时拿到的也必然是同一个
+function shopGrantOf(ctx, item) {
+  const r = rngFrom((seedOf(ctx) ^ strSeed(item.id)) >>> 0);
+  if (item.id === 'mint') return MINT_KEYS[Math.floor(r() * MINT_KEYS.length)];
+  if (item.id === 'stone') return EVO_REWARD_POOL[Math.floor(r() * EVO_REWARD_POOL.length)];
+  if (item.id === 'crown') return CROWN_POOL[Math.floor(r() * CROWN_POOL.length)];
+  if (item.id === 'rare') return RARE_POOL[Math.floor(r() * RARE_POOL.length)];
+  return item.icon;   // 固定货
 }
 // 兑换所那颗蛋：和大量悬赏同口径（可指定物种，否则按活动种子摇，全服同一只），定下来就存着
 function shopEgg(ctx) {
@@ -213,12 +224,13 @@ function shopEgg(ctx) {
   return ctx.slot.egg;
 }
 function shopName(ctx, item) {
-  return item.egg ? eggLabel(shopEgg(ctx).species) : item.name;
+  if (item.egg) return eggLabel(shopEgg(ctx).species);
+  return item.name || ITEM_NAMES[shopGrantOf(ctx, item)] || item.id;
 }
 function shopRowHtml(ctx, item) {
   const bought = !!boughtOf(ctx)[item.id];
   const can = !bought && coinsOf(ctx) >= item.price;
-  const icon = item.egg ? eggIconHtml(shopEgg(ctx).species) : itemIconHtml(item.icon);
+  const icon = item.egg ? eggIconHtml(shopEgg(ctx).species) : itemIconHtml(shopGrantOf(ctx, item));
   return `
     <div class="act-shop-row${bought ? ' done' : ''}">
       ${icon}
@@ -235,16 +247,11 @@ function buyShopItem(ctx, id) {
   ctx.confirm(`花 ${item.price} 个气球换「${shopName(ctx, item)}」？`, () => {
     // 确认框开着的这段时间余额/已兑换可能变了：再核一次
     if (bought[item.id] || coinsOf(ctx) < item.price) { ctx.refresh(); return; }
-    const r = rngFrom(seedOf(ctx) + (Object.keys(bought).length + 1) * 7919);   // 随机的薄荷/进化道具：按种子顺着摇
     if (item.egg) {
       const egg = shopEgg(ctx);
       ctx.grantEgg(egg.species, egg);
-    } else if (item.id === 'mint') {
-      ctx.grant(MINT_KEYS[Math.floor(r() * MINT_KEYS.length)], item.qty);
-    } else if (item.id === 'stone') {
-      ctx.grant(EVO_REWARD_POOL[Math.floor(r() * EVO_REWARD_POOL.length)], item.qty);
     } else {
-      ctx.grant(item.icon, item.qty);
+      ctx.grant(shopGrantOf(ctx, item), item.qty);   // 显示什么就发什么（同一个种子算出来的）
     }
     ctx.slot.coins = coinsOf(ctx) - item.price;
     bought[item.id] = true;
