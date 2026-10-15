@@ -1591,6 +1591,14 @@ export function renewBuffLater() {
   if (takeBuffForRenew('shiny-charm')) activateShinyCharm();
 }
 
+// 设置里刚勾上「自动使用增益道具」时立即用一瓶；骑行中用不上（同上，续上就是白烧），
+// 改成记一笔待续，下车回到挂机由 renewBuffLater 续上
+export function useBuffNowOrDefer(item) {
+  if (buffWastedNow()) { _buffRenewPending = true; return; }
+  if (item === 'shiny-charm') activateShinyCharm();
+  else activateHoney();
+}
+
 export function handleHoneyExpired() {
   setHoneyBuffActive(false);
   setHoneyCountdownEnd(0);

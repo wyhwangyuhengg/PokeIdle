@@ -1,7 +1,7 @@
 import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_SPAWN_MIN, TWIST_SPAWN_MAX, TWIST_SPAWN_HONEY_MIN, TWIST_SPAWN_HONEY_MAX, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, honeyBuffActive, charmBuffActive, saveGame, setSaveSuspended, formatNum, pad, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing, isPokemon } from './state.js';
 import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, applyWindowBg, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform, touchText, watchOutsidePress } from './ui.js';
-import { doCandyExchange, doSellBall, activateHoney, activateShinyCharm, refillBuffIfEmpty, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf, BASIC_ITEM_ORDER } from './items.js';
+import { doCandyExchange, doSellBall, useBuffNowOrDefer, refillBuffIfEmpty, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf, BASIC_ITEM_ORDER } from './items.js';
 import { formatLogTime } from './pokedex.js';
 import { stopAutoFleeTimer, startAutoFleeTimer, autoCatch } from './battle.js';
 import { setVolume, setBattleMusic, setMusicEnabled, setSfxEnabled, playBattle, endBattle } from './audio.js';
@@ -1527,6 +1527,8 @@ export function renderSettings(container, s) {
     });
   }
   function doApplyImportedSave(imported, importedTime, currentTime, btn) {
+    // 阻止 reload 时 beforeunload 的 saveLastChance 把旧档的会话/道路状态写回 localStorage
+    window.__resettingSave = true;
     // 旧档的会话状态不属于新档：正在进行的遭遇、当前道路都要清掉，
     // 否则重载后新档会"在关都继承一场丰缘的遭遇"
     try {
@@ -1816,9 +1818,9 @@ export function toggleAutoBuffHoney() {
   const container = $('settingsContent');
   renderSettings(container, gameData.settings);
   saveGame();
-  // 刚开启且闲置中，立即使用一个（自己库存里的，不负责补货）
+  // 刚开启且闲置中，立即使用一个（自己库存里的，不负责补货）；骑行中用不上 → 下车再续
   if (gameData.settings.autoBuffHoney && phase === 'idle' && !honeyBuffActive && !charmBuffActive) {
-    activateHoney();
+    useBuffNowOrDefer('sweet-honey');
   }
 }
 
@@ -1845,9 +1847,9 @@ export function toggleAutoBuffCharm() {
   const container = $('settingsContent');
   renderSettings(container, gameData.settings);
   saveGame();
-  // 刚开启且闲置中，立即使用一个（自己库存里的，不负责补货；甜甜蜜生效期间不叠加护符）
+  // 刚开启且闲置中，立即使用一个（自己库存里的，不负责补货；甜甜蜜生效期间不叠加护符）；骑行中用不上 → 下车再续
   if (gameData.settings.autoBuffCharm && phase === 'idle' && !charmBuffActive && !honeyBuffActive) {
-    activateShinyCharm();
+    useBuffNowOrDefer('shiny-charm');
   }
 }
 
@@ -2223,8 +2225,8 @@ const TUTORIAL_SECTIONS = [
     html: `<p>在<b>手机</b>页面打开<b>配队</b>应用：一共可以保存 <b>6 组</b>队伍，每队最多 <b>${TEAM_MAX}</b> 只。进入后是<b>队伍列表</b>，每张卡片显示成员预览，点名称或笔图标可<b>改名</b>，点卡片进入<b>编辑</b>对应队伍。</p>`
       + `<p><b>设为上场</b>的队伍会用于<b>对战</b>出战与自动配招参考，切换上场队伍无需重新组建阵容。</p>`
       + `<p>编辑队伍时点击<b>空位</b>从仓库选择宝可梦加入；点击<b>已有成员</b>弹出菜单：<b>查看</b>个体详情、<b>替换</b>（从仓库换一只到该位置）、<b>移除</b>（放回仓库）。</p>`
-      + `<p><b>拖拽</b>可以对队伍中的宝可梦进行快速排序。<b>右键</b>空白处可<b>自动配队</b>或清空当前队伍。</p>`
-      + `<p><b>自动配队</b>：直接挑仓库里（排除训练中）<b>等级最高</b>的 6 只——同一等级有一批时从里面<b>随机入选</b>，入选后的<b>站位顺序也是随机</b>的；队伍<b>未满</b>时<b>保留现有成员</b>，空位用等级最高的补齐。</p>`
+      + `<p><b>拖拽</b>可以对队伍中的宝可梦进行快速排序，拖到<b>底部中间</b>即可移除。底部横条左<b>一键配队</b>、右<b>清空</b>，随时可用。</p>`
+      + `<p><b>一键配队</b>：直接挑仓库里（排除训练中）<b>等级最高</b>的 6 只——同一等级有一批时从里面<b>随机入选</b>，入选后的<b>站位顺序也是随机</b>的；队伍<b>未满</b>时<b>保留现有成员</b>，空位用等级最高的补齐。</p>`
       + `<p>入队的宝可梦会从<b>训练</b>、<b>饲育屋</b>中自动撤下，训练/配对中的宝可梦也不能留在任何队伍里（三者<b>互斥</b>）。</p>`,
   },
   {
@@ -2469,7 +2471,7 @@ const TUTORIAL_SUMMARIES = {
   '树果': '树果用处很多，多囤树果。',
   '农场': '每日刷新的树果委托可以换到糖果。',
   '宝可梦': '右键列表可以批量放生和高级筛选。',
-  '配队': '可以存 6 组队伍，右键空白处能随机配队。',
+  '配队': '可以存 6 组队伍，底部一键配队，也能把宝可梦拖到底部移除。',
   '训练': '挂机就长经验，别忘备够爱吃的树果。',
   '对战': 'NPC的等级受到队伍等级的影响。',
   '经验糖果': '经验糖果无法直接购买。',

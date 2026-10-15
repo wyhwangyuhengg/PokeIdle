@@ -57,7 +57,7 @@ docs/*.bak_variants
 __pycache__/
 
 # 部署配置（服务器地址/路径，本地用）
-tools/deploy.config.json
+tools/pokeidledeploy.config.json
 
 # 资源热更清单（tools/gen-manifest.mjs 生成）
 src/res-manifest.json

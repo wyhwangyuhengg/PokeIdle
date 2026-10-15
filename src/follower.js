@@ -1073,11 +1073,13 @@ function renderFollowerDexList() {
   page.querySelector('.follower-dex-header')?.remove();
   list.insertAdjacentHTML('beforebegin', followerDexHeaderHtml());
   list.innerHTML = followerDexRowsHtml();
-  // 表头排序（重渲染后重新绑定当前表头）
+  // 表头排序（三段：升序 → 降序 → 取消回默认编号序）
   page.querySelectorAll('[data-fdx-sort]').forEach(el => el.addEventListener('click', () => {
     const k = el.dataset.fdxSort;
-    if (_followerDexSortBy === k) _followerDexSortDir = -_followerDexSortDir;
-    else { _followerDexSortBy = k; _followerDexSortDir = 1; }
+    if (_followerDexSortBy === k) {
+      if (_followerDexSortDir === 1) _followerDexSortDir = -1;
+      else { _followerDexSortBy = ''; _followerDexSortDir = 1; } // 第三次点：取消排序
+    } else { _followerDexSortBy = k; _followerDexSortDir = 1; }
     renderFollowerDexList();
   }));
   // 下拉选项的选中态（每次渲染刷新）

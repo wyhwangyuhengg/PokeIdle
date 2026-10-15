@@ -17,7 +17,7 @@ import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../..');
-const CFG_PATH = join(ROOT, 'tools', 'deploy.config.json');
+const CFG_PATH = join(ROOT, 'tools', 'pokeidledeploy.config.json');
 const SERVER_FILE = join(ROOT, 'server', 'server.mjs');
 const CONFIG_FILE = join(ROOT, 'src', 'config.js');
 const dry = process.argv.includes('--dry');

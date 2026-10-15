@@ -18,7 +18,7 @@ import { homedir } from 'node:os';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const DIST = join(ROOT, 'web', 'dist');
-const CFG_PATH = join(ROOT, 'tools', 'deploy.config.json');
+const CFG_PATH = join(ROOT, 'tools', 'pokeidledeploy.config.json');
 const args = process.argv.slice(2);
 const dry = args.includes('--dry');
 const skipBuild = args.includes('--skip-build');

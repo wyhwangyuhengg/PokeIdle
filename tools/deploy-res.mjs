@@ -20,7 +20,7 @@ import { homedir, tmpdir } from 'node:os';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const SRC = join(ROOT, 'src');
-const CFG_PATH = join(ROOT, 'tools', 'deploy.config.json');
+const CFG_PATH = join(ROOT, 'tools', 'pokeidledeploy.config.json');
 const MANIFEST = join(ROOT, 'src', 'res-manifest.json');
 const BASELINE = join(ROOT, 'tools', 'hot-baseline.json');
 const STAGING = join(ROOT, 'android', 'app', 'src', 'main', 'assets', 'public', 'res-manifest.json');
@@ -114,8 +114,8 @@ if (args.includes('--check')) {
   const bad = await probe(need);
   if (!bad.length) console.log(`      该传的 ${need.length} 个文件服务器上都能下到、哈希一致 ✔`);
   else {
-    console.log(`      ✘ 还有 ${bad.length} 个文件没传上去 / 版本不对：`);
-    for (const p of bad) console.log(`         ${p}  ${kb(local.files[p].size)}`);
+    console.log(`      ✘ 还有 ${bad.length} 个文件要处理（面板里能看到文件 ≠ 版本对）：`);
+    for (const b of bad) console.log(`         ${b.rel}  ${kb(local.files[b.rel].size)}  ${whyText(b)}`);
     console.log('      客户端会一直弹「发现新资源」（下到了但校验不过 → 跳过 → 下次再问）');
   }
   process.exit(bad.length || !sameManifest ? 1 : 0);
@@ -126,7 +126,7 @@ if (args.includes('--local')) {
   const li = args.indexOf('--local');
   const dir = args[li + 1] && !args[li + 1].startsWith('--') ? resolve(args[li + 1]) : join(ROOT, 'hot-upload');
   // 先走 443 问问服务器上已经有哪几个（探测不需要 ssh，封禁期间也能用），只铺缺的
-  let missing = need, already = [];
+  let missing = need, already = [], badList = [];
   if (need.length) {
     let reach = false;
     try {
@@ -136,10 +136,12 @@ if (args.includes('--local')) {
     if (!reach) {
       console.log(`      ⚠ 拉不到 ${apiBase}（没网或服务器不通）—— 按"这些都要传"给你铺`);
     } else {
-      const bad = new Set(await probe(need));
-      missing = need.filter((p) => bad.has(p));
-      already = need.filter((p) => !bad.has(p));
+      badList = await probe(need);
+      const badSet = new Set(badList.map((b) => b.rel));
+      missing = need.filter((p) => badSet.has(p));
+      already = need.filter((p) => !badSet.has(p));
       console.log(`      服务器上已经有 ${already.length} 个${already.length ? `（${already.join('、')}）` : ''}，要传 ${missing.length} 个`);
+      for (const b of badList) console.log(`        · ${b.rel}：${whyText(b)}`);
     }
   }
   rmSync(dir, { recursive: true, force: true });   // 清掉上次铺的，免得把已经不需要的文件一起传上去
@@ -154,7 +156,8 @@ if (args.includes('--local')) {
   console.log(`[3/3] --local：${missing.length} 个文件 + 清单已铺到 ${dir}`);
   for (const rel of missing) {
     const buf = readFileSync(join(dir, rel));
-    console.log(`      ${rel}  ${kb(buf.length)}  ${sha1(buf) === local.files[rel].hash ? '✔' : '✘ 拷贝损坏'}`);
+    const why = badList.find((b) => b.rel === rel);
+    console.log(`      ${rel}  ${kb(buf.length)}  ${sha1(buf) === local.files[rel].hash ? '✔' : '✘ 拷贝损坏'}${why ? '  ← ' + whyText(why) : ''}`);
   }
   if (!missing.length) console.log('      文件服务器上都是最新，只需传 manifest.json');
   console.log(`      传到 ${hotDir}/：先传上面这些文件，最后传 manifest.json（顺序不能反）`);
@@ -188,7 +191,7 @@ if (all) {
 } else if (targets.length) {
   const missing = await probe(targets);
   if (missing.length) {
-    push(missing);
+    push(missing.map((b) => b.rel));
     uploaded = missing.length;
     console.log(`      传了 ${uploaded} 个（服务器上已经有 ${targets.length - uploaded} 个）`);
   } else {
@@ -213,12 +216,12 @@ if (targets.length) {
     const check = all ? targets.filter((_, i) => i % step === 0) : targets;
     let bad = await probe(check);
     if (bad.length) {
-      console.log(`      自检发现 ${bad.length} 个没传成功，重传一次：${bad.slice(0, 5).join(' ')}`);
-      push(bad);
+      console.log(`      自检发现 ${bad.length} 个没传成功，重传一次：${bad.slice(0, 5).map((b) => b.rel).join(' ')}`);
+      push(bad.map((b) => b.rel));
       uploaded += bad.length;
-      bad = await probe(bad);
+      bad = await probe(bad.map((b) => b.rel));
     }
-    if (bad.length) console.log(`      ✘ 仍有 ${bad.length} 个传不上去：${bad.join(' ')}（检查文件名/权限）`);
+    if (bad.length) console.log(`      ✘ 仍有 ${bad.length} 个传不上去：${bad.map((b) => b.rel + '（' + whyText(b) + '）').join('、')}`);
     else console.log(`      自检通过：${all ? '抽查' : ''}${check.length} 个文件都能下到、哈希一致`);
   }
 }
@@ -234,7 +237,7 @@ if (tail.status === 0 && tail.stdout) {
 }
 console.log(`完成：客户端要更新 ${targets.length} 个文件${uploaded ? `（本次上传 ${uploaded} 个）` : ''} + 清单`);
 
-// 逐个拉回来比哈希（并发 6）
+// 逐个拉回来比哈希（并发 6）。返回 [{ rel, why, got }]，why: 'missing' 服务器没有 | 'old' 有但是旧版 | 'error' 拉不动
 async function probe(paths) {
   const bad = [];
   const queue = paths.slice();
@@ -242,12 +245,17 @@ async function probe(paths) {
     const want = local.files[rel].hash;
     try {
       const res = await fetch(`${apiBase}/file?p=${encodeURIComponent(rel)}&v=${want}`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
-      if (!res.ok) return bad.push(rel);
-      if (sha1(Buffer.from(await res.arrayBuffer())) !== want) bad.push(rel);
-    } catch (_) { bad.push(rel); }
+      if (!res.ok) return bad.push({ rel, why: 'missing', got: `HTTP ${res.status}` });
+      const got = sha1(Buffer.from(await res.arrayBuffer()));
+      if (got !== want) bad.push({ rel, why: 'old', got });
+    } catch (e) { bad.push({ rel, why: 'error', got: e.name === 'TimeoutError' ? '超时' : e.message }); }
   };
   await Promise.all(Array.from({ length: Math.min(6, queue.length) }, async () => {
     while (queue.length) await one(queue.shift());
   }));
   return bad;
 }
+// 一句话说明这个文件为什么"要传"（面板里 ls 得到 ≠ 版本对；这里区分"没有"和"是旧版"）
+const whyText = (b) => b.why === 'missing' ? `服务器上没有（${b.got}）`
+  : b.why === 'old' ? `服务器上是旧版（${b.got}，要的是 ${local.files[b.rel].hash}）`
+  : `拉不动（${b.got}）`;

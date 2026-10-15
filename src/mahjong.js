@@ -281,10 +281,11 @@ const YAKU_REF = [
   { name: '月夜魅影', fans: '役满', desc: '耿鬼+鬼斯+梦幻', cards: [94, 92, 151] },
   { name: '神兽一色', fans: '役满', desc: '3组全神兽刻子（×10）', cards: [] },
 ];
-function getYaku(cards, dora, meldIds = [], opts = {}) {
-  const ids = [...countsOf([...cards, ...meldIds]).keys()];
+// meldTiles：副露按实际张数展开传入（一组碰 = 3 张），与手牌一起构成整手 9 张
+function getYaku(cards, dora, meldTiles = [], opts = {}) {
+  const ids = [...countsOf([...cards, ...meldTiles]).keys()];
   const groups = ids.map(id => SPECIES_MAP.get(id));
-  const total = countsOf([...cards, ...meldIds]);
+  const total = countsOf([...cards, ...meldTiles]);
   const yaku = [];
   // 役满：单一种一色（3 组同种刻子）/ 天和（庄家第一摸）/ 5 种幻神组合 / 神兽一色（3 组神兽刻子）→ 固定 ×10，跳过其余所有番
   if (ids.length === 1 && total.get(ids[0]) === 9) {
@@ -1676,7 +1677,7 @@ async function settle(winner, mode = 'tsumo') {
   if (winner !== 'draw') playMahjongSfx(mode === 'ron' ? 'ron' : 'tsumo');
   let net = 0, msg = '', yaku = [], fans = 0, mult = 2;
   if (winner === 0) {
-    const y = getYaku(st.player, st.dora, st.meld.map(g => g.id), {
+    const y = getYaku(st.player, st.dora, st.meld.flatMap(g => [g.id, g.id, g.id]), {
       riichi: st.riichi,
       wRiichi: st.wRiichi,
       tsumo: mode === 'tsumo',
@@ -1694,7 +1695,7 @@ async function settle(winner, mode = 'tsumo') {
     net = -st.stake; // AI 胡牌固定 -注额（倍率不参与 AI 收益，仅用于面板展示）
     msg = `${AI_NAMES[winner - 1]} ${mode === 'ron' ? '荣和' : '自摸'}…`;
     // AI 胡牌同样结算役种供结算面板展示（AI 荣和时弃牌已并入其手牌；碰后成胡时副露已计入）
-    const aiY = getYaku(st.ai[winner - 1], st.dora, st.aiMeld[winner - 1].map(g => g.id), {
+    const aiY = getYaku(st.ai[winner - 1], st.dora, st.aiMeld[winner - 1].flatMap(g => [g.id, g.id, g.id]), {
       riichi: st.aiRiichi[winner - 1],
       tsumo: mode === 'tsumo',
       menzen: st.aiMeld[winner - 1].length === 0,

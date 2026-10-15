@@ -360,7 +360,9 @@ function onBagClick(itemKey) {
   if (itemKey === 'sweet-honey') { activateHoney(); }
   else if (itemKey === 'shiny-charm') {
     if (honeyBuffActive) return;
-    activateShinyCharm();
+    showConfirmBar('使用闪耀护符？60秒内大幅提升闪光率，并保底遇到一只闪光宝可梦。', () => {
+      activateShinyCharm();
+    }, null, { overlay: true });
   } else if (itemKey === 'bike') {
     tryUseBike();
   } else if (itemKey === 'mystery-egg') {

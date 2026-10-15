@@ -7,7 +7,7 @@
 //
 // 服务器侧接口：GET /api/hot/manifest.json、GET /api/hot/file?p=<相对路径>
 // 开发调试：localStorage.pokeidle_hot_on = '1' 打开（dev 构建默认关），
-//          localStorage.pokeidle_hot_base 换成本地源（见 tools/deploy.config.json 里的 apiBase）
+//          localStorage.pokeidle_hot_base 换成本地源（见 tools/pokeidledeploy.config.json 里的 apiBase）
 import { DEV } from './build-info.js';
 
 const HOT_BASE = 'https://pokeidle.shiliu.space/api/hot';

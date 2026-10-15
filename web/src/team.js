@@ -743,7 +743,7 @@ function renderTeamEdit(box) {
         ${[0, 1, 2, 3, 4, 5].map(i => slotHtml(i, slotPokes[i], false)).join('')}
       </div>
     </div>
-    ${_hint && editTeamEmpty() ? '' : trashDockHtml()}
+    ${trashDockHtml()}
     ${footerHtml()}`;
   // 加载个体图标
   box.querySelectorAll('img[data-icon]').forEach(img => {
@@ -763,15 +763,10 @@ function renderTeamEdit(box) {
       openTeamMenu(e, i, slotPokes[i]);
     });
   });
-  // 空白区域右键：弹出队伍管理菜单（随机配队 / 清空）
-  const app = box.querySelector('.team-app');
-  app?.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    e.stopPropagation(); // 阻止冒泡到全局右键监听
-    if (e.target.closest('.team-member')) return; // 卡片上右键不弹，保持原有行为
-    openTeamCtxMenu(e);
-  });
   bindDrag(box);
+  // 底部停靠区两侧的按钮（原来藏在空白处右键菜单里，不好按）
+  box.querySelector('#teamAutoBtn')?.addEventListener('click', (e) => { e.stopPropagation(); autoBuildTeam(); });
+  box.querySelector('#teamClearBtn')?.addEventListener('click', (e) => { e.stopPropagation(); clearTeam(); });
   // 拖拽移除停靠区定位：无页脚时贴底，有页脚（提示条）时停在页脚上方
   const dockEl = $('teamTrashDock');
   if (dockEl) {
@@ -822,40 +817,16 @@ function renderBattlePick(box) {
   });
 }
 
-// 底部移除停靠区：全宽横条，拖拽宝可梦进入即相当于菜单「移除」
+// 底部停靠区：左侧「随机配队」、中间拖拽移除区、右侧「清空」
 function trashDockHtml() {
   return `<div class="team-trash-dock" id="teamTrashDock">
-    <svg viewBox="0 0 1024 1024" width="13" height="13"><use xlink:href="#icon-delete"/></svg>
-    <span>拖到此处移除</span>
+    <button class="team-dock-btn" id="teamAutoBtn">一键配队</button>
+    <div class="team-trash-mid">
+      <svg viewBox="0 0 1024 1024" width="13" height="13"><use xlink:href="#icon-delete"/></svg>
+      <span>拖到此处移除</span>
+    </div>
+    <button class="team-dock-btn" id="teamClearBtn">清空</button>
   </div>`;
-}
-
-// 配队页空白区域右键菜单
-function openTeamCtxMenu(e) {
-  closeTeamMenu();
-  const box = $('teamContent');
-  const r = box.getBoundingClientRect();
-  const menu = document.createElement('div');
-  menu.className = 'team-menu';
-  menu.innerHTML = `
-    <button data-menu-act="auto">随机配队</button>
-    <button data-menu-act="clear">清空</button>`;
-  menu.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    const act = ev.target.closest('[data-menu-act]');
-    if (!act) return;
-    closeTeamMenu();
-    if (act.dataset.menuAct === 'auto') autoBuildTeam();
-    else if (act.dataset.menuAct === 'clear') clearTeam();
-  });
-  box.appendChild(menu);
-  const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  const { x: lx, y: ly } = viewportToLogic(e.clientX, e.clientY); // 指针坐标换算到机身逻辑像素
-  menu.style.left = `${Math.max(0, Math.min(lx - r.left, r.width - mw - 4))}px`;
-  menu.style.top = `${Math.max(0, Math.min(ly - r.top, r.height - mh - 4))}px`;
-  _menuEl = menu;
-  _teamMenuUnwatch?.();
-  _teamMenuUnwatch = watchOutsidePress(menu, closeTeamMenu);
 }
 
 // 随机配队：取等级最高的一批（并列的随机入选），组内顺序随机打散。

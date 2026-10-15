@@ -5413,21 +5413,34 @@ html.mobile-app #quitHide { display: none !important; }
   max-width: none;
 }
 /* 蛋仓库只有 3 列：名称列可压缩（窄屏/大字号时先给个体值让位，超出用省略号），
-   个体值列按内容宽度完整显示（31/31/31/31/31/31 放不下时不再被裁掉） */
+   个体值列固定 104px（容纳 31/31/31/31/31/31），保证各行列宽一致、按钮列不漂移 */
 .nursery-egg-header .pokedex-name,
 .nursery-egg-row .pokedex-name { flex: 0 1 95px; max-width: none; }
 .nursery-egg-header .roster-iv,
 .nursery-egg-row .roster-iv {
-  width: auto;
-  min-width: 96px;
-  flex: 0 0 auto;
+  width: 104px;
+  flex: 0 0 104px;
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
 }
 .nursery-egg-row .pokedex-name { display: flex; align-items: center; overflow: hidden; }
 .nursery-egg-row .pokedex-name .egg-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nursery-egg-row .bounty-trade-btn { margin-right: 6px; max-width: 100%; box-sizing: border-box; } /* 蛋列表丢弃按钮不贴右缘，且不越出自己的列 */
-.nursery-egg-header .bounty-trade-btn-col { padding-right: 6px; } /* 表头「丢弃」文字同步左移对齐 */
+/* 闪光星标独立成项，名字截断时不被省略号吞掉 */
+.nursery-egg-row .pokedex-name .egg-shiny { flex-shrink: 0; margin-left: 2px; }
+/* 放入蛋列表只有名字/个体值两列：名字靠左、个体值靠右（饲育屋蛋仓库多一列丢弃，不适用） */
+#incubatorEggView .nursery-egg-header .pokedex-name,
+#incubatorEggView .nursery-egg-row .pokedex-name { margin-right: auto; }
+/* 蛋列表「丢弃」列：列宽收窄让给名字列；按钮按内容宽度显示（不撑满、不换行）并贴紧右缘 */
+.nursery-egg-row .bounty-trade-btn-col,
+.nursery-egg-header .bounty-trade-btn-col { width: 34px; padding-right: 0; }
+.nursery-egg-row .bounty-trade-btn {
+  width: fit-content;
+  margin-right: 0;
+  padding: 2px 3px;
+  white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
+}
 .roster-header, .roster-row { gap: 2px; }
 /* 仓库的闪光星标列更窄，避免图标与编号之间空出太多 */
 .roster-header .pokedex-star, .roster-row .pokedex-star { width: 8px; padding-right: 0; }
@@ -8304,34 +8317,61 @@ body.booting { visibility: hidden; }
 }
 .team-menu button:active { transform: scale(0.96); }
 
-/* 拖拽移除停靠区：全宽底部横条，拖入即移除 */
+/* 底部停靠区：与随从抽卡页 follower-actions 同款——一条贴底横条，顶部实线，
+   内部用竖线切成左「一键配队」/ 中「拖到此处移除」/ 右「清空」三块，三块均分、按钮平铺无边框 */
 .team-trash-dock {
   position: absolute;
   left: 3px;
   right: 3px;
   z-index: 30;
   display: flex;
+  align-items: stretch;
+  min-height: 30px;
+  border-top: 1px solid rgba(var(--ui-color-rgb), 0.3);
+  background: var(--item-bg);
+  color: var(--ui-color);
+  font-size: 12px;
+  font-weight: 700;
+}
+.team-dock-btn {
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: none;
+  border-right: 1px solid rgba(var(--ui-color-rgb), 0.3);
+  background: transparent;
+  color: var(--ui-color);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px 4px;
+  transition: background 0.12s ease;
+}
+@media (hover: hover) {
+  .team-dock-btn:hover { background: rgba(var(--ui-color-rgb), 0.08); }
+}
+.team-dock-btn:active { background: rgba(var(--ui-color-rgb), 0.16); }
+.team-dock-btn:last-child { border-right: none; }
+/* 中间段：拖拽进来即移除，同样占一格、文字与其他两格一致 */
+.team-trash-mid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 28px;
-  border: 1px dashed var(--item-border);
-  border-radius: 7px;
-  background: var(--item-bg);
-  color: var(--ui-color);
-  opacity: 0.55;
-  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  font-size: 10px;
-  font-weight: 700;
-}
-.team-trash-dock.active {
-  opacity: 0.95;
+  border-right: 1px solid rgba(var(--ui-color-rgb), 0.3);
+  transition: opacity 0.15s ease;
 }
 .team-trash-dock.remove-over {
-  opacity: 1;
   color: #e74c3c;
   background: rgba(231, 76, 60, 0.14);
-  border-color: #e74c3c;
+  border-top-color: #e74c3c;
 }
 #teamContent { position: relative; display: flex; flex-direction: column; }
 
