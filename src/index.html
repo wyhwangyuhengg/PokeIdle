@@ -525,6 +525,18 @@
               <div id="mgBoard" class="mg-board"></div>
             </div>
 
+            <!-- 鸟了个鸟（限时活动里的小游戏）：叠成一堆的鸟，点进槽位凑三只抵消 -->
+            <div id="birdView" class="view-fixed" style="display:none;">
+              <div class="bg-head">
+                <span id="bgLeft">剩余 0 张</span>
+                <span id="bgTrayInfo">槽位 0/7</span>
+              </div>
+              <div class="bg-stage" id="bgStage">
+                <div class="bg-board" id="bgBoard"></div>
+              </div>
+              <div class="bg-tray" id="bgTray"></div>
+            </div>
+
             <!-- 对战（NPC 挑战） -->
             <div id="battleView" class="view-fixed" style="display:none;">
               <div id="battleContent" style="flex:1;color:var(--ui-color);min-height:0;"></div>

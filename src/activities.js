@@ -9,6 +9,7 @@ import { tryLoadImage, tryLoadPokemonImage } from './ui.js';
 import { itemIconSrc, MINT_KEYS, pickFamilyBySeed } from './items.js';
 import { ITEM_NAMES, EVO_PRICES, eggSprite } from './config.js';
 import { MG_LEVELS, levelOf } from './memory-game.js';
+import { BG_LEVELS, bgLevelOf } from './bird-game.js';
 
 const TIERS = 4;      // 四档：进化道具 / 薄荷·王冠 / 大师球·闪耀护符 / 闪光蛋
 const PER_TIER = 3;   // 每档交 3 只（payload.perTier 可覆盖），四档共 12 只
@@ -188,6 +189,9 @@ function tierHtml(ctx, i, rw, per, done) {
 
 // ===== 宝可翻牌（id: poke-flip）：玩配对翻牌赚气球，在兑换所换道具（每样限一次，换完即止）=====
 const BALLOON_ICON = './items/goods/balloon-cyan.png';
+// 每个活动的代币气球换一个颜色；没写的（宝可翻牌）沿用青色
+const COIN_ICONS = { 'bird-stack': './items/goods/balloon-teal.png' };
+const coinIcon = (ctx) => COIN_ICONS[ctx && ctx.id] || BALLOON_ICON;
 // 兑换表：价格按"一周活动能换完"配（合计 4250）；每样限一次，所以不用怕刷。
 // 没写 name 的那几项是随机货，具体摇到哪个由活动种子定（见 shopGrantOf），页面上直接把那个摆出来
 const SHOP_ITEMS = [
@@ -199,6 +203,12 @@ const SHOP_ITEMS = [
   { id: 'rare',  price: 1000, qty: 1, icon: 'master-ball' },
   { id: 'egg',   price: 1500, qty: 1, egg: true },
 ];
+
+// 鸟了个鸟单独一份兑换表：王冠那一档换成神秘蛋，其余照旧
+const BIRD_SHOP_ITEMS = SHOP_ITEMS.map(it => (
+  it.id === 'crown' ? { id: 'mystery', price: 300, qty: 1, icon: 'mystery-egg' } : it
+));
+const shopItemsOf = (ctx) => (ctx.id === 'bird-stack' ? BIRD_SHOP_ITEMS : SHOP_ITEMS);
 
 const coinsOf = ctx => Math.max(0, Math.round(Number(ctx.slot && ctx.slot.coins) || 0));
 function boughtOf(ctx) {
@@ -235,12 +245,12 @@ function shopRowHtml(ctx, item) {
     <div class="act-shop-row${bought ? ' done' : ''}">
       ${icon}
       <span class="act-shop-name">${shopName(ctx, item)}</span>
-      <span class="act-shop-price"><img src="${BALLOON_ICON}" alt="">${item.price}</span>
+      <span class="act-shop-price"><img src="${coinIcon(ctx)}" alt="">${item.price}</span>
       <span class="catch-confirm-btn${can ? '' : ' off'}" data-buy="${item.id}">${bought ? '已兑换' : '兑换'}</span>
     </div>`;
 }
 function buyShopItem(ctx, id) {
-  const item = SHOP_ITEMS.find(x => x.id === id);
+  const item = shopItemsOf(ctx).find(x => x.id === id);
   if (!item) return;
   const bought = boughtOf(ctx);
   if (bought[item.id] || coinsOf(ctx) < item.price) return;
@@ -344,7 +354,7 @@ export const ACTIVITIES = {
     icon: BALLOON_ICON,
 
     // 顶栏中间那格：气球就一个图标接一个数字（和标题、剩余时间同一行，不占正文高度）
-    badge(ctx) { return `<img src="${BALLOON_ICON}" alt="">${coinsOf(ctx)}`; },
+    badge(ctx) { return `<img src="${coinIcon(ctx)}" alt="">${coinsOf(ctx)}`; },
 
     render(ctx) {
       const lv = levelOf(ctx.slot.level || 'normal');
@@ -379,6 +389,54 @@ export const ACTIVITIES = {
     },
 
     // 每秒看一眼：币数/兑换状态有变化才重画
+    tick(root, ctx) {
+      const key = `${coinsOf(ctx)}|${Object.keys(boughtOf(ctx)).sort().join(',')}|${ctx.slot.level || ''}`;
+      if (root.dataset.key !== key) { root.dataset.key = key; ctx.refresh(); }
+    },
+  },
+
+  // ---- 鸟了个鸟（bird-stack）：把叠成一堆的鸟点进槽位，凑三只抵消，换道具（每样限一次）----
+  // 服务器 activity.json 里加一条 { "id": "bird-stack", "from": …, "to": … }
+  'bird-stack': {
+    name: '鸟了个鸟',
+    icon: './items/goods/balloon-teal.png',
+
+    badge(ctx) { return `<img src="${coinIcon(ctx)}" alt="">${coinsOf(ctx)}`; },
+
+    render(ctx) {
+      const lv = bgLevelOf(ctx.slot.level || 'normal');
+      return `
+        <div class="act-card act-rules">点击没被压住的鸟，把它放进下面的槽位，凑齐三只一样的自动抵消。<br>
+          槽位放满 7 个就算输，整盘消完才有气球，难度越高给得越多。<br>
+          气球可以兑换下面的奖励，每样限一次。</div>
+        <div class="act-levels">${BG_LEVELS.map(l => `<span class="act-level${l.id === lv.id ? ' on' : ''}" data-bg-level="${l.id}">${l.name}<em>${l.birds} 种 · ${l.layers.reduce((s, x) => s + x.n, 0)} 只</em></span>`).join('')}</div>
+        <div class="act-actions"><span class="catch-confirm-btn" id="actPlay">开始游戏</span></div>
+        <div class="act-shop">${shopItemsOf(ctx).map(it => shopRowHtml(ctx, it)).join('')}</div>`;
+    },
+
+    mount(root, ctx) {
+      root.querySelectorAll('[data-bg-level]').forEach((el) => el.addEventListener('click', () => {
+        ctx.slot.level = el.dataset.bgLevel;
+        ctx.save();
+        ctx.refresh();
+      }));
+      const play = root.querySelector('#actPlay');
+      if (play) play.addEventListener('click', () => {
+        import('./bird-game.js').then(m => m.startBirdGame({
+          level: ctx.slot.level || 'normal',
+          // 结算回调：币记账，页面的数字等回来时重画
+          onFinish: (coins) => {
+            ctx.slot.coins = coinsOf(ctx) + coins;
+            ctx.save();
+          },
+        }));
+      });
+      root.querySelectorAll('[data-buy]').forEach((btn) => {
+        btn.addEventListener('click', () => buyShopItem(ctx, btn.dataset.buy));
+      });
+    },
+
+    // 每秒看一眼：币数/兑换状态/难度有变化才重画
     tick(root, ctx) {
       const key = `${coinsOf(ctx)}|${Object.keys(boughtOf(ctx)).sort().join(',')}|${ctx.slot.level || ''}`;
       if (root.dataset.key !== key) { root.dataset.key = key; ctx.refresh(); }

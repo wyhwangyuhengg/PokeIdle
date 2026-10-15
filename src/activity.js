@@ -145,9 +145,9 @@ export function activityDebug() {
     活动清单: list,
     进行中: activeActivities().map(a => a.id),
     就绪: Object.keys(ACTIVITIES).map(id => ({ id, ready: readyOf(id, ACTIVITIES[id]) })),
-    入口: currentEntry(),
+    入口: activityEntries(),
     入口在手机上的状态: (() => {
-      const el = document.querySelector('.phone-app[data-app="activity"]');
+      const el = document.querySelector('.phone-app[data-app^="act:"]');
       return el ? '亮着' : '未渲染（手机页未打开/无活动）';
     })(),
     开发预览: DEV_PREVIEW,
@@ -208,35 +208,31 @@ function readyOf(id, mod) {
   catch (e) { console.error('[限时活动] ready 出错：', e); return false; }
 }
 
-// 手机第三页的活动入口：当前该亮哪一个（活动清单就绪且条件满足才返回，否则 null）
-function currentEntry() {
-  const list = activeActivities().filter(a => readyOf(a.id, ACTIVITIES[a.id]));
+// 当前能进的活动清单（可以同时开多个，桌面上就出多个图标）。
+// 开发预览 / 本地预览也一并收进来，方便离线调
+export function activityEntries() {
+  const out = activeActivities()
+    .filter((a) => readyOf(a.id, ACTIVITIES[a.id]))
+    .map((a) => ({ id: a.id, name: ACTIVITIES[a.id].name || '限时活动' }));
   const di = devPreview();
-  const preview = DEV_PREVIEW && readyOf(DEV_PREVIEW, ACTIVITIES[DEV_PREVIEW]) ? { id: DEV_PREVIEW } : null;
-  const entry = di && readyOf(di.id, ACTIVITIES[di.id]) ? { id: di.id } : (list[0] || preview);
-  if (!entry) return null;
-  const mod = ACTIVITIES[entry.id];
-  if (!mod) return null;
-  return { id: entry.id, name: mod.name || '限时活动', count: list.length };
+  const extra = di && ACTIVITIES[di.id] ? di.id : DEV_PREVIEW;
+  if (extra && ACTIVITIES[extra] && readyOf(extra, ACTIVITIES[extra]) && !out.some((e) => e.id === extra)) {
+    out.unshift({ id: extra, name: ACTIVITIES[extra].name || '限时活动' });
+  }
+  return out;
 }
 
-// 给手机首页用：有活动才把这个 app 渲染出来（页面数因此从 2 页变 3 页）
-export function activityEntry() { return currentEntry(); }
+// 手机首页点某个活动的图标：打开它
+export function openActivityById(id) { openActivity(id); }
 
-// 手机首页点这个 app：打开当前活动
-export function openActivityFromEntry() {
-  const e = currentEntry();
-  if (e) openActivity(e.id);
-}
-
-// 入口状态刷新：名字与可见性都由 apps.js 现场问 activityEntry()，这里只在状态真的变了时重画手机页
+// 入口状态刷新：活动增删由这里感知，只在真的变了时重画手机页
 let _entryKey = null;
 function refreshEntry() {
-  const e = currentEntry();
-  const key = e ? `${e.id}|${e.name}|${e.count}` : '';
+  const list = activityEntries();
+  const key = list.map((e) => `${e.id}|${e.name}`).join(',');
   if (key === _entryKey) return;
   _entryKey = key;
-  if (!e && _open) closeActivity(); // 正开着却被下架/条件不满足：退回首页
+  if (!list.length && _open) closeActivity(); // 正开着却被下架/条件不满足：退回首页
   import('./phone.js').then((m) => m.refreshPhoneHome()).catch(() => {});
 }
 
@@ -399,7 +395,7 @@ function paintLeft(ctx) {
 
 // 开机：先吃缓存再拉最新；之后每分钟看一眼（到点就收摊），每 10 分钟对一次表
 export function startActivityRefresh() {
-  // 入口是手机第三页的 app（点击由 phone.js 派的 openActivityFromEntry 处理），这里只管状态刷新
+  // 入口是手机第三页那些活动图标（点击由 apps.js 里各自的 open 处理），这里只管状态刷新
   refreshEntry();
   loadActivitiesFromCache();
   loadActivities(true);

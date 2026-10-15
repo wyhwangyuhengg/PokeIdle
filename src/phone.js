@@ -3,7 +3,7 @@
 // 长按进编辑态可拖拽：拖到哪个图标身上就和它就地换位，快速甩上去则是建合集。
 import { $, showView, showAppView, syncViewChrome, isDualLayout, renderIncubatorView, viewportToLogic } from './ui.js';
 import { pushNav, gameData, saveGame } from './state.js';
-import { APPS, appById, appAvailable } from './apps.js';
+import { allApps, appById, appAvailable } from './apps.js';
 import { ensureTrades } from './trade.js';
 import { getNowPlaying, isMusicEnabled } from './audio.js';
 import { showMusicView, refreshMusicViewIfOpen } from './music.js';
@@ -61,7 +61,7 @@ export function updatePhoneBadge() {
   const badge = $('title-badge-phone');
   if (!badge) return;
   ensureTrades(); // 波次过期先刷新，保证与交换红点口径一致
-  Promise.all(APPS.map((a) => appDot(a.id))).then((list) => {
+  Promise.all(allApps().map((a) => appDot(a.id))).then((list) => {
     badge.style.display = list.some(Boolean) ? '' : 'none';
   });
 }
@@ -263,7 +263,7 @@ function normalizeLayout() {
     if (!cur.length) continue;
     for (let k = 0; k < cur.length; k += PAGE_SIZE) out.push(cur.slice(k, k + PAGE_SIZE));
   }
-  for (const a of APPS) {
+  for (const a of allApps()) {
     if (seen.has(a.id) || !appAvailable(a)) continue;
     seen.add(a.id);
     let last = out[out.length - 1];

@@ -2347,6 +2347,53 @@ html.mobile-app #quitHide { display: none !important; }
 .mg-result-coins.none { font-size: 11px; font-weight: 600; opacity: .75; }
 .mg-result-btns { display: flex; gap: 10px; margin-top: 4px; }
 
+/* === 鸟了个鸟：叠成一堆的鸟，点开进槽位凑三只抵消 === */
+.bg-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 2px 2px 6px; font-size: 10.5px; color: var(--ui-color); opacity: .9;
+}
+.bg-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding-top: 8px; }
+.bg-board { position: relative; }
+.bg-card {
+  position: absolute; display: flex; align-items: center; justify-content: center;
+  background: var(--phone-box);   /* 必须实色：半透明的牌会把下面那张透上来 */
+  border: 1px solid var(--ui-color-dark);
+  border-radius: 3px;
+  transition: transform 0.18s ease-out, filter 0.15s;
+}
+@media (hover: hover) {
+  .bg-card:not(.covered):hover { transform: scale(1.07); filter: brightness(1.1); }
+}
+.bg-card img { width: 88%; height: 88%; object-fit: contain; image-rendering: pixelated; pointer-events: none; }
+.bg-card.covered { filter: brightness(.6) saturate(.5); }   /* 被压住的暗一块，一眼看出点不动 */
+/* 高度写死：托盘不能跟着牌的大小变，不然装牌的区域会被挤矮，牌每点一下就缩一圈 */
+.bg-tray { display: flex; justify-content: center; align-items: center; gap: 4px; height: 52px; flex: none; }
+.bg-slot {
+  flex: none; display: flex; align-items: center; justify-content: center;   /* 宽高由脚本给，和牌一样大 */
+  background: rgba(var(--ui-color-rgb), 0.08);
+  border: 1px dashed rgba(var(--ui-color-rgb), 0.25); border-radius: 3px;
+}
+.bg-slot.filled { background: var(--phone-box); border-style: solid; border-color: rgba(var(--ui-color-rgb), 0.3); }
+.bg-slot img { width: 88%; height: 88%; object-fit: contain; image-rendering: pixelated; }
+/* 凑齐三张：先亮一下再缩走 */
+.bg-slot.ok { animation: bg-clear .24s ease-in forwards; }
+@keyframes bg-clear {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.16); filter: brightness(1.5); }
+  100% { transform: scale(.4); opacity: 0; }
+}
+.bg-result {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  text-align: center; color: var(--ui-color);
+}
+.bg-result-title { font-size: 15px; font-weight: 700; margin: 0; }
+.bg-result-line { font-size: 11px; margin: 0; opacity: .85; }
+.bg-result-coins { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; margin: 2px 0 0; }
+.bg-result-coins img { width: 18px; height: 18px; image-rendering: pixelated; }
+.bg-result-coins.none { font-size: 11px; font-weight: 600; opacity: .75; }
+.bg-result-btns { display: flex; gap: 10px; margin-top: 4px; }
+
 /* 有音乐时压缩时间区域（上挤），app 图标位置保持不动 */
 #phoneView.has-music .phone-clock { padding: 0 0 2px; }
 #phoneView.has-music .phone-clock .date { font-size: 9px; }

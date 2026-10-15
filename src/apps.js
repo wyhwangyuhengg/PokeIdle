@@ -6,7 +6,7 @@ import { hasTradableOffers } from './trade.js';
 import { hasDryBerries } from './berry.js';
 import { hasClaimableAchievements } from './achievements.js';
 import { hasUnclaimedTutorialRewards } from './views.js';
-import { activityEntry } from './activity.js';
+import { activityEntries } from './activity.js';
 
 // 红点：返回布尔或 Promise<boolean>（nursery / dispatch 体积大，保持按需加载）
 export const APPS = [
@@ -52,18 +52,37 @@ export const APPS = [
   { id: 'dispatch', name: '派遣', icon: 'icon-dispatch',
     dot: () => import('./dispatch.js').then((m) => m.hasDispatchRewards()),
     open: () => import('./dispatch.js').then((m) => m.showDispatchView()) },
-  // 限时活动：有活动才出现（名字跟着活动走），没活动时留在布局里不渲染
-  { id: 'activity', name: '限时活动', icon: 'icon-activity',
-    available: () => !!activityEntry(),
-    nameOf: () => activityEntry()?.name || '限时活动',
-    titleOf: () => { const e = activityEntry(); return e && e.count > 1 ? `${e.name}（另有 ${e.count - 1} 个活动）` : (e?.name || ''); },
-    open: () => import('./activity.js').then((m) => m.openActivityFromEntry()) },
+  // 限时活动不在这里：每个活动各出一个图标，见下面的 dynamicApps()
   { id: 'events', name: '全服事件', icon: 'icon-events',
     open: () => import('./events-view.js').then((m) => m.showEventsView()) },
 ];
 
+// 限时活动：每个活动各占一个图标（id 前缀 act: + 活动 id，桌面位置各记各的）。
+// 活动结束这个 id 就成了未知应用，会被布局对账清掉，下次再开回到列表末尾
+function activityApp(appId, actId, name) {
+  return {
+    id: appId,
+    name,
+    icon: 'icon-activity',
+    open: () => import('./activity.js').then((m) => m.openActivityById(actId)),
+  };
+}
+
+export function dynamicApps() {
+  return activityEntries().map((e) => activityApp(`act:${e.id}`, e.id, e.name));
+}
+
+export function allApps() {
+  return [...APPS, ...dynamicApps()];
+}
+
 export function appById(id) {
-  return APPS.find((a) => a.id === id) || null;
+  const fixed = APPS.find((a) => a.id === id);
+  if (fixed) return fixed;
+  if (!id.startsWith('act:')) return null;   // 固定应用不用翻活动清单，省得每次查都算一遍
+  const actId = id.slice(4);
+  const e = activityEntries().find((x) => x.id === actId);
+  return e ? activityApp(id, actId, e.name) : null;
 }
 
 export function appAvailable(a) {
