@@ -394,7 +394,9 @@ const ROUTES = [
       if (file !== HOT_DIR && !file.startsWith(HOT_DIR + path.sep)) return json(res, 400, { ok: false });
       let body;
       try { body = fs.readFileSync(file); } catch (_) { return json(res, 404, { ok: false }); }
-      res.writeHead(200, { 'Content-Type': HOT_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=300' });
+      // 绝不加 max-age：中间层（nginx/CDN）一缓存就会出现"刚传的新文件被读成旧版，
+      // 客户端哈希校验不过→反复弹更新"。客户端自己会把文件存进 CacheStorage，不需要 HTTP 缓存。
+      res.writeHead(200, { 'Content-Type': HOT_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
       res.end(body);
     },
   },

@@ -173,13 +173,38 @@ if (args.includes('--local')) {
 // 3. 传文件 + 传清单 + 自检
 console.log(`[3/3] 上传到 ${hotDir}`);
 
-const push = (paths) => {
+// 上传：默认走 scp（tar 管道在覆盖已存在文件时偶发不生效，2026-10-15 连踩两次），
+// 按目标目录分组、一批 15 个文件一条命令 —— 连接数少，又不会撑爆命令行。
+// 超过 200 个文件（--all 全量重传）才回退 tar 管道，免得几千次 scp 把服务器当爆破拦掉；传完照常自检，漏的用 scp 补。
+const pushScp = (paths) => {
+  const groups = new Map();
+  for (const rel of paths) {
+    const dir = dirname(rel).split('\\').join('/');   // 相对路径的分目录（顶层是 '.'）
+    if (!groups.has(dir)) groups.set(dir, []);
+    groups.get(dir).push(rel);
+  }
+  const dirs = [...groups.keys()].filter((d) => d !== '.').map((d) => `'${hotDir}/${d}'`).join(' ');
+  run(`${sshBase} "mkdir -p '${hotDir}'${dirs ? ' ' + dirs : ''}"`);
+  for (const [dir, rels] of groups) {
+    const dest = dir === '.' ? hotDir : `${hotDir}/${dir}`;
+    for (let i = 0; i < rels.length; i += 15) {
+      const srcs = rels.slice(i, i + 15).map((r) => `"${join(SRC, r)}"`).join(' ');
+      run(`${scpBase} ${srcs} "${remote}:${dest}/"`);
+    }
+  }
+};
+
+const pushTar = (paths) => {
   const dir = mkdtempSync(join(tmpdir(), 'hot-'));
   const list = join(dir, 'files.txt');
   writeFileSync(list, paths.join('\n') + '\n');   // -T 从文件读清单：文件多、名字带中文都不会撑爆命令行
-  // 建目录和接包合成同一条 ssh 连接（连接数越少越不容易被服务器当爆破）
   run(`tar -czf - -C "${SRC}" -T "${list}" | ${sshBase} "mkdir -p '${hotDir}' && tar -xzf - -C '${hotDir}'"`);
   rmSync(dir, { recursive: true, force: true });
+};
+
+const push = (paths) => {
+  if (paths.length > 200) { console.log(`      这批 ${paths.length} 个文件走 tar 全量通道`); pushTar(paths); return; }
+  pushScp(paths);
 };
 
 const targets = all ? Object.keys(local.files) : need;
@@ -216,8 +241,8 @@ if (targets.length) {
     const check = all ? targets.filter((_, i) => i % step === 0) : targets;
     let bad = await probe(check);
     if (bad.length) {
-      console.log(`      自检发现 ${bad.length} 个没传成功，重传一次：${bad.slice(0, 5).map((b) => b.rel).join(' ')}`);
-      push(bad.map((b) => b.rel));
+      console.log(`      自检发现 ${bad.length} 个没传成功，用 scp 重传一次：${bad.slice(0, 5).map((b) => b.rel).join(' ')}`);
+      pushScp(bad.map((b) => b.rel));
       uploaded += bad.length;
       bad = await probe(bad.map((b) => b.rel));
     }
@@ -255,7 +280,10 @@ async function probe(paths) {
   }));
   return bad;
 }
-// 一句话说明这个文件为什么"要传"（面板里 ls 得到 ≠ 版本对；这里区分"没有"和"是旧版"）
-const whyText = (b) => b.why === 'missing' ? `服务器上没有（${b.got}）`
-  : b.why === 'old' ? `服务器上是旧版（${b.got}，要的是 ${local.files[b.rel].hash}）`
-  : `拉不动（${b.got}）`;
+// 一句话说明这个文件为什么"要传"（面板里 ls 得到 ≠ 版本对；这里区分"没有"和"是旧版"）。
+// 函数声明（会被提升）：--local / --check 在文件前段就要用
+function whyText(b) {
+  if (b.why === 'missing') return `服务器上没有（${b.got}）`;
+  if (b.why === 'old') return `服务器上是旧版（${b.got}，要的是 ${local.files[b.rel].hash}）`;
+  return `拉不动（${b.got}）`;
+}

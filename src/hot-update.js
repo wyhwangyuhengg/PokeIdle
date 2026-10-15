@@ -13,7 +13,7 @@ import { DEV } from './build-info.js';
 const HOT_BASE = 'https://pokeidle.shiliu.space/api/hot';
 const CACHE = 'pokeidle-hot';
 const MANIFEST_KEY = '/__hot__.json';   // 缓存里存"已应用"的 { 相对路径: hash }
-const META_KEY = 'pokeidle_hot_v1';     // 应用记录（文件数/时间），给调试看
+const META_KEY = 'pokeidle_hot_v1';     // 资源状态记录：{ app, gen, at, applied, added }，设置页显示"资源 月-日 时:分 · N 个文件"
 const CONCURRENCY = 4;
 // 这几个永远用包里的：SW 不能被自己替换；res-manifest.json 是基线；build-info.js 里是版本号和
 // DEV 开关——被热更成 DEV=true 的一版就会关掉热更、把客户端锁死在开发态（自己清不掉）
@@ -81,7 +81,6 @@ async function findChanges() {
   const cache = await caches.open(CACHE);
   const applied = await reconcile(cache, await readApplied(cache), remote && remote.files ? remote : null);
   if (!remote || !remote.files) return null;
-  if (_skippedGen && _skippedGen === remote.gen) return null;   // 本次运行已经拒绝过这份清单
   const list = [];
   let bytes = 0;
   for (const [path, info] of Object.entries(remote.files)) {
@@ -89,8 +88,20 @@ async function findChanges() {
     const have = applied[path] || (bundled.files[path] && bundled.files[path].hash);
     if (have !== info.hash) { list.push([path, info]); bytes += info.size || 0; }
   }
-  return list.length ? { gen: remote.gen, list, bytes } : null;
+  // 记一笔"本机资源状态"给设置页那个小圆点用：pending = 还没更上的文件数（0 = 已是最新）
+  lsSet(META_KEY, JSON.stringify({
+    app: remote.app || '', gen: remote.gen, at: Date.now(), applied: Object.keys(applied).length,
+    pending: list.length,
+  }));
+  if (_skippedGen && _skippedGen === remote.gen) return null;   // 本次运行已经拒绝过这份清单
+  return list.length ? { gen: remote.gen, app: remote.app || '', list, bytes } : null;
 }
+
+// 读取热更记录（设置页那行的绿/红小圆点用）
+function readMeta() {
+  try { return JSON.parse(localStorage.getItem(META_KEY) || 'null'); } catch (_) { return null; }
+}
+export function hotMeta() { return readMeta(); }
 
 // 居中对话框（同一个 overlay 两种状态）：ask 询问 / progress 进度。样式在 styles.css 的 .hot-mask
 function hotOverlay() {
@@ -174,7 +185,7 @@ async function download(changes, ui) {
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) || 0 }, worker));
   await cache.put(new Request(MANIFEST_KEY),
     new Response(JSON.stringify(applied), { headers: { 'Content-Type': 'application/json' } }));
-  lsSet(META_KEY, JSON.stringify({ gen: changes.gen, at: Date.now(), applied: Object.keys(applied).length, added: done }));
+  lsSet(META_KEY, JSON.stringify({ app: changes.app || '', gen: changes.gen, at: Date.now(), applied: Object.keys(applied).length, pending: 0, added: done }));
   try { (await navigator.serviceWorker.ready).active?.postMessage('pokeidle-hot-refresh'); } catch (_) {}
   return done;
 }

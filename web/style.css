@@ -1389,6 +1389,20 @@ nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; position: r
   transition: color .12s;
 }
 .tut-content .tut-ref:hover { color: var(--ui-color-darker); }
+/* 章节里指向独立说明页的链接（如口袋麻将玩法说明） */
+.tut-content .tut-doc-link {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 4px 10px;
+  border: 1px solid var(--ui-color);
+  border-radius: 999px;
+  color: var(--ui-color);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background .12s, color .12s;
+}
+.tut-content .tut-doc-link:hover { background: var(--ui-color); color: #fff; }
 .tut-content .tut-title {
   font-size: 17px;
   font-weight: 800;

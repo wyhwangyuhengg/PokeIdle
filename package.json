@@ -2,7 +2,7 @@
   "name": "PokeIdle",
   "private": true,
   "version": "1.1.7",
-  "buildStamp": "beta3",
+  "buildStamp": "beta4",
   "type": "module",
   "scripts": {
     "dev": "node tools/sync-version.mjs --dev && tauri dev",

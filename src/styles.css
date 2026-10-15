@@ -4916,14 +4916,24 @@ html.mobile-app #quitHide { display: none !important; }
 }
 /* 版本号：小字半透明居中，与版权声明同一字号层级 */
 .settings-version {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   font-size: 9px;
   padding: 0 0 2px;
   user-select: none;
 }
 /* 版本文字保持原来的灰淡；「可更新」用自己的颜色，不受那层透明度影响 */
 .settings-ver-text { opacity: 0.5; }
-.settings-update { color: #ff7b7b; font-weight: 700; margin-left: 3px; }
+/* 版本状态小圆点：绿=已是最新、红=有可更新的内容 */
+.settings-ver-dot {
+  display: inline-block; box-sizing: border-box; flex-shrink: 0;
+  width: 6px; height: 6px; border-radius: 50%;
+  border: 0.5px solid rgba(var(--ui-color-rgb), 0.4);
+}
+.settings-ver-dot.ok { background: #22c55e; }
+.settings-ver-dot.hot { background: #ff7b7b; }
 
 .auto-catch-row {
   display: flex;
@@ -5412,8 +5422,7 @@ html.mobile-app #quitHide { display: none !important; }
   flex: 0 0 55px; /* 名称列固定宽：宝可梦名最多 5 字，超长省略 */
   max-width: none;
 }
-/* 蛋仓库只有 3 列：名称列可压缩（窄屏/大字号时先给个体值让位，超出用省略号），
-   个体值列固定 104px（容纳 31/31/31/31/31/31），保证各行列宽一致、按钮列不漂移 */
+/* 蛋仓库 3 列：名字列可压缩，个体值列固定 104px */
 .nursery-egg-header .pokedex-name,
 .nursery-egg-row .pokedex-name { flex: 0 1 95px; max-width: none; }
 .nursery-egg-header .roster-iv,
@@ -5427,7 +5436,7 @@ html.mobile-app #quitHide { display: none !important; }
 .nursery-egg-row .pokedex-name .egg-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 闪光星标独立成项，名字截断时不被省略号吞掉 */
 .nursery-egg-row .pokedex-name .egg-shiny { flex-shrink: 0; margin-left: 2px; }
-/* 放入蛋列表只有名字/个体值两列：名字靠左、个体值靠右（饲育屋蛋仓库多一列丢弃，不适用） */
+/* 放入蛋列表只有两列：名字靠左、个体值靠右 */
 #incubatorEggView .nursery-egg-header .pokedex-name,
 #incubatorEggView .nursery-egg-row .pokedex-name { margin-right: auto; }
 /* 蛋列表「丢弃」列：列宽收窄让给名字列；按钮按内容宽度显示（不撑满、不换行）并贴紧右缘 */
@@ -5506,6 +5515,40 @@ html.mobile-app #quitHide { display: none !important; }
   margin-left: 6px;
   vertical-align: 1px;
 }
+/* === 详情页道具引导（三步高亮：等级 / 性格 / 个体值）=== */
+/* 挡点击的透明层 */
+.dg-blocker {
+  position: fixed;
+  inset: 0;
+  z-index: 3300;
+  cursor: pointer;
+}
+/* 高亮环：挂在目标的定位父级里，位置用 offset 像素 */
+.dg-ring {
+  position: absolute;
+  z-index: 3301;
+  border-radius: 7px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+}
+/* 气泡：左右各留 8px，跟高亮环同一个父级 */
+.dg-bubble {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  z-index: 3302;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--console-body, #e8dcc0);
+  color: var(--ui-color);
+  border: 1px solid rgba(var(--ui-color-rgb), 0.22);
+  text-align: left;
+}
+.dg-title { font-size: 11px; font-weight: 700; }
+.dg-text { font-size: 10px; line-height: 1.5; opacity: 0.9; }
+.dg-hint { font-size: 9px; margin-top: 2px; opacity: 0.6; }
 /* 详情页个体状态标签：训练中 / 繁育中 / 队伍中（跟在属性徽章右侧，高度与 type-badge 对齐） */
 .roster-status-tag {
   display: inline-flex;
@@ -8317,8 +8360,7 @@ body.booting { visibility: hidden; }
 }
 .team-menu button:active { transform: scale(0.96); }
 
-/* 底部停靠区：与随从抽卡页 follower-actions 同款——一条贴底横条，顶部实线，
-   内部用竖线切成左「一键配队」/ 中「拖到此处移除」/ 右「清空」三块，三块均分、按钮平铺无边框 */
+/* 底部停靠区：贴底横条，竖线切成「一键配队 / 拖到此处移除 / 清空」三块 */
 .team-trash-dock {
   position: absolute;
   left: 3px;
@@ -8357,7 +8399,7 @@ body.booting { visibility: hidden; }
 }
 .team-dock-btn:active { background: rgba(var(--ui-color-rgb), 0.16); }
 .team-dock-btn:last-child { border-right: none; }
-/* 中间段：拖拽进来即移除，同样占一格、文字与其他两格一致 */
+/* 中间段：拖拽进来即移除 */
 .team-trash-mid {
   flex: 1;
   min-width: 0;

@@ -296,11 +296,19 @@ function linkTutorialRefs(html) {
     `<a class="tut-ref" data-tut-ref="${name}">详见「${name}」章节</a>`);
 }
 
+// 官网专属补充：章节标题 → 追加的 HTML。教程正文与游戏共用 src/views.js，
+// 而这些页面只在官网上有，所以放在官网这层注入，游戏里不会出现打不开的链接
+const TUT_SITE_EXTRA = {
+  '口袋麻将': '<p><a class="tut-doc-link" href="./麻将规则.html" target="_blank" rel="noopener">'
+    + '口袋麻将完整玩法说明（牌种 / 操作 / 算分 / 全部番型） →</a></p>',
+};
+
 function renderTutorial(idx) {
   if (!TUTORIAL_DATA.length || !contentEl) return;
   currentIdx = Math.max(0, Math.min(idx, TUTORIAL_DATA.length - 1));
   const s = TUTORIAL_DATA[currentIdx];
-  contentEl.innerHTML = linkTutorialRefs(`<p class="tut-title">${s.title}</p>` + s.html);
+  const extra = TUT_SITE_EXTRA[s.title] || '';
+  contentEl.innerHTML = linkTutorialRefs(`<p class="tut-title">${s.title}</p>` + s.html + extra);
   highlightKeyword(contentEl, _searchKw); // 从搜索结果跳入时高亮关键词
   listEl?.querySelectorAll('.tut-nav-item').forEach((el, i) => el.classList.toggle('active', i === currentIdx));
   // 左侧导航滚到当前章节可见（PC 侧边栏常驻时交叉引用跳转也能定位）

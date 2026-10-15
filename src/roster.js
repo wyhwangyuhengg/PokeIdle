@@ -1710,6 +1710,8 @@ function showRosterDetail(id) {
     use.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', href);
   });
   loadMovesBlock(id);
+  // 首次进详情页：三步引导（经验糖果 / 薄荷 / 王冠），走完记标记不再出现
+  import('./detail-guide.js').then((m) => m.maybeShowDetailGuide());
 }
 
 // 放生：确认后移除个体、播告别动画，结束后返回列表

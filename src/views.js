@@ -11,6 +11,7 @@ import { clearBattleTier } from './battle-view.js';
 import { showDetailCard, hideDetailCard } from './item-detail.js';
 import { APP_VERSION, BUILD_STAMP } from './build-info.js';
 import { hasUpdate } from './telemetry.js';
+import { hotMeta } from './hot-update.js';
 import { LUCK_WINDOW } from './scoring.js';
 
 // ===== 欧气综合评定 =====
@@ -1656,14 +1657,17 @@ export function renderSettings(container, s) {
   };
   container.querySelector('#githubLink')?.addEventListener('click', (e) => openLink(e, 'https://github.com/ZTMYO/PokeIdle'));
   container.querySelector('#siteLink')?.addEventListener('click', (e) => openLink(e, 'https://pokeidle.shiliu.space'));
-  // 版本号与版本戳都来自 build-info.js（由构建脚本按 package.json 生成）；
-  // 服务端回报有更新版本时补一个（可更新）—— 挂在下面那个每秒重绘里，拉到数据后自动亮起
+  // 版本号来自 build-info.js；热更只换资源不动版本号，所以状态用一个小圆点表示
   const paintVersion = () => {
     const el = container.querySelector('#settingsVersion');
     if (!el) return;
     const base = [`v${APP_VERSION}`, BUILD_STAMP].filter(Boolean).join(' · ');
-    el.innerHTML = `<span class="settings-ver-text">${base}</span>`
-      + (hasUpdate() ? '<span class="settings-update">（可更新）</span>' : '');
+    const meta = hotMeta();
+    const pending = meta ? (meta.pending || 0) : 0;   // 还没更上的资源数
+    const behind = hasUpdate() || pending > 0;        // 有新版本，或有资源没更上
+    const dot = meta ? `<span class="settings-ver-dot ${behind ? 'hot' : 'ok'}" `
+      + `title="${behind ? '有可更新的内容' : '已是最新版本'}"></span>` : '';
+    el.innerHTML = `<span class="settings-ver-text">${base}</span>${dot}`;
   };
   paintVersion();
   // 上次存档时间：停留期间每秒刷新这一行文字，离开设置页自动停表（不重建整页）

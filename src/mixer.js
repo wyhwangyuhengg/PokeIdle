@@ -852,6 +852,12 @@ function claimBlock() {
 }
 
 // ---------- 树果方块 buff 管理 ----------
+// 方块结束时页面若开着（多半停在使用中页），收回默认页
+function refreshMixerIfOpen() {
+  const mv = $('mixerView');
+  if (mv && mv.style.display !== 'none') render();
+}
+
 // 被目标宝可梦吃掉（遇敌时调用）
 export function eatBlock(reason) {
   if (!blockBuffActive) return;
@@ -863,6 +869,7 @@ export function eatBlock(reason) {
   restoreIdleText();
   addSystemLog('mixer', { action: 'eaten', reason });
   saveGame();
+  refreshMixerIfOpen();
 }
 
 // 走满里程自动结束
@@ -882,6 +889,7 @@ export function handleBlockExpired() {
   }
   addSystemLog('mixer', { action: 'expired' });
   saveGame();
+  refreshMixerIfOpen();
 }
 
 // 取消使用：立即停止效果，恢复首页
@@ -932,17 +940,14 @@ function updateBlockTimers(remain) {
 export function startBlockCountdown() {
   clearBlockCountdown();
   _blockCoolInterval = setInterval(() => {
-    if (!blockBuffActive) { clearBlockCountdown(); return; }
+    // 被目标吃掉 / 别处取消：表停掉，页面（若开着）收回默认页
+    if (!blockBuffActive) { clearBlockCountdown(); refreshMixerIfOpen(); return; }
     const remain = blockMetersRemaining();
-    if (remain <= 0) { handleBlockExpired(); return; } // 走满里程自动结束
+    if (remain <= 0) { handleBlockExpired(); return; } // 走满里程自动结束（内部已收回页面）
     updateBlockTimers(remain);
     // 冷却页打开期间跨地区：findBerryTarget 按当前地区动态查目标，
     // 到达配方可生效地区后即时刷新「野外没有」→「遇敌时 X% 概率…」文案
-    const cur = getCurrentRegion().name;
-    if (cur !== _coolRegion) {
-      const mv = $('mixerView');
-      if (mv && mv.style.display !== 'none') render();
-    }
+    if (getCurrentRegion().name !== _coolRegion) refreshMixerIfOpen();
   }, 500);
 }
 

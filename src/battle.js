@@ -1262,12 +1262,16 @@ function pickAutoBallType(availableBalls) {
   const cr = currentEncounter?.catchRate ?? 1;
   // 两个「专供」开关：勾上任意一个就把大师球留给这几类，普通遭遇不再拿它兜底，
   // 免得前两种球用光后把大师球丢在随手碰到的宝可梦身上。都不勾 = 老样子（大师球仍可兜底）
+  const enabledBalls = gameData.settings?.autoCatchBalls || AUTO_CATCH_BALLS_DEFAULT;
   const shinyLegendOn = !!gameData.settings?.shinyLegendMasterBall;
   const variantOn = !!gameData.settings?.variantMasterBall && !!_encounterVariant;
   const reserve = shinyLegendOn || !!gameData.settings?.variantMasterBall;
   const useMaster = (shinyLegendOn && (!!currentIsShiny || !!currentEncounter?.legend))
     || variantOn
     || !!currentEncounter?.legend; // 神兽保持老规矩：无条件优先大师球
+  // 除大师球外还有别的球被勾选吗：没有的话（只勾了大师球）预留逻辑不成立 ——
+  // 大师球就是唯一能用的球，扔它好过逃跑（手上有大师球却把闪光放跑）
+  const othersEnabled = ['poke-ball', 'ultra-ball'].some((b) => enabledBalls[b] !== false);
   const preferred = useMaster || cr <= 0.1
     ? ['master-ball', 'ultra-ball', 'poke-ball']
     : reserve
@@ -1276,8 +1280,9 @@ function pickAutoBallType(availableBalls) {
   for (const b of preferred) {
     if (availableBalls.includes(b)) return b;
   }
-  // 没球可用：勾了专供、这场又不值得动大师球 → 返回空，交给上层按"无球"自动逃跑；否则照老样子兜底
-  return reserve && !useMaster ? null : (availableBalls[0] || null);
+  // 没球可用：勾了专供、这场又不值得动大师球、且还有别的球可选 → 返回空，交给上层按"无球"自动逃跑；
+  // 否则照老样子兜底（只勾了大师球时必须兜底，不能逃跑）
+  return reserve && !useMaster && othersEnabled ? null : (availableBalls[0] || null);
 }
 
 // 单行策略判定：逃跑 > 暂停 > 未拥有 > 等级范围（skipLevel 行不参与等级筛选）

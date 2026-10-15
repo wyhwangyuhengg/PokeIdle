@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>口袋麻将 · 玩法说明</title>
+<style>
+/* ===== 配色与字体：直接取游戏的掌机主题变量 ===== */
+:root {
+  --screen-bg: #73c5a4;
+  --screen-bg-dark: #4c8d73;
+  --screen-bg-light: #96d0b9;
+  --ui-color: #376d56;
+  --ui-color-dark: #24563f;
+  --console-body: #e8dcc0;
+  --console-border: #c4b692;
+  --ink: #1d4937;
+  --ink-soft: #3f6f5c;
+  --tile-edge: #2f6a4a;
+  --card: rgba(255, 255, 255, 0.72);
+  --card-line: rgba(47, 106, 74, 0.18);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255,255,255,0.5), transparent 45%),
+    radial-gradient(circle at 88% 92%, rgba(255,255,255,0.35), transparent 40%),
+    var(--screen-bg);
+  background-attachment: fixed;
+  padding: 28px 16px 64px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+.page { max-width: 860px; margin: 0 auto; }
+
+/* ===== 标题 ===== */
+.hero { text-align: center; margin-bottom: 26px; }
+.hero h1 {
+  font-size: 30px; letter-spacing: 3px; color: #f4fff9;
+  text-shadow: 0 2px 0 var(--screen-bg-dark), 0 4px 12px rgba(29,73,55,0.35);
+}
+.hero .sub { margin-top: 8px; font-size: 13px; color: #eafff5; opacity: 0.92; letter-spacing: 1px; }
+.hero .tiles { margin: 16px auto 0; }
+
+/* ===== 区块 ===== */
+section {
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: 14px;
+  padding: 16px 18px 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 6px 18px rgba(29, 73, 55, 0.12);
+  backdrop-filter: blur(2px);
+}
+h2 {
+  font-size: 17px; color: var(--ui-color-dark); letter-spacing: 1px;
+  padding-left: 11px; margin-bottom: 10px;
+  border-left: 4px solid var(--ui-color);
+}
+h3 { font-size: 13.5px; color: var(--ui-color-dark); margin: 14px 0 7px; }
+p { font-size: 13px; color: var(--ink-soft); }
+p + p { margin-top: 6px; }
+b, strong { color: var(--ink); }
+em { font-style: normal; color: #b4522f; font-weight: 700; }
+ul { margin: 6px 0 0 18px; }
+li { font-size: 13px; color: var(--ink-soft); margin: 3px 0; }
+li b { color: var(--ink); }
+.kv { font-variant-numeric: tabular-nums; }
+
+/* ===== 麻将牌：扁平牌（属性色底 + 描边 + 图标 + 点数） ===== */
+/* nowrap + max-content：一行牌永远横着排 */
+.tiles { display: flex; flex-wrap: nowrap; width: max-content; gap: 6px; align-items: flex-end; }
+.tile {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  flex-shrink: 0; width: 32px; height: 42px; padding: 2px 0;
+  border: 2px solid var(--tile-edge); border-radius: 4px;
+  background: var(--tc, #fff);
+}
+.tile img { width: 19px; height: 19px; image-rendering: pixelated; object-fit: contain; }
+.tile .pts { font-style: normal; font-size: 9px; font-weight: 700; line-height: 1; color: rgba(255, 255, 255, 0.85); }
+/* 神兽牌：描边换成粉色 */
+.tile-legend { border-color: #b23a72; }
+/* 一组刻子（3 张）；组与组之间留大间隙 */
+.tiles .group { display: inline-flex; align-items: flex-end; gap: inherit; }
+.tiles .group.gap { margin-left: 14px; }
+.tiles.mini .group.gap { margin-left: 9px; }
+/* 小牌（番型表里用） */
+.tiles.mini { gap: 4px; }
+.tiles.mini .tile { width: 22px; height: 30px; border-width: 1.5px; border-radius: 3px; gap: 0; }
+.tiles.mini .tile img { width: 14px; height: 14px; }
+.tiles.mini .tile .pts { font-size: 7px; }
+
+/* ===== 小徽章 / 表格 ===== */
+.badge {
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .5px;
+  padding: 1px 7px; border-radius: 999px; background: rgba(55,109,86,0.14); color: var(--ui-color-dark);
+}
+.badge.hot { background: rgba(203,73,77,0.16); color: #a63a3e; }
+.badge.big { background: rgba(255,126,179,0.2); color: #b23a72; }
+table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+th, td { text-align: left; font-size: 12.5px; padding: 6px 8px; border-bottom: 1px solid var(--card-line); vertical-align: middle; }
+th { font-size: 11.5px; color: var(--ui-color-dark); letter-spacing: .5px; }
+td.fans { white-space: nowrap; font-weight: 700; color: var(--ui-color-dark); width: 66px; }
+td.cards { width: 1px; white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+
+/* ===== 流程条 ===== */
+.flow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.step {
+  flex: 1 1 120px; background: rgba(255,255,255,0.66); border: 1px solid var(--card-line);
+  border-radius: 10px; padding: 9px 10px; font-size: 12.5px; color: var(--ink-soft);
+}
+.step .no { display: block; font-size: 11px; font-weight: 700; color: var(--ui-color); letter-spacing: 1px; }
+.step b { display: block; font-size: 13px; margin: 2px 0; }
+
+/* ===== 例子框 ===== */
+.demo { background: rgba(255,255,255,0.55); border: 1px dashed rgba(47,106,74,0.35); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+.demo .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.demo .label { font-size: 12px; font-weight: 700; color: var(--ui-color-dark); min-width: 74px; }
+.demo .note { font-size: 12px; color: var(--ink-soft); }
+.plus { font-size: 16px; color: var(--ui-color); font-weight: 700; }
+
+.tip { background: rgba(255,255,255,0.6); border-left: 4px solid var(--ui-color); border-radius: 0 8px 8px 0; padding: 8px 12px; margin-top: 10px; font-size: 12.5px; color: var(--ink-soft); }
+.foot { text-align: center; font-size: 11.5px; color: #eafff5; opacity: .8; margin-top: 18px; }
+@media (max-width: 520px) {
+  body { padding: 18px 10px 44px; }
+  .hero h1 { font-size: 23px; letter-spacing: 2px; }
+  section { padding: 13px 12px 15px; }
+  table { font-size: 12px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="hero">
+    <h1>口袋麻将</h1>
+    <div class="sub">四人对对胡 · 用宝可梦刻子凑成一手好牌</div>
+    <div class="tiles" data-tiles="94,92,25,172,151,150" data-mini="1"></div>
+  </div>
+
+  <section>
+    <h2>一分钟版本</h2>
+    <p>和你同桌的是一台掌机上的三个对手（对家 / 左家 / 右家）。<b>手牌 8 张起手，摸到第 9 张凑成 3 组刻子（同种 3 张）就胡牌</b>——这是「对对胡」玩法：<em>只有刻子，没有顺子</em>。你能做的是<b>碰</b>和<b>立直</b>，一场打东 1～东 4 共四小局，注额自己选。</p>
+    <div class="flow">
+      <div class="step"><span class="no">STEP 1</span><b>掷骰定庄</b>两颗骰子的点数决定谁先手</div>
+      <div class="step"><span class="no">STEP 2</span><b>发牌</b>每人 8 张，发完翻开一张宝牌</div>
+      <div class="step"><span class="no">STEP 3</span><b>摸打</b>摸一张、打一张，边打边凑刻子</div>
+      <div class="step"><span class="no">STEP 4</span><b>碰 / 立直</b>别人打的牌能凑刻子就碰，听牌可立直</div>
+      <div class="step"><span class="no">STEP 5</span><b>胡牌结算</b>自摸或荣和，按番型倍率算分</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>牌种 · 14 种 106 张</h2>
+    <p>牌堆分三档，点数越高越难凑、胡了也越值钱（点数是<b>牌面标识</b>，不直接等于得分）。</p>
+    <h3>主力（10 点）· 每种 9 张</h3>
+    <div class="tiles" data-tiles="94,6,9,3,25"></div>
+    <h3>幼态（5 点）· 每种 9 张</h3>
+    <div class="tiles" data-tiles="92,4,7,1,172"></div>
+    <h3>神兽（20 点）· 每种仅 4 张</h3>
+    <div class="tiles" data-tiles="151,150,250,249"></div>
+    <div class="tip">同种牌有 9 张（神兽 4 张），所以<b>一副牌里同种牌能凑出最多 3 组刻子</b>——这正是「单一种一色」役满的来路。</div>
+  </section>
+
+  <section>
+    <h2>凑胡牌：3 组刻子</h2>
+    <p>胡牌手型只有一种：<b>3 组刻子</b>（每组 3 张同种宝可梦）。起手 8 张，摸到第 9 张刚好凑齐 3 组就胡；中途碰了别人一张，手牌就少 2 张——总之「手牌 + 副露」凑满 9 张即为胡牌。</p>
+    <div class="demo">
+      <div class="row"><span class="label">听牌（8 张）</span>
+        <span class="tiles mini" data-tiles="94,94,94|92,92,92|25,25"></span>
+        <span class="note">= 2 组刻子 + 1 对，等第 3 张皮卡丘</span>
+      </div>
+      <div class="row" style="margin-top:10px;"><span class="label">胡牌（9 张）</span>
+        <span class="tiles mini" data-tiles="94,94,94|92,92,92|25,25,25"></span>
+        <span class="note">凑齐即胡，结算番型</span>
+      </div>
+    </div>
+    <div class="tip">同种牌可以拆着用：手里 6 张同种 = 2 组刻子，9 张 = 3 组刻子（直接役满）。</div>
+  </section>
+
+  <section>
+    <h2>你能做的操作</h2>
+    <h3>碰（Pon）</h3>
+    <p>别人打出的牌，你手里正好有 <b>2 张同种</b>，就可以碰——收回那张牌组成一副明刻。碰完要立刻打出一张，若碰完就已经凑齐 3 组刻子，<b>直接胡牌</b>（属于荣和）。碰会亮出副露，明牌后不再算「门清」，也不能再立直。</p>
+    <div class="demo"><div class="row"><span class="label">碰出的副露</span>
+      <span class="tiles mini" data-tiles="94,94,94"></span>
+      <span class="note">这 3 张会一直明摆在桌面上，算进你的 9 张里</span>
+    </div></div>
+    <h3>立直（Riichi）</h3>
+    <ul>
+      <li>没碰过牌（<b>门清</b>）且已经<b>听牌</b>时可以立直，付 <b>50 游戏币</b>；</li>
+      <li>立直后<b>只能打刚摸到的那张</b>，不能自由换牌——但换来「立直」1 番和「一发」机会；</li>
+      <li>立直后<b>胡牌会退还</b>那 50 游戏币；</li>
+      <li><b>W 立直</b>：第一巡就宣言立直，额外 1 番；</li>
+      <li>宣言后到下一次自己出牌之间胡牌 = <b>一发</b>（有人碰牌则窗口关闭）。</li>
+    </ul>
+    <h3>胡牌：自摸 / 荣和</h3>
+    <ul>
+      <li><b>自摸</b>：自己摸到成胡的那张（+1 番）；</li>
+      <li><b>荣和</b>：胡别人打出的牌；</li>
+      <li><b>海底</b>：摸到牌堆最后一张成胡（+1 番）；</li>
+      <li><b>天和</b>：坐庄第一摸就成胡 —— <em>役满</em>；</li>
+      <li>牌堆摸完还没人胡 = <b>流局</b>，扣半注。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>算分</h2>
+    <p>先算这手牌的<b>番数</b>，再换成倍率：</p>
+    <p style="font-size:15px;font-weight:700;color:var(--ui-color-dark);margin:6px 0;">倍率 = 2 + 番数&nbsp;&nbsp;｜&nbsp;&nbsp;役满 = 固定 ×10</p>
+    <table>
+      <tr><th>结算方式</th><th>谁付钱</th></tr>
+      <tr><td><b>自摸</b></td><td>另外三家<b>各付</b>「注额 × 倍率」</td></tr>
+      <tr><td><b>荣和</b></td><td>放铳的那一家<b>独付</b>「注额 × 倍率」</td></tr>
+      <tr><td><b>流局</b></td><td>扣半注</td></tr>
+    </table>
+    <div class="demo">
+      <div class="row"><span class="label">示例</span>
+        <span class="tiles mini" data-tiles="1,1,1|25,25,25|250,250,250"></span>
+      </div>
+      <p class="note" style="margin-top:8px;">
+        自然之灵 <span class="badge">4 番</span> + 虹翼圣火 <span class="badge">1 番</span> = 5 番 → 倍率 <b class="kv">7</b><br />
+        注额 <b>10</b> 时：自摸 = 每家付 70（共得 <b>210</b>）；荣和 = 放铳者付 <b>70</b>。
+      </p>
+    </div>
+    <div class="tip">四家各有自己的累计分（开局都是 300，零和），整场的净胜负在<b>东 4 打完后一次性</b>结算成游戏币。</div>
+  </section>
+
+  <section>
+    <h2>番型一览</h2>
+    <p>同一手牌可能同时命中多个番型，<b>番数相加</b>。</p>
+
+    <h3>流程役 · 怎么胡的</h3>
+    <table>
+      <tr><th>番型</th><th>番数</th><th>条件</th></tr>
+      <tr><td>立直</td><td class="fans">1 番</td><td>门清听牌时宣言（付 50 游戏币）</td></tr>
+      <tr><td>W 立直</td><td class="fans">1 番</td><td>第一巡就宣言立直</td></tr>
+      <tr><td>自摸</td><td class="fans">1 番</td><td>自己摸牌成胡</td></tr>
+      <tr><td>一发</td><td class="fans">1 番</td><td>立直后一巡内胡牌</td></tr>
+      <tr><td>门清</td><td class="fans">1 番</td><td>全程没碰过牌</td></tr>
+      <tr><td>海底</td><td class="fans">1 番</td><td>摸到最后一张时胡牌</td></tr>
+      <tr><td>宝牌</td><td class="fans">每组 +1</td><td>每凑出一组宝牌刻子额外 +1 番（纯奖励番）</td></tr>
+    </table>
+
+    <h3>羁绊役 · 主力带幼态</h3>
+    <p>五种进化羁绊，主力与其幼态<b>各凑一组刻子</b>即成立，各 1 番。</p>
+    <table>
+      <tr><th>番型</th><th>需要的两副刻子</th></tr>
+      <tr><td>幽影之绊</td><td class="cards"><span class="tiles mini" data-tiles="94,94,94|92,92,92"></span></td></tr>
+      <tr><td>烈焰之绊</td><td class="cards"><span class="tiles mini" data-tiles="6,6,6|4,4,4"></span></td></tr>
+      <tr><td>激流之绊</td><td class="cards"><span class="tiles mini" data-tiles="9,9,9|7,7,7"></span></td></tr>
+      <tr><td>绿叶之绊</td><td class="cards"><span class="tiles mini" data-tiles="3,3,3|1,1,1"></span></td></tr>
+      <tr><td>电气之绊</td><td class="cards"><span class="tiles mini" data-tiles="25,25,25|172,172,172"></span></td></tr>
+    </table>
+
+    <h3>神兽役 · 单只神兽即 1 番</h3>
+    <table>
+      <tr><th>番型</th><th>神兽</th></tr>
+      <tr><td>幻梦显现</td><td class="cards"><span class="tiles mini" data-tiles="151,151,151"></span></td></tr>
+      <tr><td>超能觉醒</td><td class="cards"><span class="tiles mini" data-tiles="150,150,150"></span></td></tr>
+      <tr><td>虹翼圣火</td><td class="cards"><span class="tiles mini" data-tiles="250,250,250"></span></td></tr>
+      <tr><td>深蓝化身</td><td class="cards"><span class="tiles mini" data-tiles="249,249,249"></span></td></tr>
+    </table>
+
+    <h3>牌型役 · 三组刻子的构成</h3>
+    <table>
+      <tr><th>番型</th><th>番数</th><th>条件</th></tr>
+      <tr><td>二组同刻</td><td class="fans">1 番</td><td>同一种宝可梦凑出 2 组刻子（共 6 张）</td></tr>
+      <tr><td>三色同刻</td><td class="fans">1 番</td><td>三组刻子分属 3 种不同属性</td></tr>
+      <tr><td>混一色</td><td class="fans">2 番</td><td>2 组同属性刻子 + 1 组神兽</td></tr>
+      <tr><td>清一色</td><td class="fans">4 番</td><td>三组刻子全部同属性</td></tr>
+      <tr><td>王牌三刻</td><td class="fans">2 番</td><td>三组全是 10 点主力</td></tr>
+      <tr><td>潜力三刻</td><td class="fans">2 番</td><td>三组全是 5 点幼态</td></tr>
+    </table>
+
+    <h3>组合役 · 指定三只</h3>
+    <table>
+      <tr><th>番型</th><th>番数</th><th>三组刻子分别要</th></tr>
+      <tr><td>初始伙伴</td><td class="fans">3 番</td><td class="cards"><span class="tiles mini" data-tiles="1,1,1|4,4,4|7,7,7"></span></td></tr>
+      <tr><td>自然之灵</td><td class="fans">4 番</td><td class="cards"><span class="tiles mini" data-tiles="1,1,1|25,25,25|250,250,250"></span></td></tr>
+      <tr><td>深海幽影</td><td class="fans">5 番</td><td class="cards"><span class="tiles mini" data-tiles="92,92,92|249,249,249|150,150,150"></span></td></tr>
+    </table>
+
+    <h3>役满 · 固定 ×10</h3>
+    <table>
+      <tr><th>番型</th><th>条件</th></tr>
+      <tr><td>单一种一色</td><td>三组刻子全部是同一种宝可梦（要吃满 9 张）</td></tr>
+      <tr><td>天和</td><td>坐庄第一摸就成胡</td></tr>
+      <tr><td>神兽一色</td><td>三组刻子全部是神兽</td></tr>
+      <tr><td>幻神共鸣</td><td class="cards"><span class="tiles mini" data-tiles="151,151,151|249,249,249|150,150,150"></span></td></tr>
+      <tr><td>幽冥幻境</td><td class="cards"><span class="tiles mini" data-tiles="94,94,94|151,151,151|150,150,150"></span></td></tr>
+      <tr><td>深渊梦魇</td><td class="cards"><span class="tiles mini" data-tiles="94,94,94|249,249,249|150,150,150"></span></td></tr>
+      <tr><td>梦境三重奏</td><td class="cards"><span class="tiles mini" data-tiles="92,92,92|151,151,151|150,150,150"></span></td></tr>
+      <tr><td>月夜魅影</td><td class="cards"><span class="tiles mini" data-tiles="94,94,94|92,92,92|151,151,151"></span></td></tr>
+    </table>
+    <div class="tip">命中役满就<b>不再计算其它番</b>，直接按 ×10 结算。比如「神兽一色」在注额 10 时：自摸得 300，荣和得 100。</div>
+  </section>
+
+  <section>
+    <h2>注额、场次与对手</h2>
+    <table>
+      <tr><th>项目</th><th>说明</th></tr>
+      <tr><td>注额</td><td>进场可选 <b>5 / 10 / 25 / 50 / 100 / 250</b>，进场需要至少 <b>200 游戏币</b></td></tr>
+      <tr><td>一场几局</td><td><b>东 1～东 4</b> 共四小局，每局掷骰重定庄家、重新发牌</td></tr>
+      <tr><td>结算时间</td><td>四小局全部打完，整场净胜负<b>一次性</b>进游戏币账户</td></tr>
+      <tr><td>对战记录</td><td>保留最近 50 场（名次、净胜负、注额）</td></tr>
+      <tr><td>AI 难度</td><td><b>简单</b>：对手约一半决策会放水；<b>困难</b>：全按最优打法。可随时切换</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>上手小贴士</h2>
+    <ul>
+      <li><b>先看宝牌。</b>发完牌翻开那张指示牌就是宝牌，凑出它的刻子每组白拿 1 番。</li>
+      <li><b>碰要谨慎。</b>碰了就不能立直、也没了门清，但能加快成胡；手上有 2 张、场上又有人打同类牌时最划算。</li>
+      <li><b>羁绊比单干强。</b>手里同时握住「主力 + 同系幼态」各 3 张，一门就有 1 番，再叠牌型役很容易上 5 番。</li>
+      <li><b>神兽别急着丢。</b>单只神兽刻子就有 1 番，凑齐三组神兽直接役满。</li>
+      <li><b>立直是翻盘点。</b>听牌就立直，多 1 番还能吃一发；但立直后只能摸打，牌型已经定型了再宣言。</li>
+    </ul>
+  </section>
+
+  <div class="foot">口袋挂机 · 口袋麻将玩法说明</div>
+</div>
+
+<script>
+// 牌面数据：与游戏内 14 种牌一致（图标已内嵌）
+const SP = {
+  94:  { n: '耿鬼',     p: 10, t: '#6C468F', legend: false, i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAnCAYAAABnlOo2AAAE40lEQVR4nO1Yf0hdVRz/3Hefr2src5jh9p7kW2z6mvNlmOaoRs02kq3ICMbWWLGoQP+JOcaGMWJmiu4/pWgbNYarwTS2ycQYQiGCQ2xzNskMF+69Z45wLB0v8b0T33Pffbv3vnN997l+0wcO59xz7rnfz/l8v/ec773A/1gaWKz85XBYDdTv66KK/WMI/V2kpEXGWIwQ6pq22Lmfz7F5n+WcRRXSQMSqtzcnUyu+gFTi1DwnKSFZTuPFk1eEDw/0mElpbdaw/zwcDoedF4P3H20dB80xYzFCks5VorjSVsdIvYfca5Kpxee01g+CynRgjHfGbMRd7ESKCAVHUb2zGcVlL/OHam0NRM7tWYsoogYypIae9M1fp4TPT5lQsc44GTApw8mYwN2jh5U6CRcWYCTxsswMW4SnghO8vj45jBxPATzufH4diUXHjeCP6vi1YbSd3JvAwdZbthQQmRVun1AZgoiMbUJKZmbSe0iBUGAc2SsfAWMROCUXV4P6qVBbkmSkSTKuft9n+ZykG93RmP9lY5AmgMhQPJEKVGuuIXLckCTzmgjVNlUAC2LbloSU+8Dq93QhK9sYtFYgFTQyVGsEzKDYIrSdSM1lrHDNUxgZs5bWDC0+9HGyGKx2/gRCigJW/Xoj0h7MxUcbN2AufIsXM7TYCE2O8+Kau4TB6T6ujEgdthDhbxbIgxH7Qc12b2vE0MgF7Frr5x01tSXCFZISmhojoS70z82iw7sadmBFRkQIWJCRnhHFjOKHsiITyMnDsomeuCLa2xR1RHn5Nvgl2oueQMuqx4DiAksSsixjdKqbW6x+Le6uBJfpWfIziSaMBrvxfBlfBd5xA290HEHpk28aJg6PfYMvzjSCNX6qdvgKMHFpEqfmHhAScsRM9ww0wbfyBWgvrVmtBIVc6VHMzzlw5adzSIum4eOgA2Xlb9+JjSgwEuhCQ/kmwJnJifAC4NTs/WCRCC9Xrp1BJHInlqKSWjaX7eMLFpFJuCCVFAUo8VfAv+5ZzNwOYF3eS8YbIuq+kvHzECoL18PrS+fXjX031fEo4zGV4XLDk1UGWY4kKEUq9fb2iuxb7kOs9WAfLo9+jV+cAd5RkpuYihiUzb6B/ouXkeVUz7xVeeVxAppCeuxv2Cy0b3XaS7UfVLCdVe+h/VgbBgaH8MmRY4sSCk8o6Dh+GFCAt3a8H+8nNchNdmGZfoQXwnjY68e7u1uw9ZXn0H68DV+dvYhNL5bycat2zY4WeD1qWwTajwLXv+OJXl3TFpbKac8zxvxHvTjXwf2dFETGnA+ROqSSBiJD94hyIWGHAKz+4GmEflDznNb2Wl6f7+xHZdV6hMNAza4WKE41OZOccoIihAuDLbyufPoA6g5XIDyb4uGqf+a2V/egyLsxvkI9wgtAcWk+bk2r3hcR4nNivhi42oXC/Gfw2eeHhPZtEare3owZTODx3CrMY16dKItPcz0RvoCQcQGjge74xrjUjFGiicvvdWNospPvMXZhVtPOiW8/yb/twnJ4KbHCcPAsP1hpczN/7tBXSRx6EZl6JPlyDOosKck3nnUx6OQ2rJA+i4SIEYrt0Nrcu/oMktpO7tUbl0QH9Pxvaoy57nEZZ0dheVzczVeHpCvC8ROdh+D3bUgpBzIb+KPBtIbp78mfYevf8ycO/1n8DtBREXIiYPqUAAAAAElFTkSuQmCC' },
+  6:   { n: '喷火龙',   p: 10, t: '#CB494D', legend: false, i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAA2CAYAAAB3Ep8CAAADiklEQVR4nO2aT0jUQRTH3+81gdFNOxRd+iPuIfNQt+gke1EIgiJY/EPoKfQYBkkRQYeko+DJDmYIlacgC2TpEHv0IEYsWHaRvFh0iIIIg99v3up8dXZmXDHb8XPYYX/z5zf7e9/33szsL1lbW6N6IJfLGT+kXC4nPv2YIkdRnVi+fLEp+/5uNag/U+QwRQ5T5CT/axZA399Ur2OBKxswRY6ieqH9WFYWv5CRFUQpFiUwRY6ieqHzW1YWw7oxRY6ieuNRQ1be/OUVC5giR4V2cEVVW3sE+4fu5qS+Mp9XrWYsACXYYIoc5duw8qTvtnopQeqHjjdXHU+Qca31LsXp/E+d2vK4PrDsEpkiR+30gKiUjokfaXn19wGjHSpD2s30Hg5ShCsW5O4vGO0RpshRoRadKx3VNQtbtpvK5/WVlfTz0+eltBzRV20xQRSCShBcinh//ohpcZL2y1V/H1PkqNAOhdnZqj517sJKVd9zZQdEFPGg+bQx/iZF6PudOnHSUOpUPiv3V4KhCsiB7wvyhF153AZGbVHCi4N/DN8Xy38/O5SWg7r/aGnaGA8VIf18YYocFdpBLDRXyhsWENACrhUjWt7F4KEraTn6cxqykswvm0/HxEcjdkh2wvkwRU6Cp8I23/cFLYLZQ7CNj1F/eDGzZOO1HqPd0ge9xteIIhDpL+NhFmOKnCRUAWLhiu93aV8cGAi6McYOG3I/saRgUwQqARUgiBKYIkfZKtDS4+PZyUp/P6z0usx+aCl88oht7Y/j4TjDz54YSlh9eSMtC7peoj7GEhyHKXISiQE238eoLr7TdGmsqs/J7m5kedGwyJnb17ecyOW+O8Z3VARmB5yPbc8h97VlA6bISVpaWraV91EZNsvj2n++OOk1vigiVAkCWl7YV4BvFhivRP2GLS0vT1B2h3jmZ+NreT4tG3NtXrFAcO3yZB6oDFfMYIochT4qviP5Hi0uZ4HYr1v79mTPPdro6zhu38Pnafn4FhlKcGUBvD5XMq+78r0NpshJbHsBxPXPjK2fsH5abCIWm3nzOrvwNNvv+64UbdnId73AFDnJbr0ltvl/AxPM1zNTE2nZUegNUgCuB4T9f4b+9RsiZcgaNt6ODRmWX/flFS/L+763IDBFjtrtGwZnE60A21ljrTBFTrLX3xXecI5vnD3KuUJbe/e2fF9gipxkryug1hWqC66lcz3wF9CA8yTuaEiaAAAAAElFTkSuQmCC' },
+  9:   { n: '水箭龟',   p: 10, t: '#3786CE', legend: false, i: 'data:image/png;base64,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' },
+  3:   { n: '妙蛙花',   p: 10, t: '#378E24', legend: false, i: 'data:image/png;base64,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' },
+  25:  { n: '皮卡丘',   p: 10, t: '#D9AF00', legend: false, i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABkAAAAYCAYAAAAPtVbGAAAB2ElEQVR4nGNgGEngPxSTDZgIyP93cnKi2EFMJDsLN/j//Zo5w7GlemA2sgQjPk0gDRwcAgxG4acYGP78QFcLNUgATH6/ps5w/vx3uKRV9CW4+SwMBMDuE+8wLGdgYGCABaMA6z2Gpf3yDOfPv8dpBq7g+s/BwsDw/MN3hvLuK8i++P/9pjkDCMNASRwfhgXIvsDlE3AwWVpygjmgcObUOvkfxkYGLclvMDSjW4DNErBLQeDHb4QgyPCla3kZGBg+M/z4K8CQWPiQoSX5O1EWEJW6zl34Bqajgz+D6Q07P4Ax1ECCFqALgpMgugVGkacYOBk5EfHwlwEUfDC94KAl2SeQYIEAIwMusAVBoUEoar5DHAOKJ0Z0HxHyCapvmKEifxkYGHoVIOziB3Bxjq8cDIxGNxnOLZWDOCj6FFZfoPvk/9YpqgzeOdwMR84TzD4Mq3d/Zgh15WXYd/Ij3vjA6hMYAxbWhoaQpAyyfOuUrxgGhKd+Z/CzEGNI6d1DlE9gihiRwxrkK2QLvHO44Yr3zf4FplMmXiHJJyi+Qk45NXNFwPTW6V8RccWAktJwArySyBbBgg05QYB8tW/fPootAVsEY3xHy0fE+IIc8B+azCmuLYm1jGHkAQCpJLcoSw+fsAAAAABJRU5ErkJggg==' },
+  92:  { n: '鬼斯',     p: 5,  t: '#6C468F', legend: false, i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABsAAAAZCAYAAADAHFVeAAACgUlEQVR4nO1VTWgTQRT+VhNILpIStO1Jg0d7kp7qpewWBUuh2JtgULJ68OJB9DIeImSlh4L3mlwKogh6CRVEEijGm4hoTPFQVgR/QSmlkpCfrryZnd0k+5fiUT8YZmfmzXzvm/feLPAfNtiVskWNf18W/ag4gL+AcW9B2Y99pLHjvQUYRe/hcl0SS9XGqtc2FkWSmciIiT2A6WVLukeHk41cp+8opb6L/JAjNkkS0PNTQNd1r5ivA017fNDuLcD8ZoZebaAygm5McYvpE2dwKN3hczs/4w55kdXDtnvg54X1uPgSS/opqKqKMFSrVYfQ/BGuyi8bRyYikA1XPxSCoJLwpP653AwYu8ljwFsUYiKulCg81pMZUPMj9K0zVZ1DYWw3lIOx67ynePIY9mduABwylpOetGAYy6ikj2Oiu41CatdDUqlUoKpnoSbaInG6dvSp9QDzixu/foWebNzYqPF+aXEBheUPzjwRjALzu8mLf7jYB8kUkcqzs9Owmk1o8xoQT6HaanMiRVFgWW4YNp8+wOF0GjtvWxEF5GIgVemFiI2/wW3DgKrO8Dm6Krb+wkO2ml3Ep3odxrstUeRte6HnqhsmG/Cpz8Dq/Ra7G51fWLl00SVqAdppUg1g7CjQ3RKviXxJQuC5gJVrNX7qrdIc7udLSLW2+bymacKgA2QvZLH2cG2gqCWCVBG8r7hetjLjIoVFwSbQXP8K4COe1J7j/J0bUOIKEkigxN6j8bkBaR9G5KuMZ5JNSF4n914jOT8p7g9A/OQx3hPRq81nuPvoKreXe4OIfJX5KSSPCTQmtSxX5hW6359nKIhQeu2MneKPfguHEVohw9cSdU34Z/EHItAkIHBrTcUAAAAASUVORK5CYII=' },
+  4:   { n: '小火龙',   p: 5,  t: '#CB494D', legend: false, i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABkAAAAXCAYAAAD+4+QTAAAB6klEQVR4nGNgGAXYwX9sgkxEaIJhQuD/tWQ3ME2sJWCDv0/RZwDha0nYNWMD2CxiwaIObDgyUDR6yXCN0Y1Ba+4ukGZGBhIBoeCCA0nFj/ik/4N9+5+BQdjwG8M9NN8wEfLF/XPicPb7FnMUzegA5GOx5NcY4tiCCw6uXOFnUJm7k4GTlZHh+wRUy9HBdYuHDJq+AgwM1yUYLqqhWsSEzxevXrEzJEaGYfUVGmCMTnsIZmzY/ZohsfwaWIwonzg5vWLwztkNZt+/JI5X9Q+GHwwvZnAwBDaeRLEA3SeMnDkXMVwLSpLQZAkGuPICPoDuNkatebv+M8yDG4Yw7i9ec6BB/YHoJAzyKqPW3F2gfMHAEe0Al8i5/webb2A5nQEUEtjyEb58AlYsqSXJoNgayZBz6w9DnNIvBk3FjwxvOb7DLYJZcP+8OOWZEQTiNX4zHHnOxtB+jhfuI5jvQL7GVRrgLCIEGBj+J8dFM6iw/2TIqHRmYBDkYPAOX8zw4w8DwxRFFrjOnHt/GPbt24fXLLyWHNu7jeHginkMZ47cZ0jo8wWLC685Btd5/d1/huB14CSOtzwjVNihJFUnJyeGaglmMPuYrB5Da2cvww8yCkxC4D8I7I1y/f///fP/HETmF3Jc8Z9C/UMYAADORrLlKW1hFQAAAABJRU5ErkJggg==' },
+  7:   { n: '杰尼龟',   p: 5,  t: '#3786CE', legend: false, i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABkAAAAVCAYAAACzK0UYAAACUElEQVR4nN1UXUhTYRh+ztbkJDTmhdEpdmE/g5kJu4oNojixApuzlH40CmIRiBDELkSQCTLvGkHQzSi80HQISsvwJh1IdWgUBoMmc9pAK8uUCRUdL/KLveHx7OfMSd3UAx/v973f+7zP+/0C/ws4DT8rMU6Lw21FZo33g6iqblYcAceuYvEZMK/0FTnxnBaJeV9uBqsxPzmE0XYP5HxelsBsop9s+FqrEqdDibA43dQm2g5R4gJbilR8EEt9Q/gee5vl12lVVMMnsDITAtZBTZZ5HLzoQk/MjLjfAqndQpwLd4OQTb8FVgdCEFqaYTxcqymShe6+B/Bd8ajPQ8HYrJFsRmh5PIQv44ObkwBGrt/I2lJNkRqzHfsNOlh5DrxJpkoJBsDb+wpSsgymSh57hN1IzqWg1//EsrE8TyBXhFNXbTl1juw+pxsfnj6m/upACD6fT81HU3oCVjlF/ZlHT/IECjp4gFnrXahqcNO44lOCbFx6h2NH9+L15DQa/UG02Q8g0HQEtso19CTNMLVcKriK3JUoqK53UdWZNrWwDo9dj7GHbjyLfiSBkU5KRpj+Vk5WS0DTuXE9fyzeURxnLo/C5g8r4zedDagzLcEmrOHkvWSxXNih4SfCTuEWmxq+mjeZ2rgEfwHM7m1lZ887WTrdy9hiF6sTHZkvh4miyBzO02xYelHwUeaipBdfIXTgefQzOm7W0jllYD9xHIGu7pKq3ep3Zao4JooibLfDSET7UWbQFz3s7ayEUyXhIpEICay8j5W0AnWS7YL9If8fxi98i89oUYkrQwAAAABJRU5ErkJggg==' },
+  1:   { n: '妙蛙种子', p: 5,  t: '#378E24', legend: false, i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAXCAYAAAARIY8tAAACRUlEQVR4nOVUTWgTQRT+to1lWxAihVBqPAR0wUKVhFwa6MEFLwseTMilRZCmtxwtiOSaIogeCx7ag5R6CGwvhV6KW1BILiEB/1aCYUppTSgEQjxkMSwjM0nX3XSTrqUX8Vtm35u/77337c4A/zNon3XFyEXJM6WMw15mAMpejcMqMqU0muTb0MXC3xKn1QS+54/QQQfSvATygeBmLIi1hOrK6fNKnlYT3Pma/4GZWJDbUbODXz0R2Dwb239VoPYggySya0rjL+M28mnHQtZn46e+/CTm2O8WwP7hqCzLGDPGQLQWrt0IwDRHoOdrmJmfBkbBG/PZGJvzB6fgSaJeENT1OsgGAXwGxFsTaBz/HLSlNzfhLQDD8SeCwy8HQBSQbt9BZbMCURFxBVdRIz0VzD/rTdNJ7ibRqTwcRx8PLH/y7iSkRxKMXQOdcgfNnaZrUtsr27B/5P7flD5+s4DrsyGch8JKAQE5gJbYglkz0ag0UNwpnuG0V0DfKfcdWTPUSjVX8lAqhBPtxKoo+iDqmogwSB5OtLUPeVGB+lRFea+MZDIJ6ZnEgwp9xZOKzq32Iu/gtVcgrEZWHZvmFu8hG8lC39NBKUUul3NURN4SnIcz56D6vopxcdzqGzDwPPuQ+8sbyzxz9vCMo4YVJByY422YRF34uqdw6fUS787W29x+nur+gowwtBCyJEFR5H0loiARS7CMBK+XnesVnFpPcetv+rkt75ahaZoXPk+gDKn1FG3TNg3Hw/w6GbbhIhHpJXD8Q/gN4kXy29q7bq4AAAAASUVORK5CYII=' },
+  172: { n: '皮丘',     p: 5,  t: '#D9AF00', legend: false, i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABMAAAAXCAYAAADpwXTaAAABi0lEQVR4nNVUMUsDMRh9kRZOsGA3J3+Bi5NScUlplyI4FeRAB6Ud+wcOWqQiDoJdRSmIXRQ7iDpYOLp4WHQQFBed3Jw6CLag8EnTy/XujCf0Fn0Q+PKSvLwv+RLgP4DsNjRG3B3OuRQNL4YPgM+HE5Sg5plO1M4T53yolJkrJqLCYIBV/OPOPKjXI6LaoVS69i9kMub9c4Vpmr86pWJxpufQaVd7KZoY0+i0vuD0+Q/H4E/Dk6pEbrmB3YOU008m76UzFnBmVTu8U/vuAsf1J2T1C5URr1hfsaoUs/YfMbfWCMpqQFiZLE0fxkWsjWs2uwPGGGTqATfsvc3E+RFDHNRp5yUlhASMWZupIAi+0tCg5yyspiaRmIo4jmAAbGNJ6ON7yQw294lRhwrIJG88rKummKIkmPptostG2RZq5ZjtEzgpx9A8XQS1V9yO3KDAF6Abb0KwJ9Z6+ETr+R3rmy9ymPlEHGfKt2fV0jBbr0A0Kghj+zZoPoKcsYR+KXa1qmkPj5AI/fv+DXwBgN2TEfvJ0qMAAAAASUVORK5CYII=' },
+  151: { n: '梦幻',     p: 20, t: '#ff7eb3', legend: true,  i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABsAAAAdCAYAAABbjRdIAAACk0lEQVR4nN1WT2iSYRx+NJPX6mCHiB3nzUMs2yDWIcwOwTd2KYzWqHAhwRodWkRBsiAW0Sw6qAQ1ZAwpXGUQCgWDhYchjdm6jMK+dnMMxC4yD6s33t+rU+cf/JyN6IGH99/3vs/7/N5/H/C/QtdCH97qODotKgyM+y+4caLLSuUO7MfbpU8YmH7c1Fg6LU7S3iCl61inNLGUgms6gDzy23ZGIqo3UNWwvJxG3+Q9LRNuKMKjlz1c9QYoX4fbBAN39tpJqH2D1gYJha+O/VWRIvjrKx4OQ5mQgXFim6DfWnHWdpyEBZXDXVCf0LYud9uyc92Wslgv5Ix6zCx+xP0BF75/+YpTF/vlx/ZehG+Pw9mvwHTMhrzGnairUSdCKTPv52VmV6ElJ5M3yTgG79zULKavOYENIn4kk7Lml+SjDzl8O3AQp887wUS9WF9D82GtJUam+GzBVQGxUAyjD7rxLqRSOejzw9ltR9g9BhH6Zs5gIWC10dljKzkTlk0dlI7eTQN792AmMUcUEIJWq2y33LouBTeau8YEOJ+bl5yV9AVfcTX7m0eCQW6udsCLVH0BrvQcrXJZL4yE1dQKESZGVDJrwORTGOMqFuWdWR46XZGWkWH4zl1q1lRptunnL3hk/CE3i43AGM1Y3JmCRcdq6Q6t6FunvrHgZgfGKkTivmdccTjqDUjhbPUGIiHhTAhFhzyboqjjitatTKzhmlWBMWC3POEpo3xABbKhiDxzpQ2CkZdTiC0kKnaktodvH+PKoSMwG8y45jyDzOcVKIMKfq6uwuWfgNt6kj7rm5qA1q1fC/TWOUrrRPnoUNVD2/a/q2JfXvx1sNwYbjimtjUriVQMuJDJotNauG12AHwnXvd/F38APg1LBjFEPrQAAAAASUVORK5CYII=' },
+  150: { n: '超梦',     p: 20, t: '#ff7eb3', legend: true,  i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAqCAYAAADbCvnoAAAFaUlEQVR4nM1Yf2gbVRz/XHIpqUNwsG5Ox0ZlFFZKsxa1UJYVA2FQKUgDUpgblsqNslAWmplVgv5TmJVAh8TVBUprt0EpZCjR0jIJbGXBFrkuc7Za1IKbZtqNTrE0tLmcvHe5S9LkfmSmuE945N177977vO/7/roHGAELMRbjRfKPbYbJEJmbvO6YcpHVJ0TAmKRCsHVhFuLDB3+AlHKQMkYIQPjzy+g960NiZTUrERYifQawtPRbaSvnzJHfbARiGn1n30XabAYgSKQABD4MwApgsRQyGQL8hQWYTcBMPAr3sFtECow+IVaSgEXYKOgKDJyH/1wfFn/4EUAFmo82Qp5Uaz5CJBd2myPvWX0CFuKfKw815zcJgnJUuoRYiPGgREZISU2x76h08t4zdmQaqKl5UV9/WIjBrqDy2HimNtu3ZRMmraMyCQItejDDjNmbcU0rqxAqMDMfhc1dK5GQSylWtmRAWY1IJ/R2iFa3Hs8Tm/1Pi79SSQkw0/KsdQd6ez34eekBlY4eNpgNcFc4faVXJZQCs7dqZ9Gu4y4XuNMcQp9IuzaKVltrGRwnCzGRSIiJ1VUxOBQQT7WfEmGFKGM2FqeF53XiHDm2d0KGwotJc5KhrBRcHV24NHkJfFCKa7O34kqfr8+HgfMDuhKglqYzRtNv/LL0O61WVlbi/v1lbG7mD6G+hyx0IUD/52/HMTx6ubiu5DhFavYq+qQuoRSYl2peoNVweFhp9vu98H/gyzrCFBj3GS/tazhsU996CozsfygxFUnpaj1YiI7XnFJdWEN/fxA8H0VTkwN2uyShQECS0Ny3dzB2ZUzdmjJSMmfcseKTSiKUkxPdvTuPuroGWCzAvn3VsFoBjuvEo0d/o729FVRSBuKZHEKKETKUoIUuSke2Iayi+lA1DhzcD7NVQI/XA4/nfRxzHoPba4CMjLRUFoocnSHHWFfXAL/fTevh8aw+vdLQhKHhj+FscYKP8ob9DEk5CKZvTxf0MUbTV7/fi/HwBK1PjI/S/0abQ7E0Mu45qxW1r6pbkBxGXj58BLPxGTTZ7AUWp/qivIhMpr8/gIOH9tNnEj4IqDeXJ2MhLsxJulFAKjOfHNMERixKhoBR0xnpmLy0KXA6iOg309jx+Bn6/MZHbxYSyskSuJMnEYlElORmqHMobwmzKG2IG+V0COUdkRtXw1/ReldbB/o9g0BCGha7cwOugY4sKQIysZxjJ5PgOA5te9oyEhEKCBUjI1EoSsarkDnucmHwrSCwkh3tqG/B+HujsNRn8+u9VTtFx9FMOmq1Ym1tDWkxnbdtLcmoWplEJgw9TC1M0fgmQyYmg8wxsSwZgQxCRItMPqEUGGoxIskApcxnq9+Qi/uaGz0erzJOLoQEkajStmHBX7vX0T3STYtalpiL/Jw6BSY6ExWL+Q175utA9iHNTUewiTWtuTHQN4jG12n8MuYwizrGFJjdVbvoHpcXl6m5f/F9BFP3phGbvwFzWtKDpDWZnSSTexPp0KMaH6Xvx5YnS/6M0MwYmzNOj+z065kpzYlK/nJVgaFoP0u+KAD09HA40XICSAKT/CTGIiO0neTWBCTrJpvg53hcj16H75zPeHxTlisB9Qfq4f3Mi+Q/yTypyIm+nCM1NjdKelgiGd0UFplciOw8NHIRnb3dSD5OEgkxpHwaDGJ9dZ32kx/Nm8h7mX6UDeRLMxgQHU4nvahSLquKR3PaLo8j75T/YotKxpFPxsA78lfI9ty0qdzfbDchdaU2qpCstHjiXgIWi+k/m7/hGzTVo7U7KJnIlxHlNuT/IwTg6rVsIN40V2DX83ueyNzLcz+Uoh5dObKnC2z5roafKvwLaaWosxT1kEUAAAAASUVORK5CYII=' },
+  250: { n: '凤王',     p: 20, t: '#ff7eb3', legend: true,  i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACEAAAAgCAYAAACcuBHKAAADDUlEQVR4nO1XIXTaUBR99FRkjrohI5lLHKBWSVxxXRWpC465tmqrK45OjaqdOeqCxMEcX0ZmapmjrnHs3P95aUhCElbamd1zckh+kn/vu++9nw/RfxTAMIwVDvpXMNbkryXkIEuAPavRr3535R4bL82fFmEg8k9Lct648jrwvNcXAZjH7yj4aMvz8yAkIUSFnomitB5kuRDs0QEmR4q3CTnY5sI+gdpCcNuEpNIR7LkOkE5rKmRwEAK3k0I2RDjrgnxJwO0kDvc1uZGILqugF1aTHHdONLNo1KIVP7PhhO3qFF7cRGlBLosWK658XddpsVjIIz6OA/PkpTkSIYSoiKujUlHGx5n4+K1Pj4Gy2m5QJAjikhi1gg2nUoU5Wn6I3Oj5DzRzQ3kke12urA2KiBm3jkknZijHcZ6FZJdsiBBrNyDkWqvJsYfJ+sUGkesoMfw8yJi4e6nOgWpbvTf9rdNQrxZ2XKowBWy6MlYzV71491mjbjuUhPcLje1dQRCuT+iJHM+ysN6knhJgoijLpCMORIMIMTmia/zU5MTxPEshZhg5BvKzXloA4/bRSo1lihBCVFqWJgkY3nmVavW6PAcByDhqJmf7swTABXRf0gUg9+NkoL2cUOV40JCFyiIu30/p4c6kYduLrAeyoocAOJAlYKsTcYCABfT7/Y17F2Eg7zPyBEzPnlzdWcS3oZr4NAio2WxGLjhfVPcA7EKSnFMAATxPFg7zUjFzVcFV+z+oSQ35EZIp8dH/gayR8c0oWpL9JZF+RHKdATnSRaRSlodKkQgAQqxbZefXmiZJ9HtFXluLAObzOQ0Gg+iayfndbRukwyIBLetpAoyLE5vqCfIksISjc4rIS9VEy9LUKhqbxLZt8jxPRh0HX4/HY9mq3N5ltoe56RAZE/AXE4h3C4RBIMM0zdL70502sYZhrNrtizXpd/nr+778HQ6Hsnv+RkRhi2ZhMrmmev1UCuB09Xq96H6n06FdsPN23oh9RZORJp1ikUVz7ry9EyUmhQDl1HWpOZ/9xyaJPKe24Q89DNGcJLe5NQAAAABJRU5ErkJggg==' },
+  249: { n: '洛奇亚',   p: 20, t: '#ff7eb3', legend: true,  i: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAgCAYAAAB6kdqOAAACU0lEQVR4nO1XIVPDMBTOdggktrJyuPQfMAkucT3kHLjheihuakgkElCtRG4WtVbBZB1zYHHjXtjrXrK0aUeBCb67XLKl6fvyvbwvG2P/2BKc8yU0tgsAIgj+l8QwOCCOZ6pRYr/BoUvJpGnKfN8vJqUMVJ8kaatBa6lOlaGI41mr6riOQ6GQqUrZ5zYB2YCsWDdMmVPwltRBNcwMmDEKhbIs6wTBz6jBV+cTWpZNK5/tthmUr3baxCqcBWOmLl4dalcQmAuHX/Jjb74visZaynBcSR4mhRDqQSFEMa5aSIPOnl+XR2JSbISud52f0l2aRBBVKlFTRbjIOC2FEjJxJCZaKqreAYFAKdt7KGqRgcAuMrzGedqWzEaVnYUH2ue+nDLP72vBoO/1dUMzSSZJYiUrpWRgL2Aztvm9zQWBlcxHLlkU3aqx3/PY6FJqJIHgfBoUnmMjAsjzvJSMU+ZwuO7x9oezYUoPKS1LkXnYGzk/XYgVYHqRSQjnwWNM2LwI1tcmBQ/ii7FMY6M0bXeeWdKgFiWDm4C+ESEaEBdyy+Kyi5i6MW4ESWDb6ueMywDjeLYc3r0pAtCL8WYaMTio1YSM9XKFKqiqBL/nsXzxwS7u34vv5PVCuyiDQ6+o2Hy+UK0OWrntfW9f9bafFmEYsYeHkRqPRgNnyTcmlGVZZ3B6wqJjplSimM+fWPqyVgLH4D11yADcBlUCPAt++KhPPJ2z6OpGDTFNdcl8i5BuFbcqXaAQqIFAZ29K6lvgpLTNCsK5tv+5OFHHr3bqbznfFTLb4BP+kwHQefEYUwAAAABJRU5ErkJggg==' },
+};
+function tile(id) {
+  const s = SP[id];
+  if (!s) return '';
+  return '<span class="tile' + (s.legend ? ' tile-legend' : '') + '" style="--tc:' + s.t + '" title="' + s.n + ' ' + s.p + '点">'
+    + '<img src="' + s.i + '" alt="' + s.n + '"><b class="pts">' + s.p + '</b></span>';
+}
+// data-tiles="94,94,94|92,92,92"：竖线分隔不同的刻子组
+document.querySelectorAll('[data-tiles]').forEach((el) => {
+  el.innerHTML = el.dataset.tiles.split('|').map((group, i) => {
+    const tiles = group.split(',').map((id) => tile(id.trim())).join('');
+    return '<span class="group' + (i > 0 ? ' gap' : '') + '">' + tiles + '</span>';
+  }).join('');
+});
+</script>
+</body>
+</html>
