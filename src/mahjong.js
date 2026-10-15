@@ -35,6 +35,9 @@ const TYPE_COLORS = {
 };
 
 const BETS = [5, 10, 25, 50, 100, 250];
+const EASY_BET_TIERS = 3;   // 简单模式只开前 3 档（5/10/25）：AI 放水太多，高注额等于白送
+// 当前难度可选的注额档位
+const betOptions = () => (_aiDumb > 0 ? BETS.slice(0, EASY_BET_TIERS) : BETS);
 const AI_NAMES = ['对家', '左家', '右家'];
 const SEAT_NAMES = ['你', '对家', '左家', '右家']; // 座位号 0=玩家 1=对家 2=左家 3=右家
 const NEXT = [2, 3, 1, 0]; // 顺时针下家（与发牌 DEAL_ORDER 同向）：玩家→左家→对家→右家→玩家
@@ -470,13 +473,14 @@ function showPonIcon(seat, id) {
 
 function betHtml() {
   const balance = coin();
-  const maxAffIdx = BETS.findIndex(b => b * 40 > balance);
-  const sliderMax = maxAffIdx === -1 ? BETS.length - 1 : maxAffIdx - 1;
-  if (sliderMax >= 0 && st.bet > BETS[sliderMax]) st.bet = BETS[sliderMax];
+  const bets = betOptions();
+  const maxAffIdx = bets.findIndex(b => b * 40 > balance);
+  const sliderMax = maxAffIdx === -1 ? bets.length - 1 : maxAffIdx - 1;
+  if (sliderMax >= 0 && st.bet > bets[sliderMax]) st.bet = bets[sliderMax];
   const disabled = sliderMax < 0;
-  const ticks = BETS.map((b, i) => `
+  const ticks = bets.map((b, i) => `
     <div class="casino-bet-tick${b * 40 > balance ? ' off' : ''}${b === st.bet ? ' sel' : ''}"
-      data-i="${i}" style="left:${(i / (BETS.length - 1)) * 100}%">
+      data-i="${i}" style="left:${(i / (bets.length - 1)) * 100}%">
       <img class="casino-bet-coin" src="./items/goods/coin.png" alt="">
       <span class="casino-bet-dot"></span>
       <span class="casino-bet-value">${formatNum(b)}</span>
@@ -546,7 +550,7 @@ function yakuRefInner() {
 function bindBet(box) {
   for (const t of box.querySelectorAll('.casino-bet-tick')) t.addEventListener('click', () => {
     if (t.classList.contains('off') || st.phase !== 'bet') return;
-    st.bet = BETS[+t.dataset.i];
+    st.bet = betOptions()[+t.dataset.i];
     render();
   });
   box.querySelector('#mStart')?.addEventListener('click', beginMatch);

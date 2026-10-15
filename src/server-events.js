@@ -43,6 +43,9 @@ function apply(data, srvAt, perfAt) {
   return true;
 }
 
+// 某类事件的全部时段（手机页的事件时间带要用）
+export function allSlots(kind) { return listOf(kind).slice(); }
+
 // 拉取排期（并发请求会合并）；成功后写缓存并顺带校准时间
 export async function loadEvents(force = false) {
   if (_loading) return _loading;

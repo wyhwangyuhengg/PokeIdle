@@ -145,7 +145,8 @@ export function activityDebug() {
     活动清单: list,
     进行中: activeActivities().map(a => a.id),
     就绪: Object.keys(ACTIVITIES).map(id => ({ id, ready: readyOf(id, ACTIVITIES[id]) })),
-    入口亮着: ($('bagActivity')?.classList.contains('bag-slot--empty') === false),
+    入口: currentEntry(),
+    入口在手机上的状态: (() => { const el = $('phoneAppActivity'); return el ? (el.style.display === 'none' ? '被隐藏' : '亮着') : '未渲染（手机页未打开/无活动）'; })(),
     开发预览: DEV_PREVIEW,
     本地预览: devPreview(),
   };
@@ -204,37 +205,45 @@ function readyOf(id, mod) {
   catch (e) { console.error('[限时活动] ready 出错：', e); return false; }
 }
 
-// 入口 = 背包第二页第三个格子：有活动时亮出气球图标，点它进活动页（不是"使用道具"）。
-// 没活动就还原成空格子，不挪动别的格子。
-function refreshEntry() {
-  const slot = $('bagActivity');
-  if (!slot) return;
+// 手机第三页的活动入口：当前该亮哪一个（活动清单就绪且条件满足才返回，否则 null）
+function currentEntry() {
   const list = activeActivities().filter(a => readyOf(a.id, ACTIVITIES[a.id]));
   const di = devPreview();
   const preview = DEV_PREVIEW && readyOf(DEV_PREVIEW, ACTIVITIES[DEV_PREVIEW]) ? { id: DEV_PREVIEW } : null;
   const entry = di && readyOf(di.id, ACTIVITIES[di.id]) ? { id: di.id } : (list[0] || preview);
-  const icon = $('bagActivityIcon');
-  const nameEl = $('bagActivityName');
-  if (!entry) {
-    slot.classList.add('bag-slot--empty');
-    slot.setAttribute('aria-hidden', 'true');
-    slot.removeAttribute('title');
-    slot.dataset.activity = '';
-    if (icon) icon.style.display = 'none';
-    if (nameEl) nameEl.style.display = 'none';
+  if (!entry) return null;
+  const mod = ACTIVITIES[entry.id];
+  if (!mod) return null;
+  return { id: entry.id, name: mod.name || '限时活动', count: list.length };
+}
+
+// 给手机首页用：有活动才把这个 app 渲染出来（页面数因此从 2 页变 3 页）
+export function activityEntry() { return currentEntry(); }
+
+// 手机首页点这个 app：打开当前活动
+export function openActivityFromEntry() {
+  const e = currentEntry();
+  if (e) openActivity(e.id);
+}
+
+// 入口状态刷新：手机 app 的名字与可见性（页面重渲染时 phone.js 会重新问一次 activityEntry）
+function refreshEntry() {
+  const el = $('phoneAppActivity');
+  const e = currentEntry();
+  if (!e) {
+    if (el) el.style.display = 'none';
     if (_open) closeActivity(); // 正开着却被下架/条件不满足：退回首页
     return;
   }
-  const mod = ACTIVITIES[entry.id];
-  if (!mod) return;
-  slot.classList.remove('bag-slot--empty');
-  slot.setAttribute('aria-hidden', 'false');
-  slot.title = list.length
-    ? `${mod.name}${list.length > 1 ? `（另有 ${list.length - 1} 个活动）` : ''}`
-    : `${mod.name}（开发预览）`;
-  slot.dataset.activity = entry.id;
-  if (icon) { icon.src = mod.icon || './items/goods/balloon-red.png'; icon.style.display = ''; }
-  if (nameEl) { nameEl.textContent = mod.name || '限时活动'; nameEl.style.display = ''; }
+  if (!el) {
+    // 数据晚到会导致这个 app 没渲染出来：重画一次手机页
+    import('./phone.js').then((m) => m.refreshPhoneHome()).catch(() => {});
+    return;
+  }
+  el.style.display = '';
+  el.title = e.count > 1 ? `${e.name}（另有 ${e.count - 1} 个活动）` : e.name;
+  const nameEl = el.querySelector('.phone-app-name');
+  if (nameEl) nameEl.textContent = e.name;
 }
 
 function openActivity(id) {
@@ -396,12 +405,7 @@ function paintLeft(ctx) {
 
 // 开机：先吃缓存再拉最新；之后每分钟看一眼（到点就收摊），每 10 分钟对一次表
 export function startActivityRefresh() {
-  // 入口（背包第二页第三格）先接上并按已知情况亮一次（开发运行的预览态也走这里），再决定要不要联网
-  const slot = $('bagActivity');
-  if (slot) slot.addEventListener('click', () => {
-    const id = slot.dataset.activity;
-    if (id) openActivity(id);
-  });
+  // 入口是手机第三页的 app（点击由 phone.js 派的 openActivityFromEntry 处理），这里只管状态刷新
   refreshEntry();
   loadActivitiesFromCache();
   loadActivities(true);

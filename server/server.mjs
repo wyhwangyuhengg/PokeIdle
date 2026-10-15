@@ -95,13 +95,12 @@ function loadActivities() {
     const j = JSON.parse(fs.readFileSync(ACTIVITY_FILE, 'utf8'));
     const list = (j && Array.isArray(j.list)) ? j.list : [];
     _actList = list.filter((a) => a && typeof a.id === 'string' && Number(a.from) > 0 && Number(a.to) > Number(a.from));
-    console.log(`[server] 已载入 ${_actList.length} 个限时活动：${_actList.map((a) => a.id).join(', ') || '（无）'}`);
+    console.log(`[server] 已载入 ${_actList.length} 个限时活动：${_actList.map((a) => a.id).join(', ') || '（无）'}｜更新历程 ${_actTimeline.length} 条`);
   } catch (_) { /* 没有这个文件 = 没有活动，正常 */ }
   return _actList;
 }
 
-function isOutdated(ver, stamp) {
-  const cur = latestVersion();
+function isOutdated(ver, stamp) {  const cur = latestVersion();
   if (!cur || !VER_RE.test(ver || '')) return false;
   return cmpVer(cur, { ver, stamp: stamp || '' }) > 0;
 }

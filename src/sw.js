@@ -37,8 +37,9 @@ self.addEventListener('fetch', (e) => {
 
 async function serve(req, url) {
   try {
-    const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '');
-    if (rel && !BYPASS.has(rel) && !rel.startsWith('__hot__')) {
+    // 根路径按 index.html 处理，否则外壳永远热更不到
+    const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html';
+    if (!BYPASS.has(rel) && !rel.startsWith('__hot__')) {
       const map = await loadApplied();
       if (map && map[rel]) {
         const hit = await (await caches.open(CACHE)).match(`${self.location.origin}/${rel}`);

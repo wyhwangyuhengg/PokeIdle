@@ -666,7 +666,7 @@ export function showCasinoHistoryView(source) {
   const badge = r => {
     if (isMj) {
       const colors = ['#d4850a', '#8a8a8a', '#b87333', '#5a5a5a'];
-      return { text: `第${CN[r.rank - 1]}名`, bg: colors[r.rank - 1] || '#7a8a8a' };
+      return { text: `第${CN[r.rank]}名`, bg: colors[r.rank - 1] || '#7a8a8a' };   // 存档里 rank 是 1 起（1~4），CN 首位是占位的「零」
     }
     if (r.action === 'win' || r.action === 'blackjack') return { text: '赢', bg: '#d4850a' };
     if (r.action === 'lose') return { text: '输', bg: '#b5544e' };

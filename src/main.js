@@ -419,6 +419,12 @@ async function onGameTick() {
   if (phase === 'battle' && !encState() && $('encounterView')?.style.display !== 'none') {
     import('./ui.js').then((m) => m.showView('idleView'));
   }
+
+  // 兜底自愈：孵蛋结果页已经不在了，phase 却还停在 eggResult（离开时没走到收尾）→ 自己收尾。
+  // 停在这个状态会永久卡住：孵蛋期间挂起的遭遇不恢复，道路一直停着不动
+  if (phase === 'eggResult' && !_eggHatching && $('hatchView')?.style.display === 'none') {
+    import('./items.js').then((m) => m.finalizeEggResultContext());
+  }
   // 兜底自愈：遭遇在屏上却没有文字框（后台/恢复路径可能漏写）→ 补上
   ensureEncounterTextBox();
 
@@ -1552,7 +1558,7 @@ async function init() {
   });
   startBackgroundCatchup();
   startEventRefresh(); // 全服事件排期：先吃缓存再拉最新（拉不到就退回本地随机事件）
-  startActivityRefresh(); // 限时活动：服务端发开关+时间段，入口长在手机首页左上角（拉不到就不显示）
+  startActivityRefresh(); // 限时活动：服务端发开关+时间段，入口长在手机第三页（拉不到就不显示）
   // 资源热更：延后几秒跑，别跟开局抢带宽；失败/不支持都静默跳过（PC 端自定义协议没有 SW 就自动不跑）
   setTimeout(() => { import('./hot-update.js').then(m => m.startHotUpdate()).catch(() => {}); }, 4000);
 

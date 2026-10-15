@@ -328,10 +328,6 @@ function cultivable(o) {
 }
 
 // 可培养提示：只说明"能补上来"，具体差多少、要什么道具交给玩家自己看需求
-export function cultivableHint(o) {
-  return cultivable(o).length ? '可培养' : '';
-}
-
 // 是否有可交换的宝可梦（手机主页红点）：存在未交换、未忽略且仓库有符合要求个体或可培养个体的 offer
 export function hasTradableOffers() {
   return (gameData?.trades?.offers || []).some(o => !o.traded && !o.ignored && (eligible(o).length > 0 || cultivable(o).length > 0));
@@ -451,7 +447,6 @@ function offerCard(o) {
   const count = eligible(o).length;
   // 无可直接交换个体时，若背包里的道具（经验糖果 / 王冠）够把某只补成合格，按钮只显示「可培养」（不可点击，只作提示）
   const cultList = cultivable(o);
-  const cultHint = (count === 0 && cultList.length) ? cultivableHint(o) : '';
 
   // 需求连成一句话：想要 Lv30以上 ，攻击 ≥ 26 的雌性皮卡丘
   const wantParts = [
@@ -472,7 +467,7 @@ function offerCard(o) {
       <div class="trade-main">
         <div class="npc-sprite" style="${npcPos}"></div>
         <button class="trade-give" style="animation-delay:${jumpDelay}s" data-give-detail="${o.id}" title="查看${givePoke.form || givePoke.name}详情">${giveIcon}</button>
-        <div class="trade-text">${wantText}${cultHint ? `<span class="trade-cult">${cultHint}</span>` : ''}</div>
+        <div class="trade-text">${wantText}</div>
         <button class="trade-btn${traded ? ' done' : (count === 0 && !cultList.length) ? ' locked' : ''}" data-offer="${o.id}"${traded || count === 0 ? ' disabled' : ''}>${traded ? '已交换' : count > 0 ? '交换' : cultList.length ? '可培养' : '未拥有'}</button>
       </div>
       <div class="trade-footer">

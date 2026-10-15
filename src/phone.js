@@ -6,6 +6,7 @@ import { hasTradableOffers, ensureTrades } from './trade.js';
 import { hasDryBerries } from './berry.js';
 import { hasClaimableAchievements } from './achievements.js';
 import { hasUnclaimedTutorialRewards } from './views.js';
+import { activityEntry } from './activity.js';
 import { getNowPlaying, isMusicEnabled } from './audio.js';
 import { showMusicView, refreshMusicViewIfOpen } from './music.js';
 
@@ -31,10 +32,14 @@ const APPS = [
   { id: 'itembox', icon: 'icon-itembox', name: '道具盒' },
   { id: 'follower', icon: 'icon-follower', name: '随从' },
   { id: 'dispatch', icon: 'icon-dispatch', name: '派遣' },
+  // 第三页：限时活动（没活动时不出现）+ 全服事件
+  { id: 'activity', icon: 'icon-activity', name: '限时活动' },
+  { id: 'events', icon: 'icon-events', name: '全服事件' },
 ];
 
 // 每页 App 数量（5 列 × 2 行）
 const PAGE_SIZE = 10;
+
 
 // 打开孵蛋器应用（从手机进入，返回回到手机主页；全局快捷键 F 也走这里）
 export function showIncubatorView() {
@@ -159,20 +164,33 @@ export function showPhoneView() {
 }
 
 // 渲染并显示手机首页，并把 phoneView 压栈供返回
+// 手机页开着时重画一次（不压导航栈）
+export function refreshPhoneHome() {
+  const el = $('phoneContent');
+  if (!el || $('phoneView')?.style.display === 'none') return false;
+  paintPhoneHome(el);
+  return true;
+}
+
 export function showPhoneHome() {
   pushNav('phoneView');
   startClock();
   installMusicEntry();
   const el = $('phoneContent');
-  // 分页：每页 PAGE_SIZE 个 App，横排平移翻页
+  paintPhoneHome(el);
+}
+
+function paintPhoneHome(el) {
+  // 分页：每页 PAGE_SIZE 个 App，横排平移翻页。活动 app 只在有活动时出现（名字/可见性由 activity.js 每 5 秒刷新）
+  const apps = APPS.filter(a => a.id !== 'activity' || !!activityEntry());
   const pages = [];
-  for (let i = 0; i < APPS.length; i += PAGE_SIZE) pages.push(APPS.slice(i, i + PAGE_SIZE));
+  for (let i = 0; i < apps.length; i += PAGE_SIZE) pages.push(apps.slice(i, i + PAGE_SIZE));
   el.innerHTML = `
     <div class="phone-pages" id="phonePages">
       ${pages.map(page => `
         <div class="phone-page">
           ${page.map(a => `
-            <div class="phone-app" data-app="${a.id}">
+            <div class="phone-app" data-app="${a.id}"${a.id === 'activity' ? ' id="phoneAppActivity"' : ''}>
               <div class="phone-app-icon"><svg><use xlink:href="#${a.icon}"/></svg>
                 ${['incubator', 'trade', 'berry', 'achievement', 'tutorial', 'dispatch', 'nursery'].includes(a.id) ? `<span class="phone-app-badge" id="phone-badge-${a.id}" style="display:none;"></span>` : ''}
               </div>
@@ -245,6 +263,8 @@ export function showPhoneHome() {
     else if (id === 'itembox') import('./itembox.js').then(m => m.showItemBoxView());
     else if (id === 'follower') import('./follower.js').then(m => m.showFollowerView());
     else if (id === 'dispatch') import('./dispatch.js').then(m => m.showDispatchView());
+    else if (id === 'activity') import('./activity.js').then(m => m.openActivityFromEntry());
+    else if (id === 'events') import('./events-view.js').then(m => m.showEventsView());
   };
   // 手游双屏：显示到下半屏应用容器（不改当前页）；经典布局等同整屏切换
   showAppView('phoneView');
