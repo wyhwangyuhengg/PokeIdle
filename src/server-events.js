@@ -37,9 +37,12 @@ export function scheduleExhausted() {
 
 function apply(data, srvAt, perfAt) {
   if (!data || !Array.isArray(data.mass) || !Array.isArray(data.twist) || typeof data.date !== 'string') return false;
+  const first = !_schedule;
   _schedule = data;
   _srvAt = srvAt;
   _perfAt = perfAt;
+  // 第一次拿到排期：「全服事件」那颗图标该出现了（apps.js 里按 hasSchedule() 决定显不显示），让手机页重画
+  if (first) import('./phone.js').then((m) => m.refreshPhoneHome()).catch(() => {});
   return true;
 }
 

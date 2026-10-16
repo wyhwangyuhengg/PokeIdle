@@ -754,6 +754,12 @@ function setupShortcuts() {
 }
 
 async function init() {
+  // 热更可能把安卓壳换成没注入 bridge 标签的 index.html（清单按 src/ 生成，源文件本来就没这个标签），
+  // 少了它存档读写、导出分享会退化成网页版分支。兜底补上，得赶在下面读存档之前。
+  // 只能写在 async 函数里：模块顶层的 await 要 Chrome 89+，老内核整页白屏
+  if (window.Capacitor && !window.__POKEIDLE_MOBILE__) {
+    await import('./mobile-bridge.js').catch(() => {});
+  }
   try { await window.__TAURI__?.core?.invoke('mark_show'); } catch (_) {}
   // 兜底：启动中任何一步抛错都不会让整页一直藏着（正常由 splash/开场剧情提前摘掉）
   setTimeout(() => document.body.classList.remove('booting'), 6000);
@@ -899,6 +905,14 @@ async function init() {
       const backupRaw = await window.__POKEIDLE_MOBILE__?.readSaveBackup?.();
       if (backupRaw) {
         const parsed = JSON.parse(backupRaw);
+        if (parsed && parsed.items) candidates.push(parsed);
+      }
+    } catch (_) {}
+    // 移动端外部目录镜像：内部档丢了（清数据/写坏）时靠它
+    try {
+      const mirrorRaw = await window.__POKEIDLE_MOBILE__?.readSaveMirror?.();
+      if (mirrorRaw) {
+        const parsed = JSON.parse(mirrorRaw);
         if (parsed && parsed.items) candidates.push(parsed);
       }
     } catch (_) {}

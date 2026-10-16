@@ -11,7 +11,7 @@ import { DEV } from './build-info.js';
 
 const HOT_BASE = 'https://pokeidle.shiliu.space/api/hot';
 const CACHE = 'pokeidle-hot';
-const MANIFEST_KEY = '/__hot__.json';   // 缓存里存"已应用"的 { 相对路径: hash }
+const MANIFEST_KEY = '/__hot__.json';   // 缓存里存"已应用"的 { gen, files: { 相对路径: hash } }
 const META_KEY = 'pokeidle_hot_v1';     // 资源状态记录：{ app, gen, at, applied, added }，设置页显示"资源 月-日 时:分 · N 个文件"
 const CONCURRENCY = 4;
 // 这几个永远用包里的：SW 不能被自己替换；res-manifest.json 是基线；build-info.js 里是版本号和
@@ -62,29 +62,39 @@ async function sha1Hex(buf) {
     return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
   } catch (_) { return null; }   // 环境没有 crypto.subtle：跳过校验
 }
+// 已应用的清单：{ gen, files: { 路径: hash } }。
+// gen 是"这批文件来自服务器哪一版清单"——SW 拿它跟包内清单的 gen 比，谁新听谁的
 async function readApplied(cache) {
   try {
     const res = await cache.match(MANIFEST_KEY);
-    return res ? await res.json() : {};
-  } catch (_) { return {}; }
+    const data = res ? await res.json() : null;
+    if (!data) return { gen: 0, files: {} };
+    // 老格式是一张裸的 { 路径: hash }，没有 gen：当成 0（比任何包都旧），下次比对时补上或清掉
+    return data.files ? { gen: Number(data.gen) || 0, files: data.files } : { gen: 0, files: data };
+  } catch (_) { return { gen: 0, files: {} }; }
+}
+async function writeApplied(cache, gen, files) {
+  await cache.put(new Request(MANIFEST_KEY),
+    new Response(JSON.stringify({ gen, files }), { headers: { 'Content-Type': 'application/json' } }));
 }
 
 // 对账：缓存里的每一条都必须和"服务器当前清单"一致，否则删掉。
 // 目的是让"装了新包"以包为准——旧缓存不能盖住包里的新内容（app 里已经是 500，缓存还留着热更的 450）。
 async function reconcile(cache, stored, remote) {
+  const keep = remote && remote.files ? remote.files : null;   // 传 null = 全清（拿不到服务器清单时按最保守处理）
+  const gen = stored.gen || (keep && Number(remote.gen)) || 0; // 老缓存补个 gen，不然 SW 一直不肯用它
   let dropped = 0;
   const next = {};
-  for (const [path, hash] of Object.entries(stored)) {
-    if (remote && remote.files && remote.files[path] && remote.files[path].hash === hash) { next[path] = hash; continue; }
+  for (const [path, hash] of Object.entries(stored.files)) {
+    if (keep && keep[path] && keep[path].hash === hash) { next[path] = hash; continue; }
     try { await cache.delete(new Request(`${location.origin}/${path}`)); } catch (_) {}
     dropped++;
   }
-  if (dropped) {
-    await cache.put(new Request(MANIFEST_KEY),
-      new Response(JSON.stringify(next), { headers: { 'Content-Type': 'application/json' } }));
-    try { (await navigator.serviceWorker.ready).active?.postMessage('pokeidle-hot-refresh'); } catch (_) {}
+  if (dropped || gen !== stored.gen) {
+    await writeApplied(cache, gen, next);
+    if (dropped) try { (await navigator.serviceWorker.ready).active?.postMessage('pokeidle-hot-refresh'); } catch (_) {}
   }
-  return next;
+  return { gen, files: next };
 }
 
 // 比对：服务器清单 vs（包里基线 + 已下过的）。返回 { ok, reason, changes }
@@ -94,6 +104,15 @@ async function findChanges() {
   if (!bundled || !bundled.files) return { ok: false, reason: '包内清单读不到' };
   const remote = await jsonOrNull(`${hotBase()}/manifest.json?t=${Date.now()}`);   // 带时间戳：绕过中间层缓存
   const cache = await caches.open(CACHE);
+  // 刚装的新包比服务器上那份热更还新（包打完了、还没重新部署）：缓存里都是上一版代码，全清掉，
+  // 也不提示更新——拿旧热更盖新包，玩家装完新包等于白发
+  if (remote && Number(remote.gen) > 0 && Number(remote.gen) <= Number(bundled.gen)) {
+    const applied = await reconcile(cache, await readApplied(cache), null);
+    lsSet(META_KEY, JSON.stringify({
+      app: remote.app || '', gen: remote.gen, at: Date.now(), applied: Object.keys(applied.files).length, pending: 0, stale: true,
+    }));
+    return { ok: true, changes: null };
+  }
   const applied = await reconcile(cache, await readApplied(cache), remote && remote.files ? remote : null);
   if (!remote || !remote.files) {
     const meta = readMeta();
@@ -104,12 +123,12 @@ async function findChanges() {
   let bytes = 0;
   for (const [path, info] of Object.entries(remote.files)) {
     if (SKIP.has(path)) continue;
-    const have = applied[path] || (bundled.files[path] && bundled.files[path].hash);
+    const have = applied.files[path] || (bundled.files[path] && bundled.files[path].hash);
     if (have !== info.hash) { list.push([path, info]); bytes += info.size || 0; }
   }
   // 记一笔"本机资源状态"给设置页那个小圆点用：pending = 还没更上的文件数（0 = 已是最新）
   lsSet(META_KEY, JSON.stringify({
-    app: remote.app || '', gen: remote.gen, at: Date.now(), applied: Object.keys(applied).length,
+    app: remote.app || '', gen: remote.gen, at: Date.now(), applied: Object.keys(applied.files).length,
     pending: list.length, stale: false,
   }));
   return { ok: true, changes: list.length ? { gen: remote.gen, app: remote.app || '', list, bytes } : null };
@@ -190,7 +209,7 @@ async function download(changes, ui) {
           if (!h || h === info.hash) {
             await cache.put(new Request(`${location.origin}/${path}`),
               new Response(buf, { headers: { 'Content-Type': res.headers.get('Content-Type') || 'application/octet-stream' } }));
-            applied[path] = info.hash;
+            applied.files[path] = info.hash;
             done++; got += buf.byteLength;
             ui.set(done, total, got, changes.bytes);
             continue;
@@ -201,9 +220,8 @@ async function download(changes, ui) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) || 0 }, worker));
-  await cache.put(new Request(MANIFEST_KEY),
-    new Response(JSON.stringify(applied), { headers: { 'Content-Type': 'application/json' } }));
-  lsSet(META_KEY, JSON.stringify({ app: changes.app || '', gen: changes.gen, at: Date.now(), applied: Object.keys(applied).length, pending: 0, added: done }));
+  await writeApplied(cache, changes.gen || applied.gen, applied.files);
+  lsSet(META_KEY, JSON.stringify({ app: changes.app || '', gen: changes.gen, at: Date.now(), applied: Object.keys(applied.files).length, pending: 0, added: done }));
   try { (await navigator.serviceWorker.ready).active?.postMessage('pokeidle-hot-refresh'); } catch (_) {}
   return done;
 }

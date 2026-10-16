@@ -8,7 +8,9 @@
 //   node tools/deploy-res.mjs --dry      只看要传哪些文件，不连服务器
 //   node tools/deploy-res.mjs --local    把缺的文件铺到 hot-upload/（项目根，已 gitignore）：先走 443 问服务器已有哪几个，只铺缺的
 //   node tools/deploy-res.mjs --all      不管差异，清单里所有文件全传一遍（换机器/重建服务器时用）
-//   node tools/deploy-res.mjs --check    只验服务器：清单是不是最新、该传的文件是不是都传上去了（走 443，不用 ssh）
+//   node tools/deploy-res.mjs --check    只验服务器：清单是不是最新、该传的文件到位没有、
+//                                        服务器上现存的文件跟清单对不对得上（走 443 拉文件，再加一次 ssh 列目录）
+//   node tools/deploy-res.mjs --fix      在 --check 的基础上，把对不上的文件按本地补传一遍再复验
 //
 // 依赖 tools/deploy.config.json（和 deploy-web.mjs 共用）：key / host / user / port / hotDir / apiBase
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync, mkdirSync, copyFileSync } from 'node:fs';
@@ -92,33 +94,88 @@ if (dry) {
   process.exit(0);
 }
 
-// --check：只验服务器（走 443，不传任何东西）。手工上传后用它确认"清单和文件都对得上"，
-// 免得出现"清单是新的、某个文件还是旧的"——那种情况下客户端校验不过会一直弹更新
-if (args.includes('--check')) {
-  console.log('[3/3] --check：验服务器（不传文件）');
-  let remote = null;
+// 上传一批文件：按目标目录分组，一批 15 个一条命令 —— 连接数少，又不会撑爆命令行
+const pushScp = (paths) => {
+  const groups = new Map();
+  for (const rel of paths) {
+    const dir = dirname(rel).split('\\').join('/');   // 相对路径的分目录（顶层是 '.'）
+    if (!groups.has(dir)) groups.set(dir, []);
+    groups.get(dir).push(rel);
+  }
+  const dirs = [...groups.keys()].filter((d) => d !== '.').map((d) => `'${hotDir}/${d}'`).join(' ');
+  run(`${sshBase} "mkdir -p '${hotDir}'${dirs ? ' ' + dirs : ''}"`);
+  for (const [dir, rels] of groups) {
+    const dest = dir === '.' ? hotDir : `${hotDir}/${dir}`;
+    for (let i = 0; i < rels.length; i += 15) {
+      const srcs = rels.slice(i, i + 15).map((r) => `"${join(SRC, r)}"`).join(' ');
+      run(`${scpBase} ${srcs} "${remote}:${dest}/"`);
+    }
+  }
+};
+
+// 客户端永远不从热更取的文件（和 hot-update.js 的 SKIP、sw.js 的 BYPASS 保持一致）：
+// 它们跟清单对不上也不影响玩家，报出来时标一下，免得看着吓人
+const NEVER_HOT = new Set(['res-manifest.json', 'sw.js', 'build-info.js']);
+
+// --check：对账。查两件事：
+//   ① 该传的那批（出包基线 → 本地）服务器上到位了没有；
+//   ② 服务器上现存的文件，是不是都跟清单里的哈希对得上。
+// ② 是踩过的坑：文件跟清单对不上时，客户端下到了却校验不过 → 跳过 → 每次进游戏都被再问一次，
+// 而面板里 ls 得到文件，看不出来。加 --fix 就按本地补传这些文件再复验。
+if (args.includes('--check') || args.includes('--fix')) {
+  const fix = args.includes('--fix');
+  console.log(`[3/3] ${fix ? '--fix：对账 + 补传对不上的文件' : '--check：只验服务器（不传文件）'}`);
+  let remoteManifest = null;   // 注意别叫 remote：外层那个是 user@host
   try {
     const r = await fetch(`${apiBase}/manifest.json?t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(12000) });
-    if (r.ok) remote = await r.json();
+    if (r.ok) remoteManifest = await r.json();
   } catch (_) {}
-  if (!remote || !remote.files) {
+  if (!remoteManifest || !remoteManifest.files) {
     console.log(`      ✘ 拉不到服务器清单（${apiBase}/manifest.json）—— 服务器上没有清单时客户端不会弹更新，属正常静默状态`);
     process.exit(0);
   }
-  const sameManifest = JSON.stringify(remote.files) === JSON.stringify(local.files);
-  console.log(`      服务器清单 gen ${new Date(remote.gen).toLocaleString('zh-CN')}｜${sameManifest ? '和本地最新一致 ✔' : '和本地最新不一致 ✘（该重传清单）'}`);
-  if (!sameManifest) {
-    const stale = Object.keys(local.files).filter((p) => !remote.files[p] || remote.files[p].hash !== local.files[p].hash);
-    console.log(`      清单里和本地不同的：${stale.length} 个 ${stale.slice(0, 6).join(' ')}${stale.length > 6 ? ' …' : ''}`);
-  }
-  const bad = await probe(need);
-  if (!bad.length) console.log(`      该传的 ${need.length} 个文件服务器上都能下到、哈希一致 ✔`);
+  const sameManifest = JSON.stringify(remoteManifest.files) === JSON.stringify(local.files);
+  console.log(`      服务器清单 gen ${new Date(remoteManifest.gen).toLocaleString('zh-CN')}｜${sameManifest ? '和本地最新一致 ✔' : '和本地最新不一致 ✘（该重传清单）'}`);
+
+  const bad = await probe(need);   // ①
+  // ② 服务器上现存的文件：ssh 列一遍 hot 目录，只验清单里也有的（清单里没有的是早前的残留，不影响）
+  const ls = spawnSync(`${sshBase} "cd '${hotDir}' 2>/dev/null && find . -type f"`, { shell: true, encoding: 'utf8', cwd: ROOT, timeout: 20000 });
+  const onServer = ls.status === 0
+    ? (ls.stdout || '').split('\n').map((s) => s.trim().replace(/^\.\//, '')).filter((p) => p && p !== 'manifest.json')
+    : null;
+  if (!onServer) console.log('      （ssh 列不到 hot 目录，只验了"该传的那批"）');
   else {
-    console.log(`      ✘ 还有 ${bad.length} 个文件要处理（面板里能看到文件 ≠ 版本对）：`);
-    for (const b of bad) console.log(`         ${b.rel}  ${kb(local.files[b.rel].size)}  ${whyText(b)}`);
-    console.log('      客户端会一直弹「发现新资源」（下到了但校验不过 → 跳过 → 下次再问）');
+    for (const b of await probe(onServer.filter((p) => local.files[p]))) {
+      if (!bad.some((x) => x.rel === b.rel)) bad.push(b);
+    }
+    const leftover = onServer.filter((p) => !local.files[p]);
+    if (leftover.length) console.log(`      （服务器上还留着 ${leftover.length} 个本地已经没有的文件：${leftover.slice(0, 5).join('、')}${leftover.length > 5 ? ' …' : ''}，不影响使用）`);
   }
-  process.exit(bad.length || !sameManifest ? 1 : 0);
+
+  const harmful = (b) => !NEVER_HOT.has(b.rel);
+  if (!bad.length && sameManifest) console.log('      ✔ 服务器上的文件和清单完全一致');
+  else if (bad.length) {
+    console.log(`      ✘ ${bad.length} 个文件对不上（面板里能看到文件 ≠ 版本对）：`);
+    for (const b of bad) console.log(`         ${b.rel}  ${kb(local.files[b.rel].size)}  ${whyText(b)}${harmful(b) ? '' : '  ← 客户端不下载它，无害'}`);
+    if (bad.some(harmful)) console.log('      客户端会一直弹「发现新资源」（下到了但校验不过 → 跳过 → 下次再问）');
+  }
+
+  let remaining = bad;
+  let manifestOk = sameManifest;
+  const targets = bad.map((b) => b.rel);
+  if (fix && targets.length) {
+    console.log(`      --fix：按本地重传 ${targets.length} 个`);
+    pushScp(targets);
+    remaining = await probe(targets);
+    console.log(remaining.length ? `      ✘ 仍有 ${remaining.length} 个对不上：${remaining.map((b) => b.rel).join(' ')}` : '      ✔ 补传后都对上了');
+  }
+  // 清单放最后：先文件后清单，客户端不会读到"指向不存在文件"的清单
+  if (fix && !remaining.filter(harmful).length && !manifestOk) {
+    run(`${scpBase} "${MANIFEST}" "${remote}:${hotDir}/manifest.json"`);
+    manifestOk = true;
+    console.log('      --fix：清单也重传了');
+  }
+  process.exit(remaining.filter(harmful).length || !manifestOk ? 1 : 0);
 }
 
 // --local：不连服务器，把"要传的文件 + 改名后的清单"铺到一个本地目录，手动往宝塔面板里传
@@ -173,27 +230,8 @@ if (args.includes('--local')) {
 // 3. 传文件 + 传清单 + 自检
 console.log(`[3/3] 上传到 ${hotDir}`);
 
-// 上传：默认走 scp（tar 管道在覆盖已存在文件时偶发不生效，2026-10-15 连踩两次），
-// 按目标目录分组、一批 15 个文件一条命令 —— 连接数少，又不会撑爆命令行。
+// 上传策略：默认走 scp（tar 管道在覆盖已存在文件时偶发不生效，2026-10-15 连踩两次）；
 // 超过 200 个文件（--all 全量重传）才回退 tar 管道，免得几千次 scp 把服务器当爆破拦掉；传完照常自检，漏的用 scp 补。
-const pushScp = (paths) => {
-  const groups = new Map();
-  for (const rel of paths) {
-    const dir = dirname(rel).split('\\').join('/');   // 相对路径的分目录（顶层是 '.'）
-    if (!groups.has(dir)) groups.set(dir, []);
-    groups.get(dir).push(rel);
-  }
-  const dirs = [...groups.keys()].filter((d) => d !== '.').map((d) => `'${hotDir}/${d}'`).join(' ');
-  run(`${sshBase} "mkdir -p '${hotDir}'${dirs ? ' ' + dirs : ''}"`);
-  for (const [dir, rels] of groups) {
-    const dest = dir === '.' ? hotDir : `${hotDir}/${dir}`;
-    for (let i = 0; i < rels.length; i += 15) {
-      const srcs = rels.slice(i, i + 15).map((r) => `"${join(SRC, r)}"`).join(' ');
-      run(`${scpBase} ${srcs} "${remote}:${dest}/"`);
-    }
-  }
-};
-
 const pushTar = (paths) => {
   const dir = mkdtempSync(join(tmpdir(), 'hot-'));
   const list = join(dir, 'files.txt');

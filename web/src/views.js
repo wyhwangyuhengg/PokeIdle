@@ -1385,9 +1385,16 @@ export function renderSettings(container, s) {
     if (window.__POKEIDLE_MOBILE__?.exportSave) {
       btn.textContent = '导出中…';
       try {
-        await window.__POKEIDLE_MOBILE__.exportSave(JSON.stringify(gameData));
-        flashSaveHint('存档已导出');
-        btn.textContent = '已导出 ✓';
+        // 只有桥接明确回了 true 才算成功：面板上点了取消回 false；老版桥接没有返回值，
+        // 那种情况不猜结果，只把按钮复原
+        const ok = await window.__POKEIDLE_MOBILE__.exportSave(JSON.stringify(gameData));
+        if (ok === true) {
+          flashSaveHint('存档已导出');
+          btn.textContent = '已导出 ✓';
+        } else {
+          if (ok === false) flashSaveHint('已取消导出');
+          btn.textContent = '导出';
+        }
       } catch (e) {
         flashSaveHint('存档导出失败');
         btn.textContent = '导出失败';
@@ -1857,7 +1864,8 @@ export function toggleAutoBuffCharm() {
   }
 }
 
-// 闪光 / 神兽使用大师球：勾选后自动捕捉遇到闪光或神兽优先用大师球（神兽不再无条件吃大师球）
+// 闪光 / 神兽使用大师球：勾选后遇到闪光优先用大师球，同时把大师球留给闪光/神兽（普通遭遇不再拿它兜底）；
+// 神兽无论勾不勾都优先用大师球（老规矩）
 function toggleShinyLegendMasterBall() {
   ensureSettings();
   gameData.settings.shinyLegendMasterBall = !gameData.settings.shinyLegendMasterBall;

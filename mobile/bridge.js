@@ -10,11 +10,11 @@ import { Share } from '@capacitor/share';
 const SAVE_PATH = 'save.json';
 const BACKUP_PATH = 'save.json.bak';
 
-async function readFileText(path) {
+async function readFileText(path, directory = Directory.Data) {
   try {
     const { data } = await Filesystem.readFile({
       path,
-      directory: Directory.Data,
+      directory,
       encoding: Encoding.UTF8,
     });
     return typeof data === 'string' && data ? data : null;
@@ -30,6 +30,12 @@ function readSave() {
 // 主存档写坏/写一半时的回退源：每次落盘前把上一份转存到这里
 function readSaveBackup() {
   return readFileText(BACKUP_PATH);
+}
+
+// 外部私有目录那份镜像（Android/data/<包名>/files/save.json）：游戏起不来、内部目录又没 root 取不到时，
+// 靠它把存档捞回来（adb pull 不需要 root，部分机型的文件管理器也能直接看到）
+function readSaveMirror() {
+  return readFileText(SAVE_PATH, Directory.External);
 }
 
 // 写入串行化：存档由 30 秒周期与多个事件同时触发，并发写会互相截断
@@ -52,10 +58,20 @@ function writeSave(data) {
       directory: Directory.Data,
       encoding: Encoding.UTF8,
     });
+    // 顺手镜像一份到外部私有目录：写失败不影响主档
+    await Filesystem.writeFile({
+      path: SAVE_PATH,
+      data,
+      directory: Directory.External,
+      encoding: Encoding.UTF8,
+    }).catch(() => {});
   });
   return writeChain;
 }
 
+// 导出存档：先用 files 而不是 url —— Android 端只有 files 才会以文件流交给分享面板，
+// 面板里才有「保存到文件」这类能自己挑存放位置的入口；url 会被当成纯文本，只能分享个链接。
+// 返回值给调用方看：true = 面板里确实导出/保存了，false = 玩家在面板上点了取消
 async function exportSave(data) {
   const { uri } = await Filesystem.writeFile({
     path: `pokeidle-save-${Date.now()}.json`,
@@ -63,7 +79,14 @@ async function exportSave(data) {
     directory: Directory.Cache,
     encoding: Encoding.UTF8,
   });
-  await Share.share({ title: '口袋挂机存档', url: uri });
+  try {
+    await Share.share({ title: '口袋挂机存档', dialogTitle: '导出存档', files: [uri] });
+    return true;
+  } catch (e) {
+    // 取消在上层看来不该是"失败"，但也不能报成功，所以单独分出来
+    if (/cancel/i.test(String((e && e.message) || e))) return false;
+    throw e;
+  }
 }
 
 // 分享图片：PNG(base64) 先写进缓存目录，再调系统分享面板
@@ -98,6 +121,7 @@ window.__POKEIDLE_MOBILE__ = {
   foregroundStop,
   setWindowBg,
   readSaveBackup,
+  readSaveMirror,
   writeSave,
   exportSave,
   shareImage,

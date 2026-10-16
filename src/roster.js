@@ -1522,6 +1522,7 @@ function shareCardModel(p, poke) {
     image: poke.image || '',
     level: p.level || 1,
     shiny: !!p.shiny,
+    variant: p.variant || null,   // RGB / 污染：卡片上要照着画同样的特效
     gender: g === 'male' ? '♂' : g === 'female' ? '♀' : '',
     types: (poke.types || []).map(t => ({ name: t, color: TYPE_COLORS[t] || '#888' })),
     tags: memberStatusTags(p).replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean),

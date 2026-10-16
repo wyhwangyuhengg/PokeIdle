@@ -204,7 +204,19 @@ async function drawCard(ctx, m) {
     const k = Math.min((cellS - 20) / sprite.width, (cellS - 20) / sprite.height, 5);
     const sw = Math.round(sprite.width * k);
     const sh = Math.round(sprite.height * k);
-    ctx.drawImage(sprite, Math.round(L + (cellS - sw) / 2), Math.round(cellY + (cellS - sh) / 2), sw, sh);
+    const sx = Math.round(L + (cellS - sw) / 2);
+    const sy = Math.round(cellY + (cellS - sh) / 2);
+    // 外观变体：canvas 上挂不了 .fx-variant-* 那套 CSS，用等价的 filter 画（取值和 styles.css 对齐）。
+    // RGB 的偏移量按立绘大小缩放 —— 固定 3px 放在这张大图上几乎看不出来
+    ctx.save();
+    if (m.variant === 'rgb') {
+      const off = Math.max(3, Math.round(sw / 48));
+      ctx.filter = `drop-shadow(${off}px 0 0 rgba(255, 0, 80, .65)) drop-shadow(-${off}px 0 0 rgba(0, 220, 255, .65))`;
+    } else if (m.variant === 'polluted') {
+      ctx.filter = 'grayscale(1) sepia(1) hue-rotate(248deg) saturate(7) brightness(.65)';
+    }
+    ctx.drawImage(sprite, sx, sy, sw, sh);
+    ctx.restore();
   } else {
     label(ctx, '贴图没加载出来', L + cellS / 2, cellY + cellS / 2, { size: 22, color: c.weak, align: 'center' });
     label(ctx, fit(ctx, spritePaths(m)[0] || '', cellS - 12, 16), L + cellS / 2, cellY + cellS / 2 + 30, { size: 16, color: c.weak, align: 'center' });

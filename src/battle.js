@@ -1272,7 +1272,9 @@ function pickAutoBallType(availableBalls) {
   // 除大师球外还有别的球被勾选吗：没有的话（只勾了大师球）预留逻辑不成立 ——
   // 大师球就是唯一能用的球，扔它好过逃跑（手上有大师球却把闪光放跑）
   const othersEnabled = ['poke-ball', 'ultra-ball'].some((b) => enabledBalls[b] !== false);
-  const preferred = useMaster || cr <= 0.1
+  // 难抓（≤10%）时老规矩是直接上大师球；但勾了「专供」就不许它再兜底，
+  // 否则这两类之外的宝可梦（哪怕只是难抓的普通货）也会被大师球吃掉
+  const preferred = useMaster || (!reserve && cr <= 0.1)
     ? ['master-ball', 'ultra-ball', 'poke-ball']
     : reserve
     ? (cr <= 0.5 ? ['ultra-ball', 'poke-ball'] : ['poke-ball', 'ultra-ball'])

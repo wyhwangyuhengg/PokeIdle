@@ -7,6 +7,7 @@ import { hasDryBerries } from './berry.js';
 import { hasClaimableAchievements } from './achievements.js';
 import { hasUnclaimedTutorialRewards } from './views.js';
 import { activityEntries } from './activity.js';
+import { hasSchedule } from './server-events.js';
 
 // 红点：返回布尔或 Promise<boolean>（nursery / dispatch 体积大，保持按需加载）
 export const APPS = [
@@ -53,7 +54,8 @@ export const APPS = [
     dot: () => import('./dispatch.js').then((m) => m.hasDispatchRewards()),
     open: () => import('./dispatch.js').then((m) => m.showDispatchView()) },
   // 限时活动不在这里：每个活动各出一个图标，见下面的 dynamicApps()
-  { id: 'events', name: '全服事件', icon: 'icon-events',
+  // 拿不到排期就不摆这个图标（和限时活动一个口径：没内容别放个点不开的应用）
+  { id: 'events', name: '全服事件', icon: 'icon-events', available: hasSchedule,
     open: () => import('./events-view.js').then((m) => m.showEventsView()) },
 ];
 

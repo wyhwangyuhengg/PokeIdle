@@ -1060,13 +1060,16 @@ class SaveViewer:
         if isinstance(tms, dict):
             rows.append(("今日招式机", f"{tms.get('date', '?')} · {len(tms.get('ids') or [])} 个",
                          "今日货架：每天随机一批还没解锁的招式"))
-        # 每日神兽池：按地区分配 + 软保底
+        # 每日神兽池：按地区分配 + 软保底。每个地区单独一行写清是哪几只（玩家最常问的就是这个）
         lp = d.get("legendPool")
         if isinstance(lp, dict):
             by = lp.get("byRegion") or {}
             total = sum(len(v or []) for v in by.values())
-            detail = " / ".join(f"{r} {len(v or [])}" for r, v in by.items())
-            rows.append(("每日神兽池", f"{lp.get('date', '?')} · 共 {total} 只", detail or "本日池为空"))
+            rows.append(("每日神兽池", f"{lp.get('date', '?')} · 共 {total} 只",
+                         "当天各地区的池子；日期不是今天的话，进一次游戏会重新生成"))
+            for region, members in by.items():
+                names = "、".join(self.pokedex.get(str(mid), f"?{mid}") for mid in (members or []))
+                rows.append((f"神兽池·{region}", names or "（空）", f"今天在{region}可能遇到的神兽/幻兽"))
         if "legendPity" in d:
             rows.append(("神兽池保底", str(d.get("legendPity", 0)),
                          "连着多少场遇敌没出神兽，满 200 场下一只必出"))
