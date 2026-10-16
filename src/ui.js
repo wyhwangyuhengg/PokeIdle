@@ -186,12 +186,10 @@ export function showView(id) {
     // 保留 _eggPickQuery：放入蛋后仍保留上次搜索词，方便继续放同种蛋（点清空按钮才重置）
     _incLogPrevTitle = null;
   }
-  // 孵蛋结果页离开时收尾：若期间挂起过野生遭遇则恢复该遭遇，否则回空闲，避免 phase 停在 eggResult。
-  // 单屏看"离开游戏页"；双屏下孵蛋就在下屏，切走孵蛋页同样要收尾
-  // （不收尾 phase 会永久停在 eggResult：挂起的遭遇不恢复、道路一直停着）
-  const stageSwitch = !mobileDual || targetStage;
+  // 离开孵蛋页就收尾：孵蛋这边的收尾只做"孵蛋该做的事"（没遭遇就回空闲、有遭遇原样留给上屏），
+  // 演出不占 phase，所以这里按"孵蛋页还在不在"判断，不再看游戏阶段
   const leftHatch = prevView === 'hatchView' && id !== 'hatchView';
-  if (phase === 'eggResult' && !_eggHatching && ((stageSwitch && wasOnGameView && id !== 'encounterView') || leftHatch)) {
+  if (leftHatch && !isEggShowActive()) {
     import('./items.js').then(m => m.finalizeEggResultContext());
   }
   // 离开游戏页收尾只在单屏布局下按"当前页"判断：双屏下切下屏 app 时上屏还在遭遇里，
@@ -426,6 +424,22 @@ export function isPageHidden() {
 // 只有"别在演出上再叠一层动画/演出"的地方需要它
 export function isEvolutionShowActive() {
   return $('evoView')?.style.display === 'flex';
+}
+
+// 孵蛋演出（动画进行中 / 孵完还停在结果页）是否开着。与进化演出同一套口径：**演出不占游戏阶段** ——
+// phase 仍归遭遇/对战，挂机世界照常走，上屏照常走路、遇敌、打对战（下屏才是孵蛋那块屏）。
+// 只有"别在演出上再叠一层"的地方用它判断（自动捕捉关闭项、单屏下不顶掉演出画面等）
+export function isEggShowActive() {
+  return _eggHatching
+    || $('hatchView')?.style.display === 'flex'
+    || $('hatchAllView')?.style.display === 'flex';
+}
+
+// 上屏/游戏阶段被别的流程占着（NPC 对战 / 孵蛋演出）：挂机世界照常跑，路面滚动的宝可梦
+// （普通遇敌 / 大量出没 / 时空扭曲）一律不清场 —— 照常滚、照常撞上来开战。
+// 清场会丢掉这一只（个体/闪光重摇），孵蛋场景下还会白扣一次事件计数
+export function isStageOccupied() {
+  return phase === 'battle' || isEggShowActive();
 }
 
 export function isOnGameView() {
@@ -1227,8 +1241,8 @@ export function renderIncubatorView() {
 
   const hatchBtnHtml = (i, disabled) => `<span class="incubator-hatch-text hatched${disabled ? ' disabled' : ''}" data-slot="${i}" ${disabled ? 'style="pointer-events:none;"' : ''}>孵化</span>`;
   // 野生遭遇期间允许保留孵蛋入口：点击时优先切回遭遇画面处理；
-  // 仅在 NPC 对战 / 孵蛋动画自身进行中时真正禁用，避免复用 encounterView 互相覆盖。
-  const hatchLocked = phase === 'battle' || phase === 'eggResult' || _eggHatching;
+  // 仅在 NPC 对战 / 孵蛋演出自身进行中时真正禁用，避免复用 encounterView 互相覆盖。
+  const hatchLocked = phase === 'battle' || isEggShowActive();
   // 基准里程 = 当前最长蛋的原始里程：进度条按里程比例渲染，黄色段宽度 = 实际免掉的里程
   let maxDur = 1;
   for (const s of incubators) {

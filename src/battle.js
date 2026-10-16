@@ -1,6 +1,6 @@
 import { ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, BLOCK_TARGET_CHANCE, BLOCK_QUALITY, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, CHARM_RARITY_BOOST, ITEM_NAMES, CATCH_RATES, ULTRA_BALL_ADD, AUTO_FLEE_TIMEOUT, AUTO_FLEE_NO_BALL_DELAY, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, CANDY_EXCHANGE, TWIST_SHINY_CHANCE, TWIST_GUARANTEED_IVS, LEGEND_LEVEL, massShinyChance, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, nextEncounterTimer, honeyBuffActive, charmBuffActive, charmGuaranteed, blockBuffActive, blockRecipe, blockQuality, honeyCountdownEnd, charmCountdownEnd, honeyPausedRemaining, charmPausedRemaining, honeyExpiryTimer, charmExpiryTimer, honeyCountdownInterval, charmCountdownInterval, _charmEncounterCount, _autoFleeTimer, _autoFleeStartTime, _autoFleeBarInterval, _autoCatching, _throwing, _fishing, _eggHatching, encounterMsg, encounterSource, encounterVariant, saveGame, addSystemLog, getCurrentRegion, hasAnyBall, rand, randInt, setSaveSuspended, inMassZone, inTwistZone, rollGuaranteedIvs, setPhase, setCurrentEncounter, setEncounterLevel, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setHoneyBuffActive, setCharmBuffActive, setCharmGuaranteed, setCharmEncounterCount, setHoneyPausedRemaining, setCharmPausedRemaining, setHoneyCountdownEnd, setCharmCountdownEnd, setNextEncounterTimer, setAutoCatching, setThrowing, setCatchConfirmStep, setAutoFleeTimer, setAutoFleeStartTime, setAutoFleeBarInterval, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, setEncounterMsg, addRosterEntry, setLastObtainedEntryId, rollGender, genderBadge, wildLevelCap, dexUnlocked, dexShinyOwned, setEncounterSource, setEncounterVariant, simNow, setSimClock } from './state.js';
-import { $, showView, updateTextBox, hideTextBox, setIdleCharacter, isOnGameView, isIdleStageVisible, isDualLayout, isPageHidden, updateBackpack, updateStats, tryLoadPokemonImage, tryLoadPokemonIcon, isEvolutionShowActive } from './ui.js';
+import { $, showView, updateTextBox, hideTextBox, setIdleCharacter, isOnGameView, isIdleStageVisible, isDualLayout, isPageHidden, updateBackpack, updateStats, tryLoadPokemonImage, tryLoadPokemonIcon, isEvolutionShowActive, isEggShowActive, isStageOccupied } from './ui.js';
 import { getBountyTargetIndexes } from './bounty.js';
 import { pickRandomPokemon, pickWeightedPokemon, findBerryTarget, rollLegendEncounter, activateHoney, activateShinyCharm, clearCharmCountdown, clearHoneyCountdown, startCharmCountdown, startHoneyCountdown, handleHoneyExpired, handleCharmExpired, takeBuffForRenew, TYPE_COLORS, cancelSuspendedEncounterForEgg, pickFamily } from './items.js';
 import { eatBlock } from './mixer.js';
@@ -238,7 +238,7 @@ export function setEncPhase(p) {
     return; // 战斗中：phase 归对战，遭遇只管自己
   }
   // 只有当前 phase 本来就是遭遇态（或本来就没有遭遇、要回到挂机）时才回写，
-  // 否则会把 eggResult 这类别的状态顶掉——孵蛋结算页退出不了就是这么来的
+  // 否则会把别的流程（NPC 对战）的状态顶掉——两边各占一套状态才不会打架
   if (!p && phase !== 'encounter' && phase !== 'caught' && phase !== 'fled') return;
   setPhase(p || 'idle');
 }
@@ -249,9 +249,23 @@ export function resumePhaseAfterBattle() {
   setPhase(_encPhase || 'idle');
 }
 let _encPokeCb = null;      // 碰到主角后的回调（真正开始战斗）
-let _encPokeWaitTimer = null; // 战斗中自走用的定时器（世界停摆时替代步进器）
-let _encPokeWaiting = false;  // 已在主角脚下等着开战（战斗结束立刻开）
+let _encPokeWaitTimer = null; // 上屏被顶掉时自走用的定时器（世界步进器够不着时替代它）
+let _encPokeWaiting = false;  // 已在主角脚下等着开战（上屏一腾出来立刻开）
 let _encPokeHooked = false; // 已注册到世界步进器（step/render）
+// 这只待开战个体自己的种类/闪光/等级：图标滚到脚下这段时间里，这三个全局值可能被别的流程改写
+// （孵蛋页等），开战时按这份快照还原，保证打的是图标上亮着的那一只（种类/闪光/等级都不会串）
+let _encPokeSnapshot = null;
+
+// 这只图标是否允许存在：挂机中，或上屏被别的流程占着（NPC 对战 / 孵蛋演出，见 _encPokeRender）
+function encPokeAlivePhase() {
+  return phase === 'idle' || isStageOccupied();
+}
+
+// 谁在推进这只图标：上屏正常显示时跟着路面（世界步进器），上屏被顶掉/停摆时改用等待定时器。
+// 两者只能有一个在推，否则双屏下会两倍速滑向主角
+function encPokeWorldDriven() {
+  return isIdleStageVisible() && road.isActive() && !road.isBike() && !_fishing;
+}
 
 function spawnEncounterPoke(poke, shiny, cb) {
   const screen = $('screen');
@@ -303,18 +317,21 @@ function spawnEncounterPoke(poke, shiny, cb) {
   el.style.top = y + 'px';
   _encPokeEl = el;
   _encPokeCb = cb;
+  _encPokeSnapshot = { poke, shiny: !!shiny, level: encounterLevel };
   startEncPokeRaf();
 }
 
 function despawnEncounterPoke() {
   if (_encPokeEl) { _encPokeEl.remove(); _encPokeEl = null; }
   _encPokeCb = null;
+  _encPokeSnapshot = null;
   _encPokeWaiting = false;
   stopEncPokeRaf();
   stopEncPokeWait();
 }
 
-// 战斗中自己往前走：路面停了，步进器不再被调用，这里按同样的 px/秒 推进
+// 上屏被顶掉时自己往前走：路面停了（单屏下画面被对战/孵蛋页盖住），步进器不再被调用，
+// 这里按同样的 px/秒 推进，让它照常走到主角脚下停住
 function startEncPokeWait() {
   if (_encPokeWaitTimer || _encPokeWaiting || !_encPokeEl) return;
   let last = Date.now();
@@ -323,14 +340,11 @@ function startEncPokeWait() {
     const dt = Math.max(0, (now - last) / 1000);
     last = now;
     if (!_encPokeEl) { stopEncPokeWait(); return; }
-    if (phase !== 'battle' && !_fishing) { stopEncPokeWait(); fireEncPokeIfReady(); return; }
+    // 上屏交回（占用结束，或世界重新推进这只）：停表，交给步进器 / 立刻开战
+    if (!isStageOccupied() || encPokeWorldDriven()) { stopEncPokeWait(); fireEncPokeIfReady(); return; }
     _encPokeX = Math.max(_encPokeCharX, _encPokeX - road.getPxPerSec() * dt);
     _encPokeEl.style.left = road.snapPx(_encPokeX) + 'px';
-    if (_encPokeX <= _encPokeCharX) { // 到脚下：停住并立刻开战
-      stopEncPokeWait();
-      _encPokeWaiting = true;
-      fireEncPokeIfReady();
-    }
+    if (_encPokeX <= _encPokeCharX) hitEncounterPoke(); // 到脚下：立刻开战
   }, 100);
 }
 
@@ -341,12 +355,25 @@ function stopEncPokeWait() {
 // 战斗结束的收尾也调一下：万一脚下那只在等着（计时器没跑到），这里补开
 export function fireWaitingEncounter() { fireEncPokeIfReady(); }
 
-// 脚下等着的那只：到了就开战（对战中也能开，遭遇和对战互不干扰）
+// 到主角脚下：立刻开战（遭遇与对战/孵蛋演出并存，各走各的状态）
+function hitEncounterPoke() {
+  _encPokeWaiting = true;
+  fireEncPokeIfReady();
+}
+
+// 脚下等着的那只：上屏腾出来了就开战（对战中也能开，遭遇和对战互不干扰）
 function fireEncPokeIfReady() {
   if (!_encPokeWaiting) return;
   const cb = _encPokeCb;
+  const snap = _encPokeSnapshot;
   _encPokeWaiting = false;
   despawnEncounterPoke();
+  // 还原这只自己的种类/闪光/等级（别的流程可能借走过这三个全局值）
+  if (snap) {
+    setCurrentEncounter(snap.poke); // 内部会重摇等级，下面按快照覆盖
+    setEncounterLevel(snap.level);
+    setCurrentIsShiny(snap.shiny);
+  }
   if (cb) cb();
 }
 
@@ -368,31 +395,30 @@ function stopEncPokeRaf() {
 // 世界步：图标随路面推进（被占用/离开主界面/骑行时冻结，由 render 负责显隐与收尾）
 function _encPokeStep(spd) {
   if (!_encPokeEl) return;
-  if (phase !== 'idle' && phase !== 'battle') return;
+  if (!encPokeAlivePhase()) return;
   if (_fishing || inMassZone() || inTwistZone()) return;
-  if (!isIdleStageVisible()) return;
-  if (road.isBike()) return;
-
-  _encPokeX -= spd;
-  if (_encPokeX <= _encPokeCharX) {
-    const cb = _encPokeCb;
-    despawnEncounterPoke();
-    if (cb) cb();
-    return;
-  }
+  if (!encPokeWorldDriven()) return; // 上屏被顶掉（单屏对战/孵蛋）：改由等待定时器推进，这里不重复推
+  _encPokeX = Math.max(_encPokeCharX, _encPokeX - spd);
+  if (_encPokeX <= _encPokeCharX) { hitEncounterPoke(); return; } // 到脚下：立刻开战
   if (_encPokeX < -120) { despawnEncounterPoke(); scheduleNextEncounter(); } // 走过头（异常兜底）重调度
 }
 
 // 每帧渲染：显隐与位置；游戏被占用 / 图标丢失的收尾也在这里
 function _encPokeRender() {
-  // NPC 对战占用主界面：世界（含路面）整体停了，这里改用独立定时器照常推进这只图标，
-  // 让它走到主角脚下等着，战斗一结束立刻开战，不丢这一只
-  if (phase === 'battle' && !inMassZone() && !inTwistZone()) {
-    if (_encPokeEl) _encPokeEl.style.display = '';
-    startEncPokeWait();
+  // 上屏被别的流程占着（NPC 对战 / 孵蛋演出在下屏）：这只不清理、照常推进 —— 撞到主角就开战，
+  // 遭遇与它们并存（各走各的状态，见 setEncPhase）。世界在走就由步进器推，画面被顶掉时用等待定时器
+  if (isStageOccupied() && !inMassZone() && !inTwistZone()) {
+    // 上屏还在（双屏：图标照常显示在挂机页上）才画出来；画面被对战/孵蛋页盖住时先藏着，
+    // 位置照常推进，等画面回来自然出现在该在的地方（图标 z-index 高于应用页，不藏会飘在页面上）
+    if (_encPokeEl) {
+      _encPokeEl.style.display = isIdleStageVisible() ? '' : 'none';
+      _encPokeEl.style.left = road.snapPx(_encPokeX) + 'px';
+    }
+    if (encPokeWorldDriven()) stopEncPokeWait(); else startEncPokeWait();
     return;
   }
-  fireEncPokeIfReady(); // 战斗已结束且这只已经在脚下等着：立刻开战
+  stopEncPokeWait();    // 非占用态：推进交回步进器
+  fireEncPokeIfReady(); // 占用已结束且这只已经在脚下等着：立刻开战
   // 游戏被占用（已开战/钓鱼中/大量出没/时空扭曲事件点）：移除图标，之后重新调度遇敌
   if (phase !== 'idle' || _fishing || inMassZone() || inTwistZone()) {
     despawnEncounterPoke();
@@ -976,7 +1002,7 @@ export async function throwBall(ballType) {
         if (onView) { await delay(300); stopVictory(); } // 离开游戏页时确认框不可见、无人点按钮，这里直接收尾
         // 孵蛋 / 进化演出进行中：单屏时演出占着唯一的屏，只清理现场不切视图（等演出结束再回空闲）；
         // 双屏时演出在下屏、上屏归上屏，照常 goIdle 让上屏回挂机（showView 只切舞台通道，不会动下屏）
-        if (!isDualLayout() && (_eggHatching || phase === 'eggResult' || isEvolutionShowActive())) { cleanupEncounterState(); return; }
+        if (!isDualLayout() && (isEggShowActive() || isEvolutionShowActive())) { cleanupEncounterBehindShow(); return; }
         goIdle();
       }
       return;
@@ -999,7 +1025,7 @@ export async function throwBall(ballType) {
       if (onView) { await playFleeAnim(); await delay(300); }
       // 孵蛋 / 进化演出进行中：单屏时演出占着唯一的屏，只清理现场不切视图（等演出结束再回空闲）；
       // 双屏时演出在下屏、上屏归上屏，照常 goIdle 让上屏回挂机（showView 只切舞台通道，不会动下屏）
-      if (!isDualLayout() && (_eggHatching || phase === 'eggResult' || isEvolutionShowActive())) { cleanupEncounterState(); return; }
+      if (!isDualLayout() && (isEggShowActive() || isEvolutionShowActive())) { cleanupEncounterBehindShow(); return; }
       goIdle();
       return;
     }
@@ -1057,7 +1083,7 @@ export async function fleeEncounter(isAutoFlee) {
   setTimeout(() => {
     // 孵蛋 / 进化演出进行中：单屏时演出占着唯一的屏，只清理现场不切视图（等演出结束再回空闲）；
     // 双屏时演出在下屏、上屏归上屏，照常 goIdle 让上屏回挂机（showView 只切舞台通道，不会动下屏）
-    if (!isDualLayout() && (_eggHatching || phase === 'eggResult' || isEvolutionShowActive())) { cleanupEncounterState(); return; }
+    if (!isDualLayout() && (isEggShowActive() || isEvolutionShowActive())) { cleanupEncounterBehindShow(); return; }
     goIdle();
   }, isAutoFlee ? 300 : 1200);
 }
@@ -1076,6 +1102,9 @@ export function goIdle() {
   }
   setPhase('idle');
   endBattle(); // 战斗结束 → 停止战斗曲，恢复地区曲
+  // 这次收尾的遭遇来自哪里：事件计数只认事件来源的遭遇，且要在下面重置来源之前取走。
+  // 孵蛋/进化等流程收尾时也会走到 goIdle，那时玩家正好站在事件区域内，白扣一次会让事件提前结束
+  const endedSource = _encounterSource;
   // 启动即遭遇时 splash 后没弹过歌曲卡：地区曲恢复后补弹一次（仅一次）
   if (consumeShowCardOnEncounterEnd()) showRegionNowPlaying();
   stopAutoFleeTimer();
@@ -1083,6 +1112,8 @@ export function goIdle() {
   setCatchConfirmStep(false);
   setCurrentEncounter(null);
   setEncPhase(null); // 遭遇态清空：战斗还在的话 phase 保持 'battle'，否则回 idle
+  // 这次遭遇的现场到此为止：孵蛋演出挂起的那份快照一并作废，否则孵蛋结束会把已收尾的遭遇复活成僵尸
+  cancelSuspendedEncounterForEgg();
   setEncounterBallsUsed(0);
   setCurrentEncounterBalls({ 'poke-ball': 0, 'ultra-ball': 0, 'master-ball': 0 }); // 丢球计数清零，防后台补算跨遭遇累积
   setEncounterMsg(null);
@@ -1113,12 +1144,13 @@ export function goIdle() {
   $('fleeBtn').style.display = 'none';
   setIdleCharacter('walk');
   // 事件遭遇结束：剩余数量-1，未抓完则调度下一只事件宝可梦出现（事件区域内由滚动触发遇敌）；
+  // 只有确实来自事件的遭遇才扣（endedSource），否则孵蛋等收尾路过这里会白扣一只；
   // 若已被 cleanupEncounterState 后台结算过（孵蛋挂起等场景）则跳过，避免同一遭遇重复扣减
   if (!_eventEncounterSettled) {
-    if (inMassZone()) {
+    if (endedSource === 'mass' && inMassZone()) {
       import('./events.js').then(m => m.onMassEncounterEnded());
     }
-    if (inTwistZone()) {
+    if (endedSource === 'twist' && inTwistZone()) {
       import('./events.js').then(m => m.onTwistEncounterEnded());
     }
   }
@@ -1143,12 +1175,31 @@ export function goIdle() {
   }
 }
 
+// ===== 孵蛋演出收尾（items.js 的 finalizeEggResultContext 调用）=====
+// 孵蛋演出不占游戏阶段：孵蛋期间上屏新打起来的遭遇要能接着打（它有自己的一套状态，见 setEncPhase）。
+// 所以这里遇到"还有遭遇在进行"就只把孵蛋这边收手，绝不走 goIdle —— 那会把正在打的那只清掉。
+// 确实没有遭遇在进行时才做完整收尾（恢复 buff 倒计时、重排遇敌、回挂机）
+export function finishEggResult() {
+  if (_encPhase) return;
+  goIdle();
+}
+
+// 单屏下演出（孵蛋 / 进化）占着唯一那块屏：遭遇只能静默收尾，不切视图（切了会把演出画面顶掉）。
+// 阶段交回挂机、道路也放回去（都是遭遇开场时占下的），别让挂机世界一直停着；演出不占阶段，不受影响
+function cleanupEncounterBehindShow() {
+  cleanupEncounterState();
+  setPhase('idle');
+  if (!_fishing && !road.isActive()) road.resume();
+}
+
 // ===== 遭遇状态清理（后台结算 / 战斗打断场景共用） =====
 // 只清理遭遇相关状态，不动 phase / 战斗音乐 / 道路 / 视图，避免干扰 NPC 对战流程
 function cleanupEncounterState() {
   stopAutoFleeTimer();
   stopShinySparkleLoop();
   setCatchConfirmStep(false);
+  // 这次收尾的遭遇来自哪里：事件计数只认事件来源的遭遇，要在下面重置来源之前取走
+  const endedSource = _encounterSource;
   setCurrentEncounter(null);
   setEncPhase(null); // 遭遇态清空：战斗还在的话 phase 保持 'battle'，否则回 idle
   setEncounterBallsUsed(0);
@@ -1170,10 +1221,11 @@ function cleanupEncounterState() {
   document.documentElement.style.removeProperty('--ui-color');
   document.documentElement.style.removeProperty('--ui-color-rgb');
   updateStats();
-  if (inMassZone()) {
+  // 事件遭遇结束：剩余数量-1（只有事件来源的遭遇才算，普通清理路过事件区域不能白扣）
+  if (endedSource === 'mass' && inMassZone()) {
     import('./events.js').then(m => m.onMassEncounterEnded());
   }
-  if (inTwistZone()) {
+  if (endedSource === 'twist' && inTwistZone()) {
     import('./events.js').then(m => m.onTwistEncounterEnded());
   }
   // 事件结算已在后台执行，后续 goIdle 不再重复扣减
@@ -1374,7 +1426,8 @@ export async function autoCatch() {
   const fr = catchFilterResult();
   if (fr === 'flee') { stopAutoFleeTimer(); await fleeEncounter(true); return; }
   if (fr === 'stop') return;
-  if (phase === 'eggResult' || isEvolutionShowActive() || _eggHatching) return; // 孵蛋结果 / 进化演出进行中不自动捕捉
+  // 孵蛋 / 进化演出不再拦自动捕捉：双屏下遭遇在上屏照常打（下屏演出各走各的），
+  // 单屏下演出占着唯一那块屏，下面的 throwBall/flee 分支会静默结算、不切视图
   if (_encPhase === 'caught' || _encPhase === 'fled') return; // 判定已落库（捕获/逃跑）的遭遇不再重复捕捉
   const bg = _encPhase !== 'encounter'; // 遭遇被 NPC 对战等打断时进入后台结算模式
   if (bg) _bgCatch = true;
@@ -1428,7 +1481,7 @@ export async function autoCatch() {
         }
         // 孵蛋 / 进化演出进行中：单屏时演出占着唯一的屏，只清理现场不切视图（等演出结束再回空闲）；
         // 双屏时演出在下屏、上屏归上屏，照常 goIdle 让上屏回挂机（showView 只切舞台通道，不会动下屏）
-        if (!isDualLayout() && (_eggHatching || phase === 'eggResult')) { cleanupEncounterState(); }
+        if (!isDualLayout() && isEggShowActive()) { cleanupEncounterBehindShow(); }
         else goIdle();
       }
       break;

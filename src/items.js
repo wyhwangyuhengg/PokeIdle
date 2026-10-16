@@ -1,7 +1,7 @@
 // ===== 道具相关逻辑 =====
 import { ITEM_NAMES, ITEM_DESC, CANDY_EXCHANGE, ITEM_SELL_RATE, ITEM_SELL_OVERRIDE, CANDY_DROP_MULT, SHINY_CHANCE, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, PX_PER_METER, EVO_PRICES, EVO_EXCLUSIVE_PRICE, EVO_SHOP_DAILY, EVO_SHOP_WEIGHTS, EVO_SHOP_EXCLUSIVE_SLOTS, EVO_SHOP_EXCLUSIVE_WEIGHT, EVO_SHOP_MINT_WEIGHT, EVO_SHOP_CROWNS, MINT_NATURES, MINT_PRICE, BREED_ONLY_IDS, LEGEND_POOL_DIVISOR, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, hatchSprite } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, currentEncounter, currentIsShiny, encounterLevel, encounterBallsUsed, currentEncounterBalls, encounterMsg, setCurrentEncounter, setEncounterLevel, setEncounterBallsUsed, setCurrentEncounterBalls, setEncounterMsg, setCurrentIsShiny, setPhase, _itemDropActive, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, honeyCountdownInterval, charmCountdownInterval, honeyExpiryTimer, charmExpiryTimer, nextEncounterTimer, _charmEncounterCount, _eggHatching, saveGame, addSystemLog, addIncubatorLog, randInt, rand, getCurrentRegion, setNextEncounterTimer, setItemDropActive, setEggHatching, setIdleMsgIdx, setHoneyBuffActive, setHoneyCountdownEnd, setCharmBuffActive, setCharmGuaranteed, setCharmCountdownEnd, setHoneyPausedRemaining, setCharmPausedRemaining, setCharmEncounterCount, setHoneyExpiryTimer, setCharmExpiryTimer, setHoneyCountdownInterval, setCharmCountdownInterval, calcHatchDistance, getIncubatorUnlockCost, addRosterEntry, rarityLabel, setLastObtainedEntryId, getLastObtainedEntryId, isPokemon, rollGender, ensureGender, genderBadge, dexUnlocked, dexShinyOwned } from './state.js';
-import { $, updateTextBox, updateBackpack, updateStats, showView, isOnHatchView, isIdleStageVisible, isPageHidden, fitPokemonImage, tryLoadPokemonImage, setIdleCharacter, renderIncubatorView, updateIncubatorBadge, showConfirmBar, hideConfirmBar, isEvolutionShowActive } from './ui.js';
+import { $, updateTextBox, updateBackpack, updateStats, showView, isOnHatchView, isIdleStageVisible, isPageHidden, fitPokemonImage, tryLoadPokemonImage, setIdleCharacter, renderIncubatorView, updateIncubatorBadge, showConfirmBar, hideConfirmBar, isEvolutionShowActive, isEggShowActive } from './ui.js';
 import { showIdlePickup, showBuffExpired } from './messages.js';
 import { animate, burstShinySparkle } from './animation.js';
 import { computeObtainScore, recordLuck } from './scoring.js';
@@ -409,8 +409,9 @@ export const BERRY_COLORS = [
   '#6f61ac', // 异奇果
 ];
 
-// 孵蛋结果展示在独立页面 hatchView；若开始孵蛋时已有野生遭遇，先把现场挂起，
-// 等孵蛋结果结束后再恢复，保证两条流程都能继续。
+// 孵蛋结果展示在独立页面 hatchView。演出本身不占游戏阶段、也不动遭遇现场（上屏照常走路/遇敌），
+// 这里只是把"孵蛋开场那一刻正在打的遭遇"记一份快照：单屏下孵蛋页会盖住遭遇画面，等演出结束要把它交还上屏。
+// 双屏下演出在下屏、遭遇在上屏，两条流程本来就各跑各的，这份快照只是让交还动作保持幂等。
 let _suspendedEncounter = null;
 
 function suspendEncounterForEgg() {
@@ -439,6 +440,9 @@ function restoreSuspendedEncounter() {
   const snap = _suspendedEncounter;
   _suspendedEncounter = null;
   if (snap.settled) return false; // 已结算的遭遇不再恢复，交给 goIdle 正常收尾
+  // 那次遭遇现在还活着（演出期间在上屏继续打，球数/判定步骤都往前走了）→ 现场一直是它的，
+  // 一个字都不能回填：快照里是孵蛋开场那一刻的球数，回填会把演出期间丢的球抹掉
+  if (phase === 'encounter' || phase === 'caught' || phase === 'fled' || phase === 'battle') return true;
   setCurrentEncounter(snap.poke);
   setEncounterLevel(snap.level);
   setCurrentIsShiny(snap.isShiny);
@@ -456,7 +460,9 @@ export async function finalizeEggResultContext() {
     return;
   }
   const m = await import('./battle.js');
-  m.goIdle();
+  // 孵蛋期间上屏新打起来的遭遇不算这次孵蛋的收尾对象：finishEggResult 会把它原样留下，
+  // 只有确实没有遭遇在进行时才走完整的 goIdle（恢复 buff / 重排遇敌 / 回挂机）
+  m.finishEggResult();
   renderIncubatorView();
 }
 
@@ -979,7 +985,7 @@ function hatchOneDelay(ms) {
 
 export async function hatchFromIncubator(slotIndex) {
   if (_eggHatching) return;
-  if (phase === 'battle' || phase === 'eggResult') return;                      // NPC 对战 / 孵蛋结果期间禁止孵化
+  if (phase === 'battle' || isEggShowActive()) return;                          // NPC 对战 / 孵蛋演出自身进行中：不能叠（对战和孵蛋都要占下屏）
   if (isEvolutionShowActive()) return;                                        // 进化演出期间禁止孵化（不再往演出上叠一层）
   if (phase !== 'idle' && phase !== 'encounter' && phase !== 'caught' && phase !== 'fled') return;
   const incubators = gameData.incubators;
@@ -997,8 +1003,8 @@ export async function hatchFromIncubator(slotIndex) {
 
   const idx = String(poke.index);
 
-  setPhase('eggResult');
-  setCurrentIsShiny(eggIsShiny);
+  // 孵蛋演出不占 phase、也不借用 currentEncounter/currentIsShiny：它们是遭遇/对战的现场，
+  // 借走会把上屏正在打的那只换成蛋（种类/闪光/等级全错）。演出要显示的东西都在本地变量里
 
   if (charmBuffActive && charmCountdownEnd > Date.now()) {
     setCharmPausedRemaining(charmCountdownEnd - Date.now());
@@ -1026,7 +1032,6 @@ export async function hatchFromIncubator(slotIndex) {
   _hatchOneSkip = false;
   _hatchOneRunning = true;
   bindHatchOneSkip();
-  setCurrentEncounter(poke);
   showView('hatchView');
   $('fleeBtn').style.display = 'none';
   $('hatchName').textContent = '';
@@ -1231,7 +1236,7 @@ function hatchDelay(ms) {
 }
 export async function hatchAllFromIncubator() {
   if (_eggHatching) return;
-  if (phase === 'battle' || phase === 'eggResult') return;                      // NPC 对战 / 孵蛋结果期间禁止孵化
+  if (phase === 'battle' || isEggShowActive()) return;                          // NPC 对战 / 孵蛋演出自身进行中：不能叠
   if (isEvolutionShowActive()) return;                                        // 进化演出期间禁止孵化（不再往演出上叠一层）
   if (phase !== 'idle' && phase !== 'encounter' && phase !== 'caught' && phase !== 'fled') return;
   const incubators = gameData.incubators;
@@ -1274,7 +1279,7 @@ export async function hatchAllFromIncubator() {
     clearHoneyCountdown();
   }
 
-  setPhase('eggResult');
+  // 与单只孵化同口径：演出不占 phase、不动遭遇现场（上屏照常走路/遇敌）
   showView('hatchAllView');
 
   // 网格：统一一行 4 个，小格子两行放完（≤4 只一行，5~8 只两行）
@@ -1299,7 +1304,7 @@ export async function hatchAllFromIncubator() {
       renderIncubatorView();
     } else {
       const m = await import('./battle.js');
-      m.goIdle();
+      m.finishEggResult();
     }
     showView('incubatorView');
     renderIncubatorView();
@@ -1325,12 +1330,13 @@ export async function hatchAllFromIncubator() {
   updateIncubatorBadge();
   setEggHatching(false);
 
-  // 立即恢复挂起遭遇 / 回空闲：确认离开时只剩纯同步收尾，避免点击后卡住
+  // 立即恢复挂起遭遇 / 回空闲：确认离开时只剩纯同步收尾，避免点击后卡住。
+  // 孵蛋期间上屏新打起来的遭遇不算"挂起"的：finishEggResult 会把它原样留下
   if (restoreSuspendedEncounter()) {
     // 有挂起遭遇：恢复现场后停留在孵蛋器，玩家稍后回游戏页继续
   } else {
     const m = await import('./battle.js');
-    m.goIdle();
+    m.finishEggResult();
   }
 
   // 完成后弹确认条（与单只同款祝贺音效），点确定即可离开批量页回孵蛋器。

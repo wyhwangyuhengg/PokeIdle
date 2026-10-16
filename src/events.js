@@ -18,10 +18,10 @@ import {
   randInt, rand, saveGame, addSystemLog, inMassZone, inTwistZone, normalizeMassRemainToEnd, _fishing, dexUnlocked,
   getRoadNumForEdge,
 } from './state.js';
-import { $, tryLoadPokemonIcon, setIdleCharacter, isOnGameView, isIdleStageVisible } from './ui.js';
+import { $, tryLoadPokemonIcon, setIdleCharacter, isOnGameView, isIdleStageVisible, isStageOccupied } from './ui.js';
 import { endCycling } from './audio.js';
 import { MAP_EDGES, showGpsView } from './gps.js';
-import { startMassEncounter, startTwistEncounter, scheduleNextEncounter } from './battle.js';
+import { startMassEncounter, startTwistEncounter, scheduleNextEncounter, encState } from './battle.js';
 import { notifyMassStart, notifyMassEnd, massMsgTick, notifyTwistStart, notifyTwistEnd, twistMsgTick } from './messages.js';
 import { pickFamily, pickFamilyBySeed, pickWeightedPokemon } from './items.js';
 import { hasSchedule, activeSlot, nextSlot, serverNow } from './server-events.js';
@@ -319,28 +319,38 @@ function _massStep(spd) {
   // 世界步：事件宝可梦随路面推进（每步一次，与刷新率无关）
   if (!_massPokeEl) return;
   if (!road.isActive() || road.isBike()) return; // 道路暂停/骑行：原地等待
-  _massPokeX -= spd;
-  if (_massPokeX <= _massCharX) { hitMassPoke(); return; }
+  _massPokeX = Math.max(_massCharX, _massPokeX - spd);
+  if (_massPokeX <= _massCharX) { hitMassPoke(); return; } // 到脚下就撞上来开战（对战/孵蛋演出各走各的，不必等）
   if (_massPokeX < -120) despawnMassPoke();
 }
 
 // 每帧渲染：区域/视图守卫、到点生成、写位置
 function _massRender() {
   const mo = gameData?.massOutbreak;
-  const runOk = !!mo && phase === 'idle' && inMassZone()
-    && isIdleStageVisible();
+  // 上屏被别的流程占着（NPC 对战 / 孵蛋演出在下屏）时这只也不清理，照常滚、照常撞上来开战；
+  // 但正在打的事件遭遇要拦下 —— 那会儿这只已经撞过来开战了，再生成一只会在遭遇没打完时叠第二只
+  const occupied = isStageOccupied() && !encState();
+  const runOk = !!mo && inMassZone()
+    && (occupied || (phase === 'idle' && isIdleStageVisible()));
   if (!runOk) {
     stopMassRaf();
     despawnMassPoke();
     return;
   }
+  // 上屏不可见（单屏被对战/孵蛋/其它页面盖住）时先把这只藏起来：
+  // 图标 z-index 高于应用页，不藏会飘在别的页面上（位置照常保留，画面回来再露出来）
+  if (_massPokeEl) _massPokeEl.style.display = isIdleStageVisible() ? '' : 'none';
   // 道路暂停（拾取道具等）或骑行：宝可梦原地等待，捡完恢复滚动，避免"捡完球 icon 消失"
   if (!road.isActive() || road.isBike()) return;
 
-  // 无精灵且到点 → 生成下一只（nextSpawnAt 初始 0，进区域立即出现）
-  if (!_massPokeEl && Date.now() >= mo.nextSpawnAt) spawnMassPoke();
-
-  if (_massPokeEl) _massPokeEl.style.left = road.snapPx(_massPokeX) + 'px'; // 对齐设备像素
+  // 无精灵且到点 → 生成下一只（nextSpawnAt 初始 0，进区域立即出现）。
+  // 上屏不可见时不生成：量不到真实几何，位置会算错，等上屏回来再生成；
+  // 已经滚着的那只保留原处等（见 _massStep）
+  if (!_massPokeEl) {
+    if (isIdleStageVisible() && Date.now() >= mo.nextSpawnAt) spawnMassPoke();
+  } else {
+    _massPokeEl.style.left = road.snapPx(_massPokeX) + 'px'; // 对齐设备像素
+  }
 }
 
 function startMassRaf() {
@@ -359,10 +369,13 @@ function stopMassRaf() {
 
 function updateMassSpawner(now) {
   const mo = getMassOutbreak();
+  // 上屏被别的流程占着（NPC 对战 / 孵蛋演出）时不算"离页"：这只留在原处照常滚；
+  // 正在打的事件遭遇不算（那会儿这只已经撞过来开战了）
+  const busy = isStageOccupied() && !encState();
   const idleHidden = !isIdleStageVisible();
   // 事件宝可梦只在事件区域内遭遇；离页时同样判断区域（位置不变，玩家停留处仍在事件路段内）
-  if (!mo || phase !== 'idle' || !inMassZone()) { stopMassRaf(); despawnMassPoke(); return; }
-  if (idleHidden) {
+  if (!mo || !(phase === 'idle' || busy) || !inMassZone()) { stopMassRaf(); despawnMassPoke(); return; }
+  if (idleHidden && !busy) {
     // 后台挂机：不做滚动动画但保留持久化的当前精灵（cur），到点直接触发战斗；
     // 元素留在屏幕位置，此处手动移除，避免离页时残留
     stopMassRaf();
@@ -652,26 +665,36 @@ function _twistStep(spd) {
   // 世界步：事件宝可梦随路面推进（每步一次，与刷新率无关）
   if (!_twistPokeEl) return;
   if (!road.isActive() || road.isBike()) return; // 道路暂停/骑行：原地等待
-  _twistPokeX -= spd;
-  if (_twistPokeX <= _twistCharX) { hitTwistPoke(); return; }
+  _twistPokeX = Math.max(_twistCharX, _twistPokeX - spd);
+  if (_twistPokeX <= _twistCharX) { hitTwistPoke(); return; } // 到脚下就撞上来开战（对战/孵蛋演出各走各的）
   if (_twistPokeX < -120) despawnTwistPoke();
 }
 
 // 每帧渲染：区域/视图守卫、到点生成、写位置
 function _twistRender() {
   const tw = gameData?.twist;
-  const runOk = !!tw && phase === 'idle' && inTwistZone()
-    && isIdleStageVisible();
+  // 上屏被别的流程占着（NPC 对战 / 孵蛋演出在下屏）时这只也不清理，照常滚、照常撞上来开战；
+  // 但正在打的事件遭遇要拦下 —— 那会儿这只已经撞过来开战了，再生成一只会在遭遇没打完时叠第二只
+  const occupied = isStageOccupied() && !encState();
+  const runOk = !!tw && inTwistZone()
+    && (occupied || (phase === 'idle' && isIdleStageVisible()));
   if (!runOk) {
     stopTwistRaf();
     despawnTwistPoke();
     return;
   }
+  // 上屏不可见（单屏被对战/孵蛋/其它页面盖住）时先把这只藏起来：
+  // 图标 z-index 高于应用页，不藏会飘在别的页面上（位置照常保留，画面回来再露出来）
+  if (_twistPokeEl) _twistPokeEl.style.display = isIdleStageVisible() ? '' : 'none';
   if (!road.isActive() || road.isBike()) return; // 原地等待
 
-  if (!_twistPokeEl && Date.now() >= tw.nextSpawnAt) spawnTwistPoke();
-
-  if (_twistPokeEl) _twistPokeEl.style.left = road.snapPx(_twistPokeX) + 'px'; // 对齐设备像素
+  // 上屏不可见时不生成新的一只（量不到真实几何，位置会算错），等上屏回来再生成；
+  // 已经滚着的那只保留原处等（见 _twistStep）
+  if (!_twistPokeEl) {
+    if (isIdleStageVisible() && Date.now() >= tw.nextSpawnAt) spawnTwistPoke();
+  } else {
+    _twistPokeEl.style.left = road.snapPx(_twistPokeX) + 'px'; // 对齐设备像素
+  }
 }
 
 function startTwistRaf() {
@@ -690,9 +713,12 @@ function stopTwistRaf() {
 
 function updateTwistSpawner(now) {
   const tw = getTwist();
+  // 上屏被别的流程占着（NPC 对战 / 孵蛋演出）时不算"离页"：这只留在原处照常滚；
+  // 正在打的事件遭遇不算（那会儿这只已经撞过来开战了）
+  const busy = isStageOccupied() && !encState();
   const idleHidden = !isIdleStageVisible();
-  if (!tw || phase !== 'idle' || !inTwistZone()) { stopTwistRaf(); despawnTwistPoke(); return; }
-  if (idleHidden) {
+  if (!tw || !(phase === 'idle' || busy) || !inTwistZone()) { stopTwistRaf(); despawnTwistPoke(); return; }
+  if (idleHidden && !busy) {
     // 后台挂机：不做滚动动画但保留持久化的当前精灵（cur），到点直接触发战斗；
     // 元素留在屏幕位置，此处手动移除，避免离页时残留
     stopTwistRaf();

@@ -5,7 +5,7 @@ import { CATCH_RATES, SAVE_INTERVAL, ITEM_RATES, ITEM_NAMES, ROAD_SPECIAL_CHANCE
 import { allPokemon, gameData, phase, currentEncounter, honeyBuffActive, charmBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, getPokemonByIndex, ensureGpsState, restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, addAwaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer , setSimClock, _eggHatching  } from './state.js';
 import { migrateEncounterScores } from './scoring.js';
 import { massTick, ensureMassInit as ensureMassInitEvents, twistTick, ensureTwistInit } from './events.js';
-import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, isEvolutionShowActive, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView, relayoutStage } from './ui.js';
+import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, isEvolutionShowActive, isEggShowActive, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView, relayoutStage } from './ui.js';
 import { spawnItemDrop, hasActiveDrop, activateHoney, activateShinyCharm, restoreHoneyRecord, restoreCharmRecord, grantItem, cancelItemDrop, rollCandyMult, ensureEvoMeta, renewBuffLater } from './items.js';
 import { syncBlockVisual, startBlockCountdown, clearBlockCountdown, showMixerView } from './mixer.js';
 import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, settleStaleEncounter, ensureEncounterTextBox, setEncounterAt, syncBattleMusic, encState, setEncPhase, autoCatch } from './battle.js';
@@ -426,9 +426,9 @@ async function onGameTick() {
     import('./ui.js').then((m) => m.showView('idleView'));
   }
 
-  // 兜底自愈：孵蛋结果页已经不在了，phase 却还停在 eggResult（离开时没走到收尾）→ 自己收尾。
-  // 停在这个状态会永久卡住：孵蛋期间挂起的遭遇不恢复，道路一直停着不动
-  if (phase === 'eggResult' && !_eggHatching && $('hatchView')?.style.display === 'none') {
+  // 兜底自愈：孵蛋页已经不在了、孵蛋流程却还挂在"演出中"（流程异常/被打断没走到收尾）→ 自己收尾。
+  // 孵蛋演出不占 phase，所以这里看演出标志 + 页面是否还在
+  if (_eggHatching && $('hatchView')?.style.display !== 'flex' && $('hatchAllView')?.style.display !== 'flex') {
     import('./items.js').then((m) => m.finalizeEggResultContext());
   }
   // 兜底自愈：遭遇在屏上却没有文字框（后台/恢复路径可能漏写）→ 补上
@@ -535,10 +535,10 @@ async function onGameTick() {
     }
   }
 
-  // 自动捕捉兜底：遭遇还在、开着自动、不在孵蛋/进化演出里，却没在丢球 → 重新起一轮。
-  // 进化演出会让 autoCatch 在入口直接返回，演出结束又没人再喊它，就会永久卡成"手动模式"
+  // 自动捕捉兜底：遭遇还在、开着自动、不在演出里，却没在丢球 → 重新起一轮。
+  // 演出会让 autoCatch 在入口直接返回，演出结束又没人再喊它，就会永久卡成"手动模式"
   if (gameTick % 30 === 0 && currentEncounter && gameData.settings?.autoCatch && !_autoCatching
-      && encState() === 'encounter' && phase !== 'eggResult' && !_eggHatching && !isEvolutionShowActive()) {
+      && encState() === 'encounter' && !isEggShowActive() && !isEvolutionShowActive()) {
     autoCatch();
   }
 
@@ -1305,7 +1305,7 @@ async function init() {
     // 开场剧情中：箭头推进台词
     if (window.__introActive) { advanceIntro(); return; }
     // 手动捕获（自动捕捉未实际接管，如闪光暂停转手动）/ 孵蛋成功 → 询问是否查看仓库详情
-    if ((encState() === 'caught' && !_autoCatching) || phase === 'eggResult') {
+    if ((encState() === 'caught' && !_autoCatching) || isEggShowActive()) {
       if (arrow) arrow.style.display = 'none';
       updateTextBox('是否查看该宝可梦的详情？', false, host);
       const btns = $('catchConfirmBtns');
@@ -1329,7 +1329,9 @@ async function init() {
     $('catchConfirmBtns').style.display = 'none';
     setCatchConfirmStep(false);
     const entryId = getLastObtainedEntryId();
-    const fromEgg = phase === 'eggResult'; // 必须在 goIdle 前判断（goIdle 会把 phase 置回 idle）
+    // 这条确认框属于谁：孵蛋结果的确认条挂在下屏的 app 文字框里，捕获的挂在上屏舞台框里。
+    // 按框判断而不是按 phase —— 孵蛋演出不占 phase，而且双屏下屏幕里可能正打着遭遇
+    const fromEgg = !!$('appTextBox')?.contains($('catchConfirmBtns'));
     if (fromEgg) {
       import('./items.js').then(async items => {
         await items.finalizeEggResultContext();
@@ -1351,7 +1353,7 @@ async function init() {
     stopVictory(); // 交互完图鉴对话框 → 停止胜利音效
     $('catchConfirmBtns').style.display = 'none';
     setCatchConfirmStep(false);
-    const fromEgg = phase === 'eggResult'; // 必须在 goIdle 前判断（goIdle 会把 phase 置回 idle）
+    const fromEgg = !!$('appTextBox')?.contains($('catchConfirmBtns')); // 同上：按确认框挂在哪块屏判断
     if (fromEgg) {
       import('./items.js').then(async items => {
         await items.finalizeEggResultContext();

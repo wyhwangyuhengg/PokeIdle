@@ -23,6 +23,7 @@ import { debugClearPp } from './battle-view.js';
 import { refreshBerryView } from './berry.js';
 import { showGpsView } from './gps.js';
 import { forceRefreshMassOutbreak, forceRefreshTwist } from './events.js';
+import { hasSchedule, activeSlot, nextSlot } from './server-events.js';
 import { setDebugNextEncounter } from './battle.js';
 import { isBattleActive, renderBattleList } from './battle-view.js';
 import { refreshNpcs } from './npcs.js';
@@ -198,12 +199,25 @@ window.__refreshAll = () => {
   const tw = gameData.twist;
   console.log(`对战、交换、悬赏已刷新；大量出没剩余 ${mo ? mo.remain : 0} 只，时空扭曲剩余 ${tw ? tw.remain : 0} 只（位置不变）`
     + (bounty ? `；悬赏 ${bounty} 条目标已重抽` : '')
-    + (stock ? `；商店每日限量货已重抽（${stock} 类）` : ''));
+    + (stock ? `；商店每日限量货已重抽（${stock} 类）` : '')
+    + scheduleNote());
   if ($('battleView')?.style.display !== 'none' && !isBattleActive()) renderBattleList();
   if ($('tradeView')?.style.display !== 'none') renderTrade();
   if ($('bountyView')?.style.display === 'flex') renderBounty();
   if (stock && $('shopView')?.style.display === 'flex') import('./views.js').then((m) => m.showShopView());
 };
+
+// 事件没生成时的原因说明：有全服排期时事件只按排期段走，段与段之间刷不出来是正常的，
+// 日志里写清楚"本段未开始/下一段几点"，免得看着像没生效（离线太久那份排期会直接作废走本地随机）
+function scheduleNote() {
+  if (!hasSchedule()) return '；当前无全服排期，走本地随机事件';
+  if (activeSlot('mass') || activeSlot('twist')) return '';
+  const nxt = nextSlot('mass') || nextSlot('twist');
+  if (!nxt) return '；全服排期已跑完，等服务器下一份';
+  const d = new Date(nxt.from);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `；全服排期：本段未开始，下一段 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 // 刷新一波对战 NPC，并让全部 NPC 的队伍都使用指定的宝可梦
 // 用法：__npcTeam(25) 全部用皮卡丘；__npcTeam(25, 6, 149) 全部用这三只；也支持传数组
