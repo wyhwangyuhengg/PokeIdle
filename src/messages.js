@@ -605,7 +605,7 @@ export function showFishingResult(itemName, qty, place) {
 // 显示 buff 结束的"效果渐渐褪去"轮播文案
 export function showBuffExpired(kind) {
   $('idleText').textContent = kind === 'honey'
-    ? '✦ 甜蜜蜜的效果渐渐褪去了...'
+    ? '✦ 甜甜蜜的效果渐渐褪去了...'
     : '✦ 闪耀护符的效果渐渐褪去了...';
 }
 

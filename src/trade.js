@@ -83,20 +83,32 @@ function resumeTradeRefresh() {}
 // mega / 超极巨 / 地区形态这些变体只占小概率，否则一个家族变体多的时候交易里到处是 mega
 function isFormEntry(p) { return String(p?.index || '').includes('-'); }
 
-function pickTradePokemon() {
-  // 神兽不进交易：需求侧会变成玩家永远给不出的条目，供给侧等于白送
-  const pool = allPokemon.filter(p => !p.legend);
-  const groups = new Map();
-  for (const p of pool) {
-    const k = String(p.index).split('-')[0];
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(p);
+// 神兽不进交易：需求侧会变成玩家永远给不出的条目，供给侧等于白送
+let _tradeFamilies = null;
+function tradeFamilies() {
+  if (!_tradeFamilies) {
+    const groups = new Map();
+    for (const p of allPokemon) {
+      if (p.legend) continue;
+      const k = String(p.index).split('-')[0];
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(p);
+    }
+    _tradeFamilies = [...groups.values()];
   }
-  const fams = [...groups.values()];
-  const fam = fams[randInt(0, fams.length - 1)];
+  return _tradeFamilies;
+}
+
+// 家族内抽具体形态：基础形态占多数，其余给变体
+function pickFromFamily(fam) {
   const bases = fam.filter(p => !isFormEntry(p));
   if (bases.length > 0 && Math.random() < TRADE_BASE_FORM_CHANCE) return bases[randInt(0, bases.length - 1)];
   return fam[randInt(0, fam.length - 1)];
+}
+
+function pickTradePokemon() {
+  const fams = tradeFamilies();
+  return pickFromFamily(fams[randInt(0, fams.length - 1)]);
 }
 
 // ---------- 交换对价 ----------
@@ -119,22 +131,41 @@ function baseValueOf(p) {
   return speciesValue(base || p);
 }
 
-// 需求难度：物种价值 + 等级 / 个体值下限 / 性别这些附加条件的价值
-function requirementValue(wantPoke, want) {
-  let v = baseValueOf(wantPoke);
-  if (want.level) v += (want.level / TRADE_WANT_LEVEL_MAX) * TRADE_VALUE_W.level;
-  if (want.iv) v += (want.iv.min / 31) * TRADE_VALUE_W.iv;
-  if (want.gender) v += TRADE_VALUE_W.gender;
-  return v;
+// 对价用**家族榜上的分位**，不用绝对价值：种族值上端物种极少（600+ 一共 12 族），
+// 按价值取最接近的一批时高价值的准神会被反复抽中（实测近半给出物是准神），
+// 换成分位后"要什么档次"就按家族的稀有度分布对齐给什么档次。
+let _tradeLadder = null;
+function tradeLadder() {
+  if (!_tradeLadder) _tradeLadder = tradeFamilies().slice().sort((a, b) => baseValueOf(a[0]) - baseValueOf(b[0]));
+  return _tradeLadder;
+}
+// 该物种的家族在榜上的分位（0~1）
+function percentOf(p) {
+  const ladder = tradeLadder();
+  const v = baseValueOf(p);
+  let i = 0;
+  while (i < ladder.length && baseValueOf(ladder[i][0]) <= v) i++;
+  return i / ladder.length;
 }
 
-// 按目标价值挑给出物种：取价值最接近的一批里随机，避免每次都是同一只
-function pickGiveSpecies(targetValue) {
-  const pool = allPokemon.filter(p => !p.legend);
-  const scored = pool.map(p => ({ p, d: Math.abs(baseValueOf(p) - targetValue) }));
-  scored.sort((a, b) => a.d - b.d);
-  const near = scored.slice(0, Math.max(4, Math.ceil(scored.length * 0.02)));
-  return near[randInt(0, near.length - 1)].p;
+// 需求难度：需求的家族分位 + 等级 / 个体值下限 / 性别这些附加条件折算的分位
+function requirementPercent(wantPoke, want) {
+  let f = percentOf(wantPoke);
+  if (want.level) f += (want.level / TRADE_WANT_LEVEL_MAX) * TRADE_VALUE_W.level;
+  if (want.iv) f += (want.iv.min / 31) * TRADE_VALUE_W.iv;
+  if (want.gender) f += TRADE_VALUE_W.gender;
+  return f;
+}
+
+// 按分位挑给出物种：命中榜上那一档，再在左右各 2% 的家族里随机，避免每次都是同一只
+function pickGiveSpecies(percent) {
+  const ladder = tradeLadder();
+  const M = ladder.length;
+  const center = Math.max(0, Math.min(M - 1, Math.round(percent * (M - 1))));
+  const half = Math.max(2, Math.round(M * 0.02));
+  const lo = Math.max(0, center - half);
+  const hi = Math.min(M - 1, center + half);
+  return pickFromFamily(ladder[randInt(lo, hi)]);
 }
 
 // 给出的宝可梦个体值：神兽保底 3 项 31（与玩家捕获到的一致），
@@ -162,7 +193,7 @@ function makeOffer(npc) {
   };
   // 对价：按需求难度挑给出的宝可梦与等级——要的越难，给的越好；没提要求的 offer 只配低等级
   const jitter = TRADE_VALUE_JITTER[0] + Math.random() * (TRADE_VALUE_JITTER[1] - TRADE_VALUE_JITTER[0]);
-  const givePoke = pickGiveSpecies(requirementValue(wantPoke, want) * jitter);
+  const givePoke = pickGiveSpecies(Math.min(1, requirementPercent(wantPoke, want) * jitter));
   const giveLevel = want.level
     ? Math.max(1, Math.min(TRADE_GIVE_LEVEL_MAX, Math.round(want.level * (0.8 + Math.random() * 0.8))))
     : randInt(1, TRADE_GIVE_LEVEL_NONE);

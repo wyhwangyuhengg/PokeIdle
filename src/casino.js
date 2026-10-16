@@ -13,8 +13,8 @@ const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const RED = new Set(['♥', '♦']);
 
-// 下注档位（代币）
-const BETS = [5, 10, 25, 50, 100, 250];
+// 下注档位（代币）；跳企鹅复用同一份
+export const BETS = [5, 10, 25, 50, 100, 250];
 
 // ---------- 首页场景 ----------
 const SCENE_TILESET = './terrain/terrain-tileset.png';
@@ -26,14 +26,15 @@ const SCENE_MAHJONG = { x: 7 * TILE, y: 4 * TILE, w: 2 * TILE, h: 2 * TILE };
 // 抽卡机热区：场景第 2/3 行、第 9/10 列（0-based：行 1~2、列 8~9）
 const SCENE_GACHA1 = { x: 8 * TILE, y: 1 * TILE, w: 1 * TILE, h: 2 * TILE };
 const SCENE_GACHA2 = { x: 9 * TILE, y: 1 * TILE, w: 1 * TILE, h: 2 * TILE };
-// 场景地图：来自 tools/road-data.json 的 tile「casino」（11×9，{col,row} 为 terrain tileset 坐标）
-const SCENE = {
+// 场景地图：来自 tools/road-data.json 的「casino1 / casino2」两张图（11×9，{col,row} 为 terrain tileset 坐标）。
+// 一层是营业厅（赌桌/麻将桌/抽卡机/兑换），二层是游戏机区，靠左上角的楼梯上下
+const SCENE_FLOOR1 = {
   w: 11,
   h: 9,
   tiles: [
-    [{col:79,row:47},{col:74,row:45},{col:75,row:45},{col:76,row:50},{col:77,row:50},{col:78,row:50},{col:78,row:50},{col:79,row:50},{col:73,row:45},{col:74,row:45},{col:75,row:45}],
-    [{col:79,row:48},{col:74,row:42},{col:73,row:42},{col:76,row:51},{col:77,row:51},{col:78,row:51},{col:77,row:51},{col:79,row:51},{col:78,row:43},{col:79,row:43},{col:74,row:42}],
-    [{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:76,row:52},{col:77,row:52},{col:78,row:52},{col:78,row:52},{col:79,row:52},{col:78,row:44},{col:79,row:44},{col:74,row:42}],
+    [{col:74,row:51},{col:74,row:45},{col:75,row:45},{col:76,row:50},{col:77,row:50},{col:78,row:50},{col:78,row:50},{col:79,row:50},{col:73,row:45},{col:74,row:45},{col:75,row:45}],
+    [{col:74,row:51},{col:78,row:45},{col:79,row:45},{col:76,row:51},{col:77,row:51},{col:78,row:51},{col:77,row:51},{col:79,row:51},{col:78,row:43},{col:79,row:43},{col:74,row:42}],
+    [{col:74,row:52},{col:77,row:45},{col:74,row:42},{col:76,row:52},{col:77,row:52},{col:78,row:52},{col:78,row:52},{col:79,row:52},{col:78,row:44},{col:79,row:44},{col:74,row:42}],
     [{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:76,row:53},{col:77,row:53},{col:78,row:53},{col:78,row:53},{col:80,row:46},{col:74,row:42},{col:74,row:42},{col:74,row:42}],
     [{col:74,row:42},{col:74,row:42},{col:74,row:46},{col:75,row:46},{col:77,row:43},{col:74,row:42},{col:74,row:42},{col:80,row:47},{col:81,row:47},{col:79,row:46},{col:74,row:42}],
     [{col:74,row:42},{col:78,row:46},{col:74,row:47},{col:75,row:47},{col:79,row:46},{col:74,row:42},{col:78,row:46},{col:80,row:48},{col:81,row:48},{col:73,row:42},{col:74,row:42}],
@@ -42,6 +43,31 @@ const SCENE = {
     [{col:73,row:42},{col:73,row:42},{col:73,row:42},{col:73,row:42},{col:78,row:42},{col:79,row:41},{col:79,row:42},{col:73,row:42},{col:73,row:42},{col:73,row:42},{col:73,row:42}],
   ],
 };
+const SCENE_FLOOR2 = {
+  w: 11,
+  h: 9,
+  tiles: [
+    [{col:74,row:45},{col:74,row:45},{col:74,row:45},{col:74,row:45},{col:74,row:45},{col:74,row:45},{col:74,row:45},{col:74,row:45},{col:74,row:45},{col:79,row:47},{col:75,row:45}],
+    [{col:74,row:49},{col:74,row:42},{col:73,row:42},{col:73,row:42},{col:73,row:42},{col:73,row:42},{col:73,row:42},{col:73,row:42},{col:73,row:42},{col:79,row:48},{col:74,row:42}],
+    [{col:74,row:42},{col:74,row:42},{col:76,row:46},{col:77,row:46},{col:73,row:42},{col:73,row:42},{col:73,row:42},{col:76,row:46},{col:77,row:46},{col:73,row:42},{col:74,row:42}],
+    [{col:73,row:42},{col:78,row:46},{col:76,row:47},{col:77,row:47},{col:79,row:46},{col:73,row:42},{col:78,row:46},{col:76,row:47},{col:77,row:47},{col:79,row:46},{col:74,row:42}],
+    [{col:73,row:42},{col:78,row:46},{col:76,row:48},{col:77,row:48},{col:79,row:46},{col:74,row:42},{col:78,row:46},{col:76,row:48},{col:77,row:48},{col:79,row:46},{col:74,row:42}],
+    [{col:73,row:42},{col:74,row:42},{col:76,row:46},{col:77,row:46},{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:76,row:46},{col:77,row:46},{col:74,row:42},{col:74,row:42}],
+    [{col:73,row:42},{col:78,row:46},{col:76,row:47},{col:77,row:47},{col:79,row:46},{col:74,row:42},{col:78,row:46},{col:76,row:47},{col:77,row:47},{col:79,row:46},{col:74,row:42}],
+    [{col:73,row:42},{col:78,row:46},{col:76,row:48},{col:77,row:48},{col:79,row:46},{col:74,row:42},{col:78,row:46},{col:76,row:48},{col:77,row:48},{col:79,row:46},{col:74,row:42}],
+    [{col:73,row:42},{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:74,row:42},{col:74,row:42}],
+  ],
+};
+// 楼梯：一层左上角第 1 列的 1~3 行上楼，二层左上角第 1 列的 1~2 行下楼
+const SCENE_STAIRS_UP = { x: 0, y: 0, w: TILE, h: 3 * TILE };
+const SCENE_STAIRS_DOWN = { x: 0, y: 0, w: TILE, h: 2 * TILE };
+// 二层的四台游戏机（左上 / 右上 / 左下 / 右下，结构相同，还没做玩法）
+const SCENE_ARCADE = [
+  { x: 1 * TILE, y: 2 * TILE, w: 4 * TILE, h: 3 * TILE },
+  { x: 6 * TILE, y: 2 * TILE, w: 4 * TILE, h: 3 * TILE },
+  { x: 1 * TILE, y: 5 * TILE, w: 4 * TILE, h: 3 * TILE },
+  { x: 6 * TILE, y: 5 * TILE, w: 4 * TILE, h: 3 * TILE },
+];
 
 // ---------- 对局状态 ----------
 let _deck = [];      // 剩余牌堆
@@ -111,45 +137,58 @@ export function showCasinoView() {
   pushNav('casinoView');
   showView('casinoView');
   playCasino();
+  _floor = 1; // 每次进游戏厅都从一层开始
   renderScene();
   // 首次进游戏厅：依次指一下赌桌 / 麻将桌 / 抽卡机 / 兑换
   import('./guide.js').then((m) => m.maybeShowGuide('casino'));
 }
 
-// 游戏厅首页：仿训练/饲育屋整页场景布局 + 赌桌/麻将桌热区（data-tip 走游戏统一 tooltip，点击分别跳转 21 点/口袋麻将）
+// 游戏厅首页：仿训练/饲育屋整页场景布局 + 各楼层热区（data-tip 走游戏统一 tooltip，点击跳转对应玩法）
+let _floor = 1; // 当前楼层：1=营业厅 2=游戏机区
+
+// 热区元素：cls 用于绑定点击（没有玩法的只给 cls 之外的空串），tip 走统一 tooltip
+function hotHtml(cls, tip, r) {
+  return `<div class="casino-scene-hot${cls ? ' ' + cls : ''}" data-tip="${tip}"
+          style="left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px"></div>`;
+}
+
 function renderScene() {
   const box = $('casinoContent');
   if (!box) return;
+  hideFoodTip(); // 换楼层后原热区没了，坐标下压着的却是新热区，tooltip 会带着旧文案留在屏上
+  const scene = _floor === 2 ? SCENE_FLOOR2 : SCENE_FLOOR1;
+  const hots = _floor === 2
+    ? SCENE_ARCADE.map((r, i) => hotHtml(i === 0 ? 'casino-hot-penguin' : '', i === 0 ? '跳企鹅' : '敬请期待', r)).join('')
+      + hotHtml('casino-hot-down', '下楼', SCENE_STAIRS_DOWN)
+    : hotHtml('casino-hot-bj', '21 点', SCENE_HOT)
+      + hotHtml('casino-hot-mj', '口袋麻将', SCENE_MAHJONG)
+      + hotHtml('casino-hot-g1', '1号抽卡机', SCENE_GACHA1)
+      + hotHtml('casino-hot-g2', '2号抽卡机', SCENE_GACHA2)
+      + hotHtml('casino-coin-exchange casino-hot-ex', '兑换游戏币', { x: 4 * TILE, y: 1 * TILE, w: 3 * TILE, h: 2 * TILE })
+      + hotHtml('casino-hot-up', '上二楼', SCENE_STAIRS_UP);
   box.innerHTML = `
     <div class="casino-scene-page">
       <div class="casino-scene">
-        <canvas class="casino-scene-canvas" width="${SCENE.w * TILE}" height="${SCENE.h * TILE}"></canvas>
-        <div class="casino-scene-hot" data-tip="21 点"
-          style="left:${SCENE_HOT.x}px;top:${SCENE_HOT.y}px;width:${SCENE_HOT.w}px;height:${SCENE_HOT.h}px"></div>
-        <div class="casino-scene-hot" data-tip="口袋麻将"
-          style="left:${SCENE_MAHJONG.x}px;top:${SCENE_MAHJONG.y}px;width:${SCENE_MAHJONG.w}px;height:${SCENE_MAHJONG.h}px"></div>
-        <div class="casino-scene-hot" data-tip="1号抽卡机"
-          style="left:${SCENE_GACHA1.x}px;top:${SCENE_GACHA1.y}px;width:${SCENE_GACHA1.w}px;height:${SCENE_GACHA1.h}px"></div>
-        <div class="casino-scene-hot" data-tip="2号抽卡机"
-          style="left:${SCENE_GACHA2.x}px;top:${SCENE_GACHA2.y}px;width:${SCENE_GACHA2.w}px;height:${SCENE_GACHA2.h}px"></div>
-        <div class="casino-scene-hot casino-coin-exchange" data-tip="兑换游戏币"
-          style="left:${4*TILE}px;top:${1*TILE}px;width:${3*TILE}px;height:${2*TILE}px"></div>
+        <canvas class="casino-scene-canvas" width="${scene.w * TILE}" height="${scene.h * TILE}"></canvas>
+        ${hots}
       </div>
     </div>`;
-  const hots = box.querySelectorAll('.casino-scene-hot');
-  hots[0]?.addEventListener('click', enterTable);
-  hots[1]?.addEventListener('click', enterMahjong);
-  hots[2]?.addEventListener('click', () => import('./gacha.js').then(m => m.showGachaView(1)));
-  hots[3]?.addEventListener('click', () => import('./gacha.js').then(m => m.showGachaView(2)));
-  hots[4]?.addEventListener('click', exchangeCoin);
-  drawScene(box.querySelector('.casino-scene-canvas'));
+  box.querySelector('.casino-hot-bj')?.addEventListener('click', enterTable);
+  box.querySelector('.casino-hot-mj')?.addEventListener('click', enterMahjong);
+  box.querySelector('.casino-hot-g1')?.addEventListener('click', () => import('./gacha.js').then(m => m.showGachaView(1)));
+  box.querySelector('.casino-hot-g2')?.addEventListener('click', () => import('./gacha.js').then(m => m.showGachaView(2)));
+  box.querySelector('.casino-hot-ex')?.addEventListener('click', exchangeCoin);
+  box.querySelector('.casino-hot-up')?.addEventListener('click', () => { _floor = 2; renderScene(); });
+  box.querySelector('.casino-hot-down')?.addEventListener('click', () => { _floor = 1; renderScene(); });
+  box.querySelector('.casino-hot-penguin')?.addEventListener('click', () => import('./penguin.js').then((m) => m.showPenguinView()));
+  drawScene(box.querySelector('.casino-scene-canvas'), scene);
 }
 
 // 绘制 tile 地图到画布（与饲育屋/农田同款 tileset，放大 1.5x 像素风）
-function drawScene(canvas) {
+function drawScene(canvas, scene) {
   if (!canvas) return;
   const dpr = window.devicePixelRatio || 1;
-  const cw = SCENE.w * TILE, ch = SCENE.h * TILE;
+  const cw = scene.w * TILE, ch = scene.h * TILE;
   canvas.width = cw * dpr;
   canvas.height = ch * dpr;
   canvas.style.width = cw + 'px';
@@ -159,9 +198,9 @@ function drawScene(canvas) {
   ctx.imageSmoothingEnabled = false;
   const img = new Image();
   img.onload = () => {
-    for (let r = 0; r < SCENE.h; r++) {
-      for (let c = 0; c < SCENE.w; c++) {
-        const { col: tc, row: tr } = SCENE.tiles[r][c];
+    for (let r = 0; r < scene.h; r++) {
+      for (let c = 0; c < scene.w; c++) {
+        const { col: tc, row: tr } = scene.tiles[r][c];
         ctx.drawImage(img, tc * 16, tr * 16, 16, 16, c * TILE, r * TILE, TILE, TILE);
       }
     }
@@ -293,7 +332,7 @@ function renderCasino() {
 
 // 下注区（21 点 / 口袋麻将共用）：点击式刻度条（自制，非原生 range）+ 开始对局 dock 贴底
 // holder: { bet, lastResult }——余额不足时自动回落到可承受档位并写回 holder.bet
-function renderBetAreaCommon(balance, holder, startId, startText) {
+export function renderBetAreaCommon(balance, holder, startId, startText) {
   // 余额不足以维持当前档位时，自动落到可承受的最高档位
   const maxAffIdx = BETS.findIndex(b => b > balance);
   const sliderMax = maxAffIdx === -1 ? BETS.length - 1 : maxAffIdx - 1;
@@ -655,17 +694,19 @@ function fmtHistoryTime(ts) {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// source: 'bj' 21点 | 'mj' 麻将
+// source: 'bj' 21点 | 'mj' 麻将 | 'pg' 跳企鹅
 export function showCasinoHistoryView(source) {
   pushNav('casinoHistoryView');
   const content = $('casinoHistoryContent');
   if (!content) return;
   const isMj = source === 'mj';
-  const records = (isMj ? gameData.mahjongRecords : gameData.casinoRecords) || [];
-  const title = isMj ? '口袋麻将战绩' : '21点战绩';
+  const isPg = source === 'pg';
+  const records = (isPg ? gameData.penguinRecords : isMj ? gameData.mahjongRecords : gameData.casinoRecords) || [];
+  const title = isPg ? '跳企鹅战绩' : isMj ? '口袋麻将战绩' : '21点战绩';
   const CN = ['零', '一', '二', '三', '四'];
   // 徽章（仿抽卡记录 tier 色块）：21点按输赢上色；麻将按名次上色
   const badge = r => {
+    if (isPg) return r.action === 'win' ? { text: '提现', bg: '#d4850a' } : { text: '落水', bg: '#b5544e' };
     if (isMj) {
       const colors = ['#d4850a', '#8a8a8a', '#b87333', '#5a5a5a'];
       return { text: `第${CN[r.rank]}名`, bg: colors[r.rank - 1] || '#7a8a8a' };   // 存档里 rank 是 1 起（1~4），CN 首位是占位的「零」
@@ -680,7 +721,7 @@ export function showCasinoHistoryView(source) {
     ${records.map(r => {
     const time = fmtHistoryTime(r.time);
     const b = badge(r);
-    const note = isMj ? `下注 ${formatNum(r.stake)} 档` : r.result;
+    const note = isPg ? `${r.steps} 跳 · 下注 ${formatNum(r.bet)}` : isMj ? `下注 ${formatNum(r.stake)} 档` : r.result;
     const color = r.net > 0 ? '#d4850a' : r.net < 0 ? '#b5544e' : 'rgba(255,255,255,0.45)';
     return `<div class="rec-row">
         <span class="rec-time">${time}</span>

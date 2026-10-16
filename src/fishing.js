@@ -268,7 +268,7 @@ function resumeBuffCountdown() {
     return true;
   }
   if (honeyBuffActive && honeyPausedRemaining > 0) {
-    $('idleText').textContent = '✦ 甜蜜蜜生效中 ✦';
+    $('idleText').textContent = '✦ 甜甜蜜生效中 ✦';
     setHoneyCountdownEnd(Date.now() + honeyPausedRemaining);
     const d = honeyPausedRemaining;
     setHoneyPausedRemaining(0);

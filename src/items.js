@@ -1481,7 +1481,7 @@ export function activateHoney() {
   particles.stop();
   particles.start('rgba(255,215,0,1)', 'circle', { sizeMult: 0.7, alphaMult: 0.6 });
 
-  $('idleText').textContent = '✦ 甜蜜蜜生效中 ✦';
+  $('idleText').textContent = '✦ 甜甜蜜生效中 ✦';
   setIdleMsgIdx(-1);
   if (nextEncounterTimer) clearTimeout(nextEncounterTimer);
   if (honeyExpiryTimer) clearTimeout(honeyExpiryTimer);
@@ -1603,7 +1603,7 @@ export function handleHoneyExpired() {
   setHoneyBuffActive(false);
   setHoneyCountdownEnd(0);
   clearHoneyCountdown();
-  $('idleText').textContent = '✦ 甜蜜蜜的效果渐渐褪去了';
+  $('idleText').textContent = '✦ 甜甜蜜的效果渐渐褪去了';
   const wasted = buffWastedNow();
   if (wasted) _buffRenewPending = true;
   if (!wasted && !charmBuffActive && takeBuffForRenew('sweet-honey')) {
@@ -1695,7 +1695,7 @@ export function restoreHoneyRecord(rec, keepPaused) {
   setHoneyPausedRemaining(0);
   setHoneyCountdownEnd(0);
   if (isIdleStageVisible() || !left) {
-    $('idleText').textContent = '✦ 甜蜜蜜生效中 ✦';
+    $('idleText').textContent = '✦ 甜甜蜜生效中 ✦';
     setIdleMsgIdx(-1);
     particles.stop();
     particles.start('rgba(255,215,0,1)', 'circle', { sizeMult: 0.7, alphaMult: 0.6 });

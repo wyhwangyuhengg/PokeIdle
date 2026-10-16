@@ -2900,13 +2900,15 @@ html.mobile-app #quitHide { display: none !important; }
 .phone-folder-grid .phone-app-name { font-size: 9px; }
 /* 窗口里的红点：描边用窗口底色，才是"从卡片上挖出来"的效果 */
 .phone-folder-grid .phone-app-badge { width: 7px; height: 7px; border-width: 1px; border-color: var(--phone-box, #e8dcc0); }
-/* 编辑态底部工具条：不压底色，按钮跟着应用图标一个配色（绿底白字） */
+/* 编辑态底部工具条：不压底色，按钮跟着应用图标一个配色（绿底白字）
+   层级压在通用确认条（.text-box，z-index 200）之下：俩按钮和确认条都在屏幕底部，
+   压在上面会把确认条的「确定/取消」挡住，想关确认条反而只能点到「完成」 */
 .phone-edit-bar {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 3000;
+  z-index: 150;
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -12211,3 +12213,219 @@ html.ui-dual .app-host { /* 下屏容器要真实盒子，app 页才撑得满、
 }
 .hot-bar i { display: block; height: 100%; width: 0; background: var(--ui-color, #376d56); transition: width 0.15s; }
 .hot-num { margin-top: 8px; font-size: 10px; opacity: 0.8; font-variant-numeric: tabular-nums; }
+
+/* === 跳企鹅（游戏厅二楼游戏机）===
+   三段式：顶部金额条 / 中间浮冰展示区 / 底部两块操作。
+   浮冰按 left 百分比定位（JS 算），企鹅与浮冰同列站在冰面上；水面用半透明叠层做，不引入新主题色。 */
+.pg-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 9px;
+  border-bottom: 1px solid var(--item-border);
+}
+.pg-topbal {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+.pg-topbal img { width: 11px; height: 11px; image-rendering: pixelated; }
+.pg-topcash { font-size: 11px; opacity: 0.85; }
+.pg-topcash b { font-size: 15px; font-weight: 700; color: #d4850a; font-variant-numeric: tabular-nums; }
+.pg-topcash i { font-style: normal; font-size: 10px; opacity: 0.7; }
+
+/* 展示区：浮冰骑在水面线上 */
+.pg-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  --pg-line: 52%;   /* 水面线：浮冰、企鹅、水花都对齐这一条 */
+}
+.pg-water {
+  position: absolute;
+  left: 0; right: 0; top: var(--pg-line); bottom: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.13));
+}
+.pg-water::before {   /* 水位线 */
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+}
+.pg-wave {
+  position: absolute;
+  left: -25%; right: -25%;
+  height: 1px;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.35) 0 10px, transparent 10px 22px);
+  animation: pg-wave-move 5s linear infinite;
+}
+.pg-wave2 { margin-top: 14px; opacity: 0.6; animation-duration: 7.5s; animation-direction: reverse; }
+@keyframes pg-wave-move {
+  from { transform: translateX(0); }
+  to { transform: translateX(22px); }
+}
+
+/* 浮冰：多边形切出来的碎冰（上窄下宽、两侧斜切）。
+   倒影用 drop-shadow 画——clip-path 会把子元素连同伪元素一起裁掉，::after 做不出框外的倒影 */
+.pg-floe {
+  position: absolute;
+  top: var(--pg-line);
+  width: 16px; height: 11px;
+  margin: -5.5px 0 0 -8px;
+  background: linear-gradient(180deg, #fff 0 42%, rgba(226, 240, 252, 0.92) 42% 100%);
+  clip-path: polygon(12% 0%, 84% 0%, 100% 36%, 90% 100%, 10% 100%, 0% 36%);
+  filter: drop-shadow(0 3px 0 rgba(255, 255, 255, 0.22));   /* 水下的冰影 */
+  transition: opacity 0.2s, filter 0.2s;
+}
+.pg-floe.done { opacity: 0.72; }
+.pg-floe.next { animation: pg-next-pulse 1.1s ease-in-out infinite; }
+@keyframes pg-next-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+/* 被踩：等企鹅落到冰面那一刻（滞空 0.34s）再往下一沉 */
+.pg-floe.land { animation: pg-floe-dip 0.3s ease-out 0.34s both; }
+@keyframes pg-floe-dip {
+  0% { transform: translateY(0); }
+  45% { transform: translateY(3px); }
+  100% { transform: translateY(0); }
+}
+/* 碎裂：两块冰各自滑开（平时与冰面同色看不出接缝，碎的那一刻撤掉父级裁剪才露出来） */
+.pg-half {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #fff 0 42%, rgba(226, 240, 252, 0.92) 42% 100%);
+  opacity: 0;
+}
+.pg-half.l { clip-path: polygon(12% 0%, 50% 0%, 47% 100%, 10% 100%, 0% 36%); }
+.pg-half.r { clip-path: polygon(50% 0%, 84% 0%, 100% 36%, 90% 100%, 47% 100%); }
+/* 夜间模式：纯白冰面在暗屏上太扎眼，压暗一档（两块碎冰要跟着一起改） */
+[data-theme="dark"] .pg-floe,
+[data-theme="dark"] .pg-half { background: linear-gradient(180deg, #d3e3d9 0 42%, rgba(176, 202, 186, 0.9) 42% 100%); }
+.pg-floe.broken { background: none; clip-path: none; filter: none; }
+.pg-floe.broken .pg-half.l { animation: pg-half-l 0.55s ease-in forwards; }
+.pg-floe.broken .pg-half.r { animation: pg-half-r 0.55s ease-in forwards; }
+@keyframes pg-half-l {
+  from { transform: none; opacity: 1; }
+  to { transform: translate(-9px, 12px) rotate(-26deg); opacity: 0; }
+}
+@keyframes pg-half-r {
+  from { transform: none; opacity: 1; }
+  to { transform: translate(9px, 12px) rotate(26deg); opacity: 0; }
+}
+
+/* 企鹅：站在浮冰上，整体水平镜像成朝右跳。结冻头/解冻头两张立绘叠着放，落水时切显隐 */
+.pg-penguin {
+  position: absolute;
+  top: var(--pg-line);
+  width: 18px;
+  height: 28px;
+  margin: -6px 0 0 0;
+  transform: translate(-50%, -100%) scaleX(-1);
+  /* 抛体的水平分量是匀速的：水平匀速 + 垂直抛物线，合起来才像"跳过去" */
+  transition: left 0.34s linear;
+}
+.pg-penguin img {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  transform-origin: 50% 100%;   /* 落水缩小时以脚为基准 */
+  transition: opacity 0.12s;
+}
+.pg-penguin .pg-unmelt { opacity: 0; }
+.pg-penguin.melt .pg-melt { opacity: 0; }
+.pg-penguin.melt .pg-unmelt { opacity: 1; }
+.pg-penguin.jump .pg-melt { animation: pg-jump 0.34s both; }
+/* 上升段减速（ease-out）、下落段加速（ease-in），拼出抛物线的重力感 */
+@keyframes pg-jump {
+  0% { transform: translateY(0); animation-timing-function: cubic-bezier(0.33, 0.66, 0.66, 1); }
+  50% { transform: translateY(-24px); animation-timing-function: cubic-bezier(0.33, 0, 0.66, 0.33); }
+  100% { transform: translateY(0); }
+}
+.pg-penguin.land { animation: pg-penguin-dip 0.3s ease-out 0.34s both; }
+@keyframes pg-penguin-dip {
+  0%, 100% { transform: translate(-50%, -100%) scaleX(-1); }
+  45% { transform: translate(-50%, calc(-100% + 3px)) scaleX(-1); }
+}
+/* 落水：沉进水里但不淡出——结算页要一直留着倒在水里的姿态 */
+.pg-penguin.fall img { animation: pg-fall 0.7s cubic-bezier(0.4, 0.05, 0.9, 0.5) forwards; }
+@keyframes pg-fall {
+  0% { transform: translateY(0) rotate(0deg) scale(1); }
+  45% { transform: translateY(10px) rotate(100deg) scale(0.92); }   /* 换解冻头的那一帧 */
+  100% { transform: translateY(18px) rotate(220deg) scale(0.78); }
+}
+.pg-splash {
+  position: absolute;
+  top: var(--pg-line);
+  width: 12px; height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: pg-splash 0.6s ease-out forwards;
+}
+@keyframes pg-splash {
+  0% { opacity: 0.9; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(3.2); }
+}
+
+/* 终点旗：插在最右那块冰上 */
+.pg-flag {
+  position: absolute;
+  top: var(--pg-line);
+  width: 2px;
+  height: 32px;
+  margin: -37px 0 0 -1px;
+  background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0.78));
+}
+.pg-flag::after {   /* 旗面：杆顶向右飘的三角 */
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 1px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 11px solid #d4850a;
+}
+
+.pg-stage .casino-result { top: 6px; }
+
+/* 底部两块：左前进 / 右提现 */
+.pg-actions {
+  flex: 0 0 auto;
+  height: 40px;   /* 与结算页的 bottom-dock 等高：切换时展示区不上下跳 */
+  display: flex;
+  border-top: 1px solid rgba(var(--ui-color-rgb), 0.3);
+}
+.pg-actions .pg-btn {
+  flex: 1;
+  min-height: 36px;
+  border: none;
+  border-right: 1px solid rgba(var(--ui-color-rgb), 0.3);
+  background: transparent;
+  color: var(--ui-color);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pg-actions .pg-btn:last-child { border-right: none; }
+.pg-actions .pg-btn-cash { color: #d4850a; }
+@media (hover: hover) {
+  .pg-actions .pg-btn:hover:not(:disabled) { background: rgba(var(--ui-color-rgb), 0.08); }
+}
+.pg-actions .pg-btn:active:not(:disabled) { background: rgba(var(--ui-color-rgb), 0.16); }
+/* 结算页的「再来一局」：容器没有内边距，去掉 bottom-dock 默认的负外边距，
+   免得两侧各溢出 3px 被裁掉 */
+.pg-app .bottom-dock { margin: auto 0 0; }
+.pg-actions .pg-btn:disabled { opacity: 0.4; cursor: default; }

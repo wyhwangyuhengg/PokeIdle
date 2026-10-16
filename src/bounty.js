@@ -1,6 +1,6 @@
 // ===== 地区悬赏 =====
 // 每天 0 点刷新：每地区指定若干只宝可梦（图鉴加权抽样），奖励糖果或道具。
-// 仓库里有该物种的在仓个体即可提交；只有今日到访过的地区能看到内容，提交必须到当地。
+// 仓库里有该物种的在仓宝可梦（没孵化的蛋不算）即可提交；只有今日到访过的地区能看到内容，提交必须到当地。
 import { REGION_CYCLE, ITEM_NAMES, BOUNTY_PER_REGION, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_JITTER, BOUNTY_RARE_WEIGHT, BOUNTY_COST_REF, BOUNTY_CANDY_CN, BOUNTY_BIG_CN, BOUNTY_BIG_RARE_CHANCE, BOUNTY_EXCLUSIVE_CHANCE, BOUNTY_MINT_CHANCE, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BOUNTY_EXP_CANDY_QTY, EVO_PRICES } from './config.js';
 import { gameData, allPokemon, getPokemonByIndex, isPowerForm, isWildExcluded, getCurrentRegion, pushNav, saveGame, addSystemLog, ensureGender, genderBadge, isPokemon, randInt, ivOf, effIvTotal } from './state.js';
 import { $, showView, updateStats, tryLoadImage, logicViewport, popupBounds, showConfirmBar, watchOutsidePress } from './ui.js';
@@ -159,10 +159,11 @@ export function ensureBounty() {
   if (cur >= 0 && cur < g.visited.length) g.visited[cur] = true;
 }
 
-// 仓库中是否有该物种的在仓个体（获得时间不限，任意来源均可提交）
+// 仓库中是否有该物种的在仓**宝可梦**（获得时间不限，任意来源均可提交；
+// 没孵化的蛋不算——蛋还没成型，不能拿蛋顶悬赏）
 function hasInRoster(pokemonIdx) {
   const idx = String(pokemonIdx);
-  return (gameData.roster || []).some(p => String(p.species) === idx && p.inRoster);
+  return (gameData.roster || []).some(p => String(p.species) === idx && p.inRoster && isPokemon(p));
 }
 
 // 今日已解锁的悬赏目标（已到访地区、未提交、未忽略）图鉴 index 集合，

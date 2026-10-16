@@ -1,4 +1,4 @@
-import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_SPAWN_MIN, TWIST_SPAWN_MAX, TWIST_SPAWN_HONEY_MIN, TWIST_SPAWN_HONEY_MAX, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
+import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_SPAWN_MIN, TWIST_SPAWN_MAX, TWIST_SPAWN_HONEY_MIN, TWIST_SPAWN_HONEY_MAX, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, PENGUIN_STEPS, PENGUIN_BREAK_CHANCE, PENGUIN_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, honeyBuffActive, charmBuffActive, saveGame, setSaveSuspended, formatNum, pad, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing, isPokemon } from './state.js';
 import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, applyWindowBg, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform, touchText, watchOutsidePress } from './ui.js';
 import { doCandyExchange, doSellBall, useBuffNowOrDefer, refillBuffIfEmpty, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf, BASIC_ITEM_ORDER } from './items.js';
@@ -232,10 +232,13 @@ function refreshDataStats() {
   };
   const cs = wlStat(gameData.casinoRecords || [], false);
   const mj = wlStat(gameData.mahjongRecords || [], true);
+  const pg = wlStat(gameData.penguinRecords || [], true);
   $('dataCasinoWL').textContent = `胜 ${cs.w} / 负 ${cs.l} / 平 ${cs.p}`;
   $('dataCasinoNet').textContent = `${cs.net > 0 ? '+' : ''}${formatNum(cs.net)} 币`;
   $('dataMjWL').textContent = `胜 ${mj.w} / 负 ${mj.l} / 平 ${mj.p}`;
   $('dataMjNet').textContent = `${mj.net > 0 ? '+' : ''}${formatNum(mj.net)} 币`;
+  $('dataPgWL').textContent = `胜 ${pg.w} / 负 ${pg.l} / 平 ${pg.p}`;
+  $('dataPgNet').textContent = `${pg.net > 0 ? '+' : ''}${formatNum(pg.net)} 币`;
   const earnedEl = $('dataEarned');
   if (earnedEl) {
     // 只列基础道具：进化道具/专属道具/薄荷加起来上百种，一行一个铺不开
@@ -356,6 +359,8 @@ export function showDataView() {
       <div class="stat-row"><span>21点 净盈亏</span><span id="dataCasinoNet"></span></div>
       <div class="stat-row"><span>麻将 胜/负/平</span><span id="dataMjWL"></span></div>
       <div class="stat-row"><span>麻将 净盈亏</span><span id="dataMjNet"></span></div>
+      <div class="stat-row"><span>跳企鹅 胜/负/平</span><span id="dataPgWL"></span></div>
+      <div class="stat-row"><span>跳企鹅 净盈亏</span><span id="dataPgNet"></span></div>
       <div class="stat-row"><span>卡册收集进度</span><span id="dataCardPct"></span></div>
 
       <div class="stat-section">道具累计获得</div>
@@ -593,7 +598,7 @@ export function renderSystemLogs() {
         break;
       case 'casino': {
         const p = log.details.profit;
-        const t = { blackjack: '黑杰克', win: '你赢了', lose: '输了', push: '平局' }[log.details.action] || '一局';
+        const t = { blackjack: '黑杰克', win: '你赢了', lose: '输了', push: '平局', cash: '提现' }[log.details.action] || '一局';
         desc = `游戏厅：${t} ${p > 0 ? '+' + p : p} 糖果`;
         break;
       }
@@ -2369,13 +2374,16 @@ const TUTORIAL_SECTIONS = [
   {
     title: '游戏厅',
     html: `<p>在<b>手机</b>桌面打开<b>游戏厅</b>应用。点击前台区域可以用<b>糖果</b>兑换<b>游戏币</b>（<b>${COIN_RATE} 糖果 = 1 游戏币</b>），柜台处选择兑换档位即可。</p>`
-      + `<p>游戏厅目前提供：<b>21点</b>（详见「<b>21点</b>」章节）、<b>口袋麻将</b>（详见「<b>口袋麻将</b>」章节），<b>抽卡机</b>（详见「<b>抽卡机</b>」章节）。</p>`,
+      + `<p>一层是赌桌区，从左上角的<b>楼梯</b>上二层是游戏机区。游戏厅目前提供：<b>21点</b>与<b>跳企鹅</b>（详见「<b>小游戏</b>」章节）、<b>口袋麻将</b>（详见「<b>口袋麻将</b>」章节），<b>抽卡机</b>（详见「<b>抽卡机</b>」章节）。</p>`,
   },
   {
-    title: '21点',
-    html: `<p>在<b>手机</b>桌面打开<b>游戏厅</b>应用，点击赌桌进入<b>21点</b>。</p>`
-      + `<p><b>规则</b>：与庄家比点数更接近 <b>21</b> 且不爆牌；A 可算 <b>1 或 11</b>、J/Q/K 计 <b>10</b>。可<b>要牌</b>补一张、<b>停牌</b>交给庄家、<b>加倍</b>再押一份只补 1 张。</p>`
-      + `<p>庄家不足 <b>${DEALER_STAND}</b> 必须继续要牌。<b>黑杰克</b>（前两张即 21）按 <b>${BJ_MULT} 倍</b>赔付；双方黑杰克平局返还，庄家黑杰克压制普通 21。</p>`,
+    title: '小游戏',
+    html: `<p>在<b>手机</b>桌面打开<b>游戏厅</b>应用：<b>21点</b>在一层赌桌，<b>跳企鹅</b>在二层游戏机区第一台机器。</p>`
+      + `<p><b>21点</b>：与庄家比点数更接近 <b>21</b> 且不爆牌；A 可算 <b>1 或 11</b>、J/Q/K 计 <b>10</b>。可<b>要牌</b>补一张、<b>停牌</b>交给庄家、<b>加倍</b>再押一份只补 1 张。庄家不足 <b>${DEALER_STAND}</b> 必须继续要牌；<b>黑杰克</b>（前两张即 21）按 <b>${BJ_MULT} 倍</b>赔付，双方黑杰克平局返还。</p>`
+      + `<p><b>跳企鹅</b>：下注后点「<b>前进</b>」让冰砌鹅跳到下一块浮冰，每跳有 <b>${Math.round(PENGUIN_BREAK_CHANCE * 100)}%</b> 概率踩碎浮冰掉进水里（第一跳同样有风险），掉下去本局注额就没了。每站住一次可提现金额 <b>×${PENGUIN_MULT}</b>，点「<b>提现</b>」随时落袋，跳到最右（共 <b>${PENGUIN_STEPS}</b> 跳）自动结算。各跳数对应的提现倍率：</p>`
+      + tutorialTable(
+        Array.from({ length: PENGUIN_STEPS }, (_, i) => [`${i + 1} 跳`, `×${Math.pow(PENGUIN_MULT, i + 1).toFixed(2)}`]),
+        ['跳数', '提现倍率'], ['auto', 'auto']),
   },
   {
     title: '口袋麻将',
@@ -2496,7 +2504,7 @@ const TUTORIAL_SUMMARIES = {
   '树果方块': '方块引诱的宝可梦闪光率为默认值不受增益加成。',
   '招募帮手': '帮手也是会休息的。',
   '游戏厅': '等糖果富余了再来玩吧。',
-  '21点': '富贵险中求。',
+  '小游戏': '富贵险中求。',
   '口袋麻将': '玩法借鉴自原子碰将，只有对对胡。',
   '抽卡机': '单纯收集卡牌，无特殊作用。',
   '随从': '不知道干什么的时候可以抽一只随从。',

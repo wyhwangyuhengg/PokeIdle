@@ -208,12 +208,13 @@ export const TRADE_WANT_LEVEL_MAX = 40;
 export const TRADE_GIVE_LEVEL_MAX = 60; // 给出宝可梦等级随机上限（1~60）
 export const TRADE_SHINY_CHANCE = 1 / 500; // NPC 给出闪光宝可梦的概率（事件才是刷闪主场，交换只做补充）
 export const TRADE_IV_SUM_MIN = 100;    // 个体值总和过低时补强 1~2 项到 31
-// 交换对价：物种价值 = 稀有度 × rarity + 种族值占比 × bst（0~1 量级：神兽≈1.0，常见弱宠≈0.35）；
-// 需求附加条件（等级 / 个体值下限 / 性别）按 level/iv/gender 权重折算成价值。
-// 给出的宝可梦按「目标价值 = 需求价值 × 随机系数」挑选，所以"给一只绿毛虫换他的快龙"不会出现；
+// 交换对价：按「家族分位」对齐（0~1，家族榜按基础形态价值排序）。
+// 需求的家族分位 + 附加条件（等级 / 个体值下限 / 性别）折算的分位 = 目标分位，
+// 乘随机系数后落到榜上的某一档，再从附近家族里抽具体宝可梦。
+// 用分位而不是绝对价值：种族值上端物种极少，直接按价值取最近的一批会让准神被反复抽中；
 // 系数上限那一侧就是偶尔的捡漏机会，下限那一侧是略微吃亏但可跳过的 offer。
-export const TRADE_VALUE_W = { rarity: 0.6, bst: 0.4, level: 0.45, iv: 0.4, gender: 0.15 };
-export const TRADE_VALUE_JITTER = [0.85, 1.35];
+export const TRADE_VALUE_W = { rarity: 0.6, bst: 0.4, level: 0.18, iv: 0.15, gender: 0.05 };
+export const TRADE_VALUE_JITTER = [0.95, 1.2];
 export const TRADE_GIVE_LEVEL_NONE = 15; // 需求没指定等级时，给出等级的随机上限（好条件才配好报酬）
 export const TRADE_BASE_FORM_CHANCE = 0.85; // 家族内抽基础形态的概率，其余给变体（mega/超极巨/地区形态）
 
@@ -515,6 +516,10 @@ export const GACHA_TIER_WEIGHT = { N: 60, R: 32, SR: 8 };
 export const COIN_RATE = 20;           // 1 游戏币 = 多少糖果
 export const DEALER_STAND = 17;        // 庄家停牌点数
 export const BJ_MULT = 1.5;            // 黑杰克赔付倍率
+// 跳企鹅（二楼游戏机）
+export const PENGUIN_STEPS = 10;            // 浮冰跳数（跳到最右即走满）
+export const PENGUIN_BREAK_CHANCE = 0.22;   // 每跳浮冰碎裂概率（第一跳也算）
+export const PENGUIN_MULT = 1.25;           // 每跳成功的倍率（×1.25^n）
 
 // ===== 口袋麻将 =====
 export const HAND_SIZE = 8;            // 起手手牌数

@@ -46,7 +46,7 @@ const GUIDES = {
       { sel: '.berry-frame, .berry-plot-add', title: '地块', text: '点空地种下，点击作物浇水' },
     ],
   },
-  // 游戏厅：场景里四处热区；两张桌子在场景下半部，气泡往上放，另外两个往下放
+  // 游戏厅：场景里几处热区；两张桌子在场景下半部，气泡往上放，另外两个往下放
   casino: {
     flag: 'casinoGuideSeen',
     view: 'casinoView',
@@ -55,6 +55,7 @@ const GUIDES = {
       { sel: '[data-tip="21 点"]',     title: '21 点',    text: '点这张赌桌玩 21 点', above: true },
       { sel: '[data-tip="口袋麻将"]',  title: '口袋麻将', text: '点这张麻将桌打口袋麻将', above: true },
       { sel: '[data-tip="1号抽卡机"]', title: '抽卡机',   text: '两台抽卡机都可以用游戏币抽卡' },
+      { sel: '.casino-hot-up',        title: '上二楼',   text: '楼梯上二楼，还有一排游戏机' },
     ],
   },
 };

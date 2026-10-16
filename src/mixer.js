@@ -911,7 +911,7 @@ function restoreIdleText() {
   if (phase !== 'idle') return;
   const t = $('idleText');
   if (!t) return;
-  if (window.__honeyBuffActive__) t.textContent = '✦ 甜蜜蜜生效中 ✦';
+  if (window.__honeyBuffActive__) t.textContent = '✦ 甜甜蜜生效中 ✦';
   else if (window.__charmBuffActive__) t.textContent = '✦ 闪耀护符生效中 ✦';
   else setIdleMsgIdx(-1);
 }
