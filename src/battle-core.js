@@ -344,15 +344,43 @@ export function useMove(actor, target, moveId, data, events = [], ctx = null) {
     }
     case 'recoil': {
       const before = target.hp;
-      if (hit(actor, target, mv, ef, events)) {
-        const ratio = ef.ratio || 0.25; // 每招各自的反噬比例（如双刃头锤 50%、舍身冲撞 33%）
-        const recoil = Math.floor((before - Math.max(0, target.hp)) * ratio);
-        const fromHp = actor.hp;
-        actor.hp -= recoil;
-        // dmg 事件（含前后血量）让播放层刷新血条/弹伤害数字，否则只显示文字血条不动
-        events.push({ t: 'dmg', who: actor.name, uid: actor.uid, amount: recoil, from: fromHp, to: actor.hp, text: `${actor.name}受到了 ${recoil} 点反作用力伤害！` });
-        if (actor.hp <= 0) events.push({ t: 'faint', who: actor.name, uid: actor.uid, text: `${actor.name}倒下了！` });
+      const landed = hit(actor, target, mv, ef, events);
+      // halfHp：按最大HP一半反伤（惊爆大头/铁蹄光线/叶绿爆震），未命中或被守住挡下也照样承受
+      if (!landed && !ef.halfHp) break;
+      const ratio = ef.ratio || 0.25; // 每招各自的反噬比例（如双刃头锤 50%、舍身冲撞 33%）
+      const recoil = ef.halfHp ? Math.ceil(actor.maxHp / 2) : Math.floor((before - Math.max(0, target.hp)) * ratio);
+      const fromHp = actor.hp;
+      actor.hp -= recoil;
+      // dmg 事件（含前后血量）让播放层刷新血条/弹伤害数字，否则只显示文字血条不动
+      events.push({ t: 'dmg', who: actor.name, uid: actor.uid, amount: recoil, from: fromHp, to: actor.hp, text: `${actor.name}受到了 ${recoil} 点反作用力伤害！` });
+      if (actor.hp <= 0) events.push({ t: 'faint', who: actor.name, uid: actor.uid, text: `${actor.name}倒下了！` });
+      break;
+    }
+    case 'finalGambit': {
+      // 搏命：把当前剩余HP全额砸向对手，出手后使用者倒下；
+      // 未命中/属性免疫/被守住挡下时招式失败，使用者不倒下
+      const acc = mv.accuracy;
+      if (acc != null && acc !== 0 && Math.random() * 100 > acc) {
+        events.push({ t: 'miss', who: actor.name, uid: actor.uid, text: `${actor.name}的${mv.name}没有命中！` });
+        break;
       }
+      if (typeMult(mv.type, target.types) === 0) {
+        events.push(msg(`${mv.name}对${target.name}没有效果…`));
+        break;
+      }
+      if (target.protected && mv.accuracy !== 0) {
+        events.push({ t: 'block', who: target.name, uid: target.uid, text: `${target.name}用守住挡住了${mv.name}！` });
+        break;
+      }
+      const dmg = actor.hp;
+      const tFrom = target.hp;
+      target.hp -= dmg;
+      events.push({ t: 'dmg', who: target.name, uid: target.uid, amount: dmg, from: tFrom, to: target.hp, text: `造成了 ${dmg} 点伤害。` });
+      if (target.hp <= 0) events.push({ t: 'faint', who: target.name, uid: target.uid, text: `${target.name}倒下了！` });
+      const fromHp = actor.hp;
+      actor.hp = 0;
+      events.push({ t: 'dmg', who: actor.name, uid: actor.uid, amount: fromHp, from: fromHp, to: 0, text: `${actor.name}倒下了！` });
+      events.push({ t: 'faint', who: actor.name, uid: actor.uid, text: `${actor.name}倒下了！` });
       break;
     }
     case 'counter':
@@ -415,7 +443,21 @@ export function useMove(actor, target, moveId, data, events = [], ctx = null) {
       break;
     }
     case 'memento': {
-      // 临别礼物：自己倒下，大幅降低对手攻击与特攻
+      // 临别礼物：命中后自己倒下，大幅降低对手攻击与特攻；
+      // 未命中/属性免疫/被守住挡下时招式失败，自己不倒下、对手也不掉能力
+      const acc = mv.accuracy;
+      if (acc != null && acc !== 0 && Math.random() * 100 > acc) {
+        events.push({ t: 'miss', who: actor.name, uid: actor.uid, text: `${actor.name}的${mv.name}没有命中！` });
+        break;
+      }
+      if (typeMult(mv.type, target.types) === 0) {
+        events.push(msg(`${mv.name}对${target.name}没有效果…`));
+        break;
+      }
+      if (target.protected && mv.accuracy !== 0) {
+        events.push({ t: 'block', who: target.name, uid: target.uid, text: `${target.name}用守住挡住了${mv.name}！` });
+        break;
+      }
       events.push(msg(`${actor.name}留下了临别礼物！`));
       const fromHp = actor.hp;
       actor.hp = 0;
@@ -905,7 +947,7 @@ export function tickBattleTurns(battle, events) {
 }
 
 // ---------- AI：按属性克制与威力择优（克制的招优先，免疫的尽量避开） ----------
-const AI_DMG_KIND = ['damage', 'explode', 'multihit', 'fixed', 'drain', 'recoil', 'counter', 'mirrorCoat'];
+const AI_DMG_KIND = ['damage', 'explode', 'multihit', 'fixed', 'drain', 'recoil', 'finalGambit', 'counter', 'mirrorCoat'];
 export function aiMove(actor, enemy, data) {
   const usable = actor.moves.filter((m) => {
     const ms = String(m);

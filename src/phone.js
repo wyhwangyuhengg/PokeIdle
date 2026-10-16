@@ -18,8 +18,10 @@ const CUE_DWELL_MS = 320;
 // 想接着翻得先把手指移出边缘再贴回来（那次重新计时）
 const FLIP_COOLDOWN_MS = 600;
 // 快甩门槛（机身逻辑像素/毫秒）：手速到这儿就记一笔"刚甩过"，比这慢的才算换位。
-// 量的是窗口内的峰值，实测"挪一格"的快甩约 0.2~0.3、慢慢拖约 0.05~0.15
-const FAST_PX_MS = 0.25;
+// 量的是窗口内的峰值，实测"挪一格"的快甩约 0.2~0.3、慢慢拖约 0.05~0.15。
+// 取 0.35 而不是 0.25：上下换位要跨一行、行程更长，速度容易冲过旧门槛，
+// 结果被当成"甩"去建合集，反而换不了位；放宽一点，稍快的拖速也还能换位
+const FAST_PX_MS = 0.35;
 // "刚甩过"记性有多久：甩完会减速，减速后的速度代表不了这一下，所以看这一小段内有没有甩过
 const FAST_HOLD_MS = 200;
 // 手速取最近这么久内走过的距离折算（窗口越短越贴当下的动作）
@@ -196,8 +198,8 @@ export function showPhoneHome() {
 }
 
 // ---------- 桌面布局 ----------
-// 布局 = 一页一个数组，页内紧凑：拖走一个，同一页后面的自己补上；但空出来的位置不会被下一页的图标补掉。
-// 插进满页时最后一个被挤到下一页的第一格，下一页依次往后挪 —— 和手机桌面的手感一致。
+// 布局 = 一页固定 10 格（PAGE_SIZE），格子里没有图标就是 null。拖走一个只把那格清空、
+// 后面谁都不动 —— 洞长期留着，和 Windows 桌面一个意思；新装应用、合集溢出/解散都填最近的空位。
 function pages() {
   const L = gameData.phoneLayout;
   if (!Array.isArray(L) || L.some((p) => !Array.isArray(p))) gameData.phoneLayout = [];
@@ -210,19 +212,24 @@ function parseSlot(k) {
 }
 const itemAt = (p, i) => (pages()[p] || [])[i] || null;
 
-// 插到第 p 页第 i 位；这一页满了就把最后一个挤到下一页的第一格，下一页依次平移（连锁）
-function insertAt(P, p, i, entry) {
-  const at = Math.max(0, Math.min(P.length, p));
-  if (!P[at]) P[at] = [];
-  const page = P[at];
-  page.splice(Math.max(0, Math.min(page.length, i)), 0, entry);
-  let cur = at;
-  while (P[cur].length > PAGE_SIZE) {
-    const over = P[cur].pop();
-    if (!P[cur + 1]) P[cur + 1] = [];
-    P[cur + 1].unshift(over);
-    cur++;
+// 空页：固定 10 格全是空位，可以顺手在首格塞一个
+const freshPage = (entry) => { const pg = new Array(PAGE_SIZE).fill(null); if (entry) pg[0] = entry; return pg; };
+// 空位占位：和图标同尺寸的方形虚框，钉在格子里。有它每格都有一个 DOM，网格不会自己往前补
+const blankHtml = (p, i) => `<div class="phone-blank" data-slot="${slotKey(p, i)}"></div>`;
+
+// 把 entry 放到第 p 页第 i 格：那格空着就直接放；被占就从落点往后找最近的空位，
+// 再没有就从第一页头找，全都满才新开一页。只填空位、不挤别人
+function placeAt(P, p, i, entry) {
+  const N = P.length * PAGE_SIZE;
+  for (let k = Math.max(0, p) * PAGE_SIZE + Math.max(0, i); k < N; k++) {
+    const pg = P[Math.floor(k / PAGE_SIZE)];
+    if (pg && pg[k % PAGE_SIZE] == null) { pg[k % PAGE_SIZE] = entry; return; }
   }
+  for (let k = 0; k < N; k++) {
+    const pg = P[Math.floor(k / PAGE_SIZE)];
+    if (pg && pg[k % PAGE_SIZE] == null) { pg[k % PAGE_SIZE] = entry; return; }
+  }
+  P.push(freshPage(entry));
 }
 
 // 元素现在在哪一页哪一位（摘除/插入之后下标会变，用对象引用回查）
@@ -235,11 +242,10 @@ function findSlot(entry) {
   return null;
 }
 
-// 对账：清掉未知 id / 重复 / 空合集；每页最多 PAGE_SIZE 个；缺的应用补到最后一页的剩余位置，
-// 放不下就新开一页（不回头去填前面页的空位）
+// 对账：清掉未知 id / 重复 / 空合集，**原位置直接清成空位**（不压缩、不补位）；
+// 整页都是空位的页删掉（至少留一页）；缺的应用（新装等）填进最近的空位
 function normalizeLayout() {
   const seen = new Set();
-  const out = [];
   const clean = (e) => {
     if (!e) return null;
     if (typeof e.app === 'string') {
@@ -257,20 +263,21 @@ function normalizeLayout() {
     }
     return null;
   };
+  const out = [];
   for (const page of pages()) {
-    const cur = [];
-    for (const e of page) { const c = clean(e); if (c) cur.push(c); }
-    if (!cur.length) continue;
-    for (let k = 0; k < cur.length; k += PAGE_SIZE) out.push(cur.slice(k, k + PAGE_SIZE));
+    const pg = [];
+    for (let i = 0; i < PAGE_SIZE; i++) pg.push(clean(page[i]));
+    out.push(pg);
   }
+  for (let i = out.length - 1; i > 0; i--) {   // 整页空的删掉，第 0 页怎么都留着
+    if (out[i].every((e) => !e)) out.splice(i, 1);
+  }
+  if (!out.length) out.push(freshPage());
   for (const a of allApps()) {
     if (seen.has(a.id) || !appAvailable(a)) continue;
     seen.add(a.id);
-    let last = out[out.length - 1];
-    if (!last || last.length >= PAGE_SIZE) { last = []; out.push(last); }
-    last.push({ app: a.id });
+    placeAt(out, 0, 0, { app: a.id });
   }
-  if (!out.length) out.push([]);
   gameData.phoneLayout = out;
   return out;
 }
@@ -282,7 +289,7 @@ function paintPhoneHome(el) {
   updateHotBadge();
   const P = normalizeLayout();
   el.innerHTML = `<div class="phone-pages" id="phonePages">`
-    + P.map((page, pi) => `<div class="phone-page" data-page="${pi}">${page.map((entry, ti) => tileHtml(entry, pi, ti)).join('')}</div>`).join('')
+    + P.map((page, pi) => `<div class="phone-page" data-page="${pi}">${page.map((entry, ti) => (entry ? tileHtml(entry, pi, ti) : '') || blankHtml(pi, ti)).join('')}</div>`).join('')
     + `</div>`
     + (P.length > 1 ? `<div class="phone-dots">${P.map((_, i) => `<span class="dot${i === 0 ? ' active' : ''}" data-page="${i}"></span>`).join('')}</div>` : '');
   refreshPhoneBadges();
@@ -690,9 +697,12 @@ function moveGhost(px, py) {
   st.ghost.style.top = `${p.y - r.top}px`;
 }
 
-// 清掉落点提示：合并描边
+// 清掉落点提示：合并描边、空位高亮
 function clearCues() {
-  $('phoneView')?.querySelectorAll('.drag-into').forEach((n) => n.classList.remove('drag-into'));
+  const view = $('phoneView');
+  if (!view) return;
+  view.querySelectorAll('.drag-into').forEach((n) => n.classList.remove('drag-into'));
+  view.querySelectorAll('.cue-on').forEach((n) => n.classList.remove('cue-on'));
 }
 
 // 拖拽被打断时兜底复位（切后台丢 pointerup、绘制打断），别让桌面卡在拖不动的状态
@@ -708,36 +718,36 @@ function resetDrag() {
   clearCues();
 }
 
-// 指针落在哪一页的哪一格：拿屏幕上的磁贴找最近的一个（拖起来时整页位置不变，下标就是格子号）。
-// 落在末尾空位右侧 → 排到队尾；已经认下某格后，手指得明显更靠近别的格才换（防左右横跳）。
+// 一页的网格几何：5 列 2 行等分，padding/gap 直接读计算样式，别写死数字。
+// 与位置无关的量按元素缓存，指针每动一下都要用，免得反复触发样式计算
+let _grid = null;
+function pageGrid(pageEl) {
+  if (_grid?.el === pageEl) return _grid;
+  const cs = getComputedStyle(pageEl);
+  const r = pageEl.getBoundingClientRect();
+  const padL = parseFloat(cs.paddingLeft) || 0;
+  const padT = parseFloat(cs.paddingTop) || 0;
+  const gx = parseFloat(cs.columnGap) || 0;
+  const gy = parseFloat(cs.rowGap) || 0;
+  const cw = (r.width - padL - (parseFloat(cs.paddingRight) || 0) - gx * 4) / 5;
+  const ch = (r.height - padT - (parseFloat(cs.paddingBottom) || 0) - gy) / 2;
+  _grid = { el: pageEl, padL, padT, gx, gy, cw, ch };
+  return _grid;
+}
+// 指针落在哪一页的哪一格。按格子算而不是"最近的图标"：空格也要认，
+// 不然落在空位上会被算成紧挨着的那个图标，落点就跑了
 function targetSlotAt(x, y) {
   const pageEl = document.elementFromPoint(x, y)?.closest('.phone-page');
   if (!pageEl) return null;
   const pi = Number(pageEl.dataset.page);
-  const page = pages()[pi] || [];
-  const pageR = pageEl.getBoundingClientRect();
+  const g = pageGrid(pageEl);
+  if (g.cw <= 0 || g.ch <= 0) return { p: pi, i: 0 };
+  const r = pageEl.getBoundingClientRect();
   // 指针是视口坐标、rect 是机身逻辑坐标：先 viewportToLogic 拉回同一套再比
   const p = viewportToLogic(x, y);
-  const px = p.x - pageR.left, py = p.y - pageR.top;
-  const prevM = /^slot:(\d+)-(\d+)$/.exec(_drag?.mode || '');
-  let best = null, bestI = -1, bestD = Infinity, prevD = Infinity;
-  for (const el of pageEl.children) {
-    const m = /^(\d+)-(\d+)$/.exec(el.dataset.slot || '');
-    if (!m) continue;
-    const r = el.getBoundingClientRect();
-    if (!r.width) continue;
-    const i = Number(m[2]);
-    const cx = r.left - pageR.left + r.width / 2;
-    const cy = r.top - pageR.top + r.height / 2;
-    const d = Math.hypot(px - cx, py - cy);
-    if (d < bestD) { bestD = d; best = { x: r.left - pageR.left, w: r.width }; bestI = i; }
-    if (prevM && Number(prevM[1]) === pi && Number(prevM[2]) === i) prevD = d;
-  }
-  if (!best) return { p: pi, i: 0 };
-  if (bestI === page.length - 1 && px > best.x + best.w / 2) return { p: pi, i: page.length };
-  if (prevM && Number(prevM[1]) === pi && Number(prevM[2]) !== bestI
-    && Number(prevM[2]) < page.length && bestD > prevD + 8) return { p: pi, i: Number(prevM[2]) };
-  return { p: pi, i: Math.max(0, bestI) };
+  const col = Math.max(0, Math.min(4, Math.floor((p.x - r.left - g.padL) / (g.cw + g.gx))));
+  const row = Math.max(0, Math.min(1, Math.floor((p.y - r.top - g.padT) / (g.ch + g.gy))));
+  return { p: pi, i: row * 5 + col };   // 每页固定 10 格，格号就是落点
 }
 // 指针贴着左右边缘：翻页 zones。指针拉回机身逻辑坐标再和 rect 比
 function edgeAt(x, y) {
@@ -819,7 +829,7 @@ function tileUnderAt(x, y) {
   const p = viewportToLogic(x, y);   // 视口 → 机身逻辑，和 rect 同一套
   let best = null, bestD = Infinity;
   for (const el of pageEl.children) {
-    if (el === _drag.tile || !el.dataset.slot) continue;
+    if (el === _drag.tile || !el.classList.contains('phone-app') || !el.dataset.slot) continue;
     const r = el.getBoundingClientRect();
     if (!r.width) continue;
     // 点到矩形的距离：落在框内算 0
@@ -873,14 +883,13 @@ function tilePressedAt(el) {
   return tile && tile !== _drag.tile && tile.dataset.slot ? tile : null;
 }
 
-// 当前指针落在哪类落点（只采样，不改状态）：合集窗口 > 已锁定的合并目标 > 指针底下的图标 > 某一格。
+// 当前指针落在哪类落点（只采样，不改状态）：合集窗口 > 已锁定的合并目标 > 某一格。
 // 贴边翻页不掺在这儿：它自己有计时，见 updateEdgeFlip
-function cueModeAt(x, y, el, under) {
+function cueModeAt(x, y, el) {
   if (el?.closest('.phone-folder-box')) return 'box';
   if (_drag?.armed) return `icon:${_drag.armed.key}`;   // 已认下合并：指针没离开就一直保持
-  if (under) return `slot:${under.dataset.slot}`;   // 压在图标上：松手就和它换位
   const pos = targetSlotAt(x, y);
-  return pos ? `slot:${slotKey(pos.p, pos.i)}` : null;
+  return pos ? `slot:${slotKey(pos.p, pos.i)}` : null;   // 格号就是落点，落在空位上也算
 }
 
 // 落点：快甩到图标上 = 准备合并（描边锁定，指针不离开就不拆）；慢速压在图标上 = 和它换位；
@@ -898,7 +907,7 @@ function updateDropCue(x, y) {
   } else if (under && now - st.fastAt <= FAST_HOLD_MS) {
     st.armed = { key: under.dataset.slot, el: under };
   }
-  // 没进合并态就跟着指针就地换位：拖到谁身上就和谁换（同页跨页都换，松手时位置已经对了）。
+  // 没进合并态就跟着指针就地换位：拖到谁身上就和谁换（同页跨页都换，落点那格和源格互换，别的不动）。
   // 只认严格命中，落在图标之间的缝里不算 —— 那正是两个图标左右闪的来源
   const pressed = tilePressedAt(el);
   if (!st.armed && !st.inFolder && st.from && pressed) {
@@ -906,7 +915,7 @@ function updateDropCue(x, y) {
     if (pos.p !== st.from.p || pos.i !== st.from.i) { swapInPlace(st, pos); return; }
   }
   updateEdgeFlip(st, x, y);
-  const mode = cueModeAt(x, y, el, under);
+  const mode = cueModeAt(x, y, el);
   if (mode === st.mode) return;
   st.mode = mode || '';   // 统一成字符串：没落点时也不能是 null，后面到处按字符串用
   paintCue(st);
@@ -920,32 +929,26 @@ function paintCue(st) {
     return;
   }
   const key = st.mode.replace(/^\w+:/, '');
-  if (st.mode.startsWith('icon:')) {
-    $('phoneView')?.querySelector(`.phone-app[data-slot="${key}"]`)?.classList.add('drag-into');
-    return;
-  }
-  // 落到哪一格：不给额外提示。拖起来那格已经空成洞，指哪放哪（松手和那格互换）就行
+  const el = $('phoneView')?.querySelector(`[data-slot="${key}"]`);
+  if (!el) return;
+  // 落点那格亮起来：空位本身就是方形虚线框，加 cue-on 让它实心显眼；实体图标则描一圈边
+  el.classList.add(el.classList.contains('phone-blank') ? 'cue-on' : 'drag-into');
 }
 
-// 合集容量溢出：多的落回桌面末尾；只剩 1 个（或 0 个）时合集解散，剩下的回原位
+// 合集容量溢出：多的落回桌面最近的空位；只剩 1 个（或 0 个）时合集解散，剩下的回原格
 function addToFolder(folder, ids) {
   const P = pages();
   folder.folder.push(...ids);
   while (folder.folder.length > FOLDER_MAX) {
-    const over = { app: folder.folder.pop() };
-    const last = P[P.length - 1];
-    if (last && last.length < PAGE_SIZE) last.push(over); else P.push([over]);
+    placeAt(P, P.length - 1, 0, { app: folder.folder.pop() });
   }
 }
 function dissolveIfLone(folder, at) {
   if (!folder?.folder || folder.folder.length > 1) return;
-  const P = pages();
-  const page = P[at.p];
-  const pos = page ? page.indexOf(folder) : -1;
-  if (pos < 0) return;
+  const page = pages()[at.p];
+  if (!page || page[at.i] !== folder) return;
   const rest = folder.folder[0];
-  page.splice(pos, 1, ...(rest ? [{ app: rest }] : []));
-  if (!page.length && P.length > 1) P.splice(at.p, 1);
+  page[at.i] = rest ? { app: rest } : null;   // 散开占回原格；空了就留个洞
 }
 
 function applyDrop(st, dst) {
@@ -955,9 +958,9 @@ function applyDrop(st, dst) {
   if (dst.kind === 'slot' && !st.inFolder && st.from.p === dst.p && st.from.i === dst.i) return;
   const dstPage = dst.p != null ? (P[dst.p] || null) : null;
   const targetEntry = (dst.kind === 'icon' || dst.kind === 'intoFolder') ? itemAt(dst.p, dst.i) : null;
-  // —— 取出源
+  // —— 取出源：只把自己那格清成洞，后面谁都不动
   let entry;
-  let srcPage = null;   // 源页：跨页换位时，目标那格的东西要回到这里
+  let srcPage = null;   // 源页：目标那格的东西要回到源格
   if (st.inFolder) {
     const f = itemAt(st.inFolder.p, st.inFolder.i);
     if (!f?.folder || !f.folder.includes(st.id)) return;
@@ -968,41 +971,33 @@ function applyDrop(st, dst) {
     entry = itemAt(st.from.p, st.from.i);
     if (!entry) return;
     srcPage = P[st.from.p];
-    srcPage.splice(st.from.i, 1);
-    if (!srcPage.length && P.length > 1) P.splice(st.from.p, 1);
+    srcPage[st.from.i] = null;
   }
   // —— 放进去
   if (dst.kind === 'newpage') {
-    P.push([entry]);
+    P.push(freshPage(entry));
     _pageIdx = P.length - 1;                     // 重绘后停在新页
   } else if (dst.kind === 'intoFolder' && targetEntry?.folder) {
     addToFolder(targetEntry, entry.app ? [entry.app] : entry.folder);
   } else if (dst.kind === 'icon' && targetEntry) {
     const at = findSlot(targetEntry);
-    if (!at) P.push([entry]);
+    if (!at) P.push(freshPage(entry));
     else if (targetEntry.folder) addToFolder(targetEntry, entry.app ? [entry.app] : entry.folder);
     else if (entry.app) P[at.p][at.i] = { folder: [targetEntry.app, entry.app] };   // 应用落到应用上：合成合集
-    else insertAt(P, at.p, at.i, entry);                                            // 合集落到图标上：插到它前面
+    else placeAt(P, at.p, at.i, entry);                                            // 合集落到图标上：塞进最近的空位
   } else if (dst.kind === 'slot') {
-    // 换位：和这一格互换（其余图标一个都不动）；落在末尾空格就是挪到这一页最后
     const pi = dstPage ? P.indexOf(dstPage) : -1;
-    if (pi < 0) { P.push([entry]); }
+    if (pi < 0) { P.push(freshPage(entry)); }
     else {
-      let ti = dst.i;
-      if (!st.inFolder && st.from.p === pi && st.from.i < dst.i) ti -= 1;   // 源被摘掉后，目标往前挪了一格
       const page = P[pi];
-      if (ti >= 0 && ti < page.length) {
-        const tmp = page[ti];
-        page[ti] = entry;
+      const tmp = page[dst.i];
+      page[dst.i] = entry;
+      if (tmp != null) {
+        // 落点有东西：换位，把它挪到源格（同页/跨页都是回源格，源格刚清空）
         if (st.inFolder) addToFolder(itemAt(st.inFolder.p, st.inFolder.i), tmp.app ? [tmp.app] : tmp.folder);
-        else if (st.from.p === pi) page[st.from.i] = tmp;   // 同页：目标那格的东西回到源那格
-        else {   // 跨页：回源页的原位置（源页若因空被删掉，就把它放回原位）
-          srcPage.splice(Math.min(st.from.i, srcPage.length), 0, tmp);
-          if (P.indexOf(srcPage) < 0) P.splice(Math.min(st.from.p, P.length), 0, srcPage);
-        }
-      } else {
-        insertAt(P, pi, page.length, entry);
+        else srcPage[st.from.i] = tmp;
       }
+      // 落点是空位：直接占上，别人一个都不动
     }
   } else return;
   saveGame();

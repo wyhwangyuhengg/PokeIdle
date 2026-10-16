@@ -3129,7 +3129,7 @@
             "why": "",
             "impl": true,
             "effect": {
-                "kind": "damage",
+                "kind": "explode",
                 "cat": "phys",
                 "power": 200
             },
@@ -5775,7 +5775,7 @@
             "accuracy": 100,
             "diff": "难",
             "why": "",
-            "impl": false,
+            "impl": true,
             "effect": {
                 "kind": "memento",
                 "note": "自己倒下，并大幅降低对手的攻击和防御。"
@@ -10324,15 +10324,14 @@
             "name": "搏命",
             "type": "格斗",
             "category": "特殊",
-            "power": 100,
+            "power": null,
             "accuracy": 100,
             "diff": "中",
             "why": "",
             "impl": true,
             "effect": {
-                "kind": "damage",
-                "cat": "spec",
-                "power": 100
+                "kind": "finalGambit",
+                "cat": "spec"
             },
             "pp": 5
         },
@@ -13912,9 +13911,10 @@
             "why": "",
             "impl": true,
             "effect": {
-                "kind": "damage",
+                "kind": "recoil",
                 "cat": "spec",
-                "power": 150
+                "power": 150,
+                "halfHp": true
             },
             "pp": 5
         },
@@ -15273,9 +15273,10 @@
             "why": "",
             "impl": true,
             "effect": {
-                "kind": "damage",
+                "kind": "recoil",
                 "cat": "spec",
-                "power": 140
+                "power": 140,
+                "halfHp": true
             },
             "pp": 5
         },
@@ -15379,7 +15380,7 @@
             "why": "",
             "impl": true,
             "effect": {
-                "kind": "damage",
+                "kind": "explode",
                 "cat": "spec",
                 "power": 100
             },
@@ -15943,9 +15944,10 @@
             "why": "",
             "impl": true,
             "effect": {
-                "kind": "damage",
+                "kind": "recoil",
                 "cat": "spec",
-                "power": 150
+                "power": 150,
+                "halfHp": true
             },
             "pp": 5
         },

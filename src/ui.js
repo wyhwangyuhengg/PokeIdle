@@ -1,6 +1,6 @@
 // ===== UI 管理 =====
 import { phase, currentEncounter, gameData, saveGame, _fishing, _eggHatching, _navStack } from './state.js';
-import { formatNum, getCurrentRegion, getCurrentRoadInfo, anyIncubatorReady, getIncubatorUnlockCost, getMassOutbreak, getTwist, getRoadNumForEdge, getPokemonByIndex, isPokemon, genderBadge } from './state.js';
+import { formatNum, getCurrentRegion, getCurrentRoadInfo, anyIncubatorReady, getIncubatorUnlockCost, getMassOutbreak, getTwist, getRoadNumForEdge, getPokemonByIndex, isPokemon, genderBadge, effPerfectCount } from './state.js';
 import { ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, PX_PER_METER, eggSprite } from './config.js';
 import { formatLogTime } from './pokedex.js';
 import * as road from './road.js';
@@ -972,6 +972,23 @@ function slotEggSrc(s) {
   return eggSprite(poke?.types?.[0]);
 }
 
+// 蛋列表图标（蛋仓库 / 孵蛋器选蛋页共用）：闪光蛋 / 6V 蛋套一层壳加扫光，普通蛋就是原图。
+// 扫光的遮罩取蛋图自身的透明通道（--egg-src），光只落在蛋身上、不铺满方形底色
+export function eggIconHtml(eg, poke) {
+  const src = eggSprite(poke?.types?.[0]);
+  const img = `<img class="roster-icon-img" src="${src}" alt="蛋" style="width:18px;height:18px;" />`;
+  return (eg.shiny || effPerfectCount(eg) >= 6) ? `<span class="egg-icon-shine" style="--egg-src:url('${src}')">${img}</span>` : img;
+}
+
+// 槽位里的蛋图标：闪光 / 6V 的培育蛋套扫光壳；神秘蛋（eggRef 为空）结果未知，不加
+function slotEggImgHtml(s, shake) {
+  const eggEntry = s && s.eggRef ? (gameData.roster || []).find(r => r.id === s.eggRef) : null;
+  const src = slotEggSrc(s);
+  const img = `<img src="${src}" alt="蛋"${shake ? ' class="shake"' : ''} />`;
+  const glow = eggEntry && (eggEntry.shiny || effPerfectCount(eggEntry) >= 6);
+  return glow ? `<span class="egg-icon-shine" style="--egg-src:url('${src}')">${img}</span>` : img;
+}
+
 // 六维个体值斜杠串：31/31/31/31/31/31（HP/攻击/防御/特攻/特防/速度，与繁殖页面一致；
 // 蛋条目在生成时已 roll 好个体值，是孵蛋前唯一已知的信息）
 function eggIvSlash(p) {
@@ -985,8 +1002,9 @@ function renderEggPickList() {
   const box = $('incubatorEggView');
   if (!box) return;
   const inUse = new Set((gameData.incubators || []).map(s => s && s.eggRef).filter(Boolean));
+  // 收藏的蛋不参与孵蛋器放入（它们被收进收藏页，避免误丢）
   const allEggs = (gameData.roster || [])
-    .filter(p => p.inRoster && !isPokemon(p) && !inUse.has(p.id));
+    .filter(p => p.inRoster && !isPokemon(p) && !inUse.has(p.id) && !p.fav);
   // 搜索过滤
   let filtered = allEggs;
   const q = (_eggPickQuery || '');
@@ -1038,7 +1056,7 @@ function renderEggPickList() {
             const name = poke ? poke.name : `#${eg.species}`;
             return `
               <div class="pokedex-entry roster-row nursery-egg-row" data-egg-pick="${eg.id}">
-                <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" /><span class="egg-name-text">${name}的蛋${eg.shiny ? ' ★' : ''}</span></span>
+                <span class="pokedex-name">${eggIconHtml(eg, poke)}<span class="egg-name-text">${name}的蛋${eg.shiny ? ' ★' : ''}</span></span>
                 <span class="roster-iv">${eggIvSlash(eg)}</span>
               </div>`;
           }).join('');
@@ -1083,7 +1101,7 @@ function renderEggPickList() {
               const name = poke ? poke.name : `#${eg.species}`;
               return `
                 <div class="pokedex-entry roster-row nursery-egg-row" data-egg-pick="${eg.id}">
-                  <span class="pokedex-name"><img class="roster-icon-img" src="${eggSprite(poke?.types?.[0])}" alt="蛋" style="width:18px;height:18px;" /><span class="egg-name-text">${name}的蛋${eg.shiny ? ' ★' : ''}</span></span>
+                  <span class="pokedex-name">${eggIconHtml(eg, poke)}<span class="egg-name-text">${name}的蛋${eg.shiny ? ' ★' : ''}</span></span>
                   <span class="roster-iv">${eggIvSlash(eg)}</span>
                 </div>`;
             }).join('')}
@@ -1236,7 +1254,7 @@ export function renderIncubatorView() {
     const rowCls = 'incubator-row' + (s?.ignored ? ' ignored' : '');
     if (s && s.hatched) {
       html += `<div class="${rowCls}">
-        <div class="incubator-egg-slot has-egg" data-tip="${eggName}"><img src="${slotEggSrc(s)}" alt="蛋" class="shake" /></div>
+        <div class="incubator-egg-slot has-egg" data-tip="${eggName}">${slotEggImgHtml(s, true)}</div>
         <div class="incubator-info">
           <div class="incubator-name" data-tip="${eggName}">${eggName}</div>
           <div class="incubator-actions">${hatchBtnHtml(i, hatchLocked)}</div>
@@ -1255,7 +1273,7 @@ export function renderIncubatorView() {
       }
       if (s.hatched) {
         html += `<div class="${rowCls}">
-          <div class="incubator-egg-slot has-egg" data-tip="${eggName}"><img src="${slotEggSrc(s)}" alt="蛋" class="shake" /></div>
+          <div class="incubator-egg-slot has-egg" data-tip="${eggName}">${slotEggImgHtml(s, true)}</div>
           <div class="incubator-info">
             <div class="incubator-name" data-tip="${eggName}">${eggName}</div>
             <div class="incubator-actions">${hatchBtnHtml(i, hatchLocked)}</div>
@@ -1270,7 +1288,7 @@ export function renderIncubatorView() {
       const remain = Math.max(0, Math.ceil((need - used) / PX_PER_METER));
       const distStr = remain >= 1000 ? `${(remain / 1000).toFixed(1)}公里` : `${remain}米`;
       html += `<div class="incubator-row">
-        <div class="incubator-egg-slot has-egg" data-tip="${eggName}"><img src="${slotEggSrc(s)}" alt="蛋" /></div>
+        <div class="incubator-egg-slot has-egg" data-tip="${eggName}">${slotEggImgHtml(s, false)}</div>
         <div class="incubator-info">
           <div class="incubator-name" data-tip="${eggName}">${eggName}</div>
           <div class="incubator-progress-wrap" data-slot="${i}">
@@ -1375,7 +1393,7 @@ function showIncubatorPickMenu(slot, anchorEl) {
   const mysteryCount = gameData.items['mystery-egg'] || 0;
   const inUse = new Set((gameData.incubators || []).map(s => s && s.eggRef).filter(Boolean));
   const pokemonCount = (gameData.roster || [])
-    .filter(p => p.inRoster && !isPokemon(p) && !inUse.has(p.id)).length;
+    .filter(p => p.inRoster && !isPokemon(p) && !inUse.has(p.id) && !p.fav).length;
   // 特判：没有宝可梦蛋但有神秘蛋时，点击加号直接放入神秘蛋（不弹选择菜单）
   if (pokemonCount === 0 && mysteryCount > 0) {
     import('./items.js').then(m => m.placeEggInIncubator(slot));

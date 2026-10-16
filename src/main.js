@@ -25,7 +25,7 @@ import { initAudio, playRegion, playCycling, endCycling, stopVictory, stopCongra
 import { restoreMusicMode } from './music.js';
 import { startTelemetry } from './telemetry.js';
 import { ensureBounty, updateBountyBadge, isBountyInTrade, restoreBountyList } from './bounty.js';
-import { isNurseryPicking, leaveNurseryPick, isNurseryEggView, leaveNurseryEggView, showNurseryView } from './nursery.js';
+import { isNurseryPicking, leaveNurseryPick, isNurseryEggView, leaveNurseryEggView, isNurseryFavView, leaveNurseryFavView, showNurseryView } from './nursery.js';
 import { isTrainPicking, leaveTrainPick, showTrainView } from './train.js';
 import { isDispatchPicking, leaveDispatchPick, processDispatch } from './dispatch.js';
 import { retreatBattle, isBattleActive, isBattleSettled, restoreBattleTier, clearBattleTier, isLogOpen, closeLogPage, syncLogTitle, showBattleView } from './battle-view.js';
@@ -232,6 +232,8 @@ function goBack() {
   if (isTradeInDetail() && $('tradeView')?.style.display === 'flex') { restoreTradeList(); return; }
   // 悬赏提交列表：标题栏返回先回悬赏列表
   if (isBountyInTrade() && $('bountyView')?.style.display === 'flex') { restoreBountyList(); return; }
+  // 收藏的蛋视图：返回先退回宝可梦蛋列表（两层子页都不压栈）
+  if (isNurseryFavView()) { leaveNurseryFavView(); return; }
   // 饲育屋蛋仓库视图：标题栏返回回饲育屋场地
   if (isNurseryEggView()) { leaveNurseryEggView(); return; }
   // 饲育屋放入列表：标题栏返回回饲育屋场地（选取页未压栈）

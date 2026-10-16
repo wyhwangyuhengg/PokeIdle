@@ -165,12 +165,20 @@ function giftHtml(i, rw) {
   return `${eggIconHtml(rw.egg.species)}<i>${eggLabel(rw.egg.species)}</i>`;
 }
 
+// 取某一档的槽位内容：picks 是按槽位下标写入的，跳着放会留下空洞，
+// 而 slice 保留的空洞会被 every/some 跳过（判断成"已放满"），take 里的
+// for...of 又不会跳过（undefined 去 splice 会删掉仓库末尾的个体）。
+// 统一在这里补齐成定长数组，空位显式记为 null
+function picksAt(ctx, base, per) {
+  return Array.from({ length: per }, (_, j) => ctx.picks[base + j] || null);
+}
+
 // 一档一行：档位 + 这档给什么 + 状态；当前这一档才画槽位和领取按钮
 function tierHtml(ctx, i, rw, per, done) {
   const cur = i === done;
   const base = i * per;
-  const ids = ctx.picks.slice(base, base + per);
-  const full = ids.length === per && ids.every(Boolean);
+  const ids = picksAt(ctx, base, per);
+  const full = ids.every(Boolean);
   const state = i < done
     ? '<span class="catch-confirm-btn off">已领取</span>'
     : cur
@@ -317,9 +325,9 @@ export const ACTIVITIES = {
       const btn = root.querySelector(`[data-claim="${done}"]`);
       if (!btn) return;
       const base = done * per;
-      const ids = ctx.picks.slice(base, base + per);
+      const ids = picksAt(ctx, base, per);
       const ok = new Set(submittable(poke.index, ctx.from).map(p => p.id));
-      if (ids.length < per || ids.some(id => !ok.has(id))) return;   // 没凑齐 / 有失效的：按钮不接
+      if (ids.some(id => !ok.has(id))) return;   // 有没放满 / 失效的：按钮不接
       btn.addEventListener('click', () => {
         if (tiersDone(ctx) !== done) return;   // 页面重画前被连点：认准档位
         ctx.confirm(`上交这 ${per} 只「${poke.form || poke.name}」换${TIER_NAMES[done]}？上交后不可找回。`, () => {

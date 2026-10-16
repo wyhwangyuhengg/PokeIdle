@@ -921,6 +921,7 @@ function applyHatchEntry(slotIndex, presetGender) {
     const eggEntry = (gameData.roster || []).find(r => r.id === slot.eggRef);
     if (eggEntry) {
       delete eggEntry.kind;
+      delete eggEntry.fav; // 收藏标记只对蛋有意义，转正后清掉
       eggEntry.level = 1;
       eggEntry.inRoster = true;
       eggEntry.obtainedAt = Date.now(); // 获得时间记录为点击孵化完成的时刻，而非放入孵蛋器

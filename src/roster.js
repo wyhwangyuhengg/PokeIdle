@@ -711,7 +711,7 @@ const MOVE_STATUS_CN = { sleep: '睡眠', poison: '中毒', paralysis: '麻痹',
 const MOVE_CAT_CN = { phys: '物理', spec: '特殊', status: '变化' };
 function moveCat(mv) {
   const ef = mv.effect || {};
-  if (ef.kind === 'damage' || ef.kind === 'explode' || ef.kind === 'multihit' || ef.kind === 'drain' || ef.kind === 'recoil' || ef.kind === 'fixed' || ef.kind === 'counter') {
+  if (ef.kind === 'damage' || ef.kind === 'explode' || ef.kind === 'multihit' || ef.kind === 'drain' || ef.kind === 'recoil' || ef.kind === 'fixed' || ef.kind === 'finalGambit' || ef.kind === 'counter') {
     return ef.cat === 'spec' ? 'spec' : 'phys';
   }
   return 'status';
@@ -751,7 +751,10 @@ export function moveDesc(mv) {
     }
     case 'drain': return `造成伤害，并回复造成伤害${ef.ratio ? Math.round(ef.ratio * 100) + '%' : ''}的HP。`;
     case 'explode': return '对目标造成巨大伤害，但使用者会当场倒下。';
-    case 'recoil': return `造成伤害，但自身也会承受${Math.round((ef.ratio || 0.25) * 100)}%的反噬伤害。`;
+    case 'recoil': return ef.halfHp
+      ? '造成伤害，但自身会承受最大HP一半的反伤伤害。'
+      : `造成伤害，但自身也会承受${Math.round((ef.ratio || 0.25) * 100)}%的反噬伤害。`;
+    case 'finalGambit': return '造成等于自身剩余HP的伤害，随后使用者倒下。';
     case 'fixed': return '无视对手防御，造成固定伤害。';
     case 'counter': return '本回合受到物理攻击后使用，可将该伤害翻倍返还给对手。';
     case 'heal': return `回复最大HP的${Math.round((ef.ratio || 0.5) * 100)}%。`;

@@ -2782,7 +2782,22 @@ html.mobile-app #quitHide { display: none !important; }
 /* 编辑态手势全给拖拽；翻页这时是 phone.js 手动写 scrollLeft 跟手的，
    吸附会一路把人往回拽，所以这里必须关掉 */
 #phoneView.editing .phone-pages { touch-action: none; scroll-snap-type: none; }
-.phone-app.dragging { visibility: hidden; }   /* 拖起来那格留个空洞占着位置：不补位、也不多画东西 */
+/* 拖起来那格：本尊藏起来，原位画个和图标同尺寸的方形虚框占着（不补位、也没有名字条那种长框） */
+.phone-app.dragging { pointer-events: none; }
+#phoneView.editing .phone-app.dragging { animation: none; }
+.phone-app.dragging > * { visibility: hidden; }
+.phone-app.dragging::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 38px;
+  height: 38px;
+  margin-left: -19px;
+  border: 1px dashed var(--ui-color);
+  border-radius: 9px;
+  background: rgba(var(--ui-color-rgb), 0.08);
+}
 /* 落在图标上：只描一圈边提示"会合成合集"，图标本身不缩放 */
 .phone-app.drag-into .phone-app-icon::after {
   content: '';
@@ -2809,6 +2824,22 @@ html.mobile-app #quitHide { display: none !important; }
   opacity: 0.9;
 }
 .phone-drag-ghost .phone-app-icon { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); }
+/* 空位占位：每格都要有个 DOM，网格才不会把后面的图标往前补（这就是"永不补位"）。
+   平时是张透明的 38×38 方框，编辑态里画成虚线格，和图标一样大、一样对齐 */
+.phone-blank {
+  width: 38px;
+  height: 38px;
+  align-self: start;
+  border: 1px dashed transparent;
+  border-radius: 9px;
+  pointer-events: none;
+}
+#phoneView.editing .phone-blank { border-color: rgba(var(--ui-color-rgb), 0.45); }
+/* 拖拽落点就在这格空位上：提亮实心，明确"松手放这儿" */
+#phoneView.editing .phone-blank.cue-on {
+  border-color: var(--ui-color);
+  background: rgba(var(--ui-color-rgb), 0.16);
+}
 /* 拖到最后一页右边缘：提示松手会新建一页 */
 .phone-newpage-tip {
   position: absolute;
@@ -5733,6 +5764,36 @@ html.mobile-app #quitHide { display: none !important; }
 .nursery-egg-row .pokedex-name .egg-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 闪光星标独立成项，名字截断时不被省略号吞掉 */
 .nursery-egg-row .pokedex-name .egg-shiny { flex-shrink: 0; margin-left: 2px; }
+/* 闪光蛋 / 6V 蛋的图标扫光：高光带在固定的蛋形遮罩里循环扫过。
+   遮罩取蛋图自身的透明通道，光只落在蛋身上；所以动的是 background-position，
+   而不是元素本身——元素一动遮罩就跟着偏了。
+   外壳尺寸由里面的蛋图撑开（列表 18px、槽位 22px 都能用） */
+.egg-icon-shine {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.egg-icon-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.92) 50%, transparent 58%);
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  -webkit-mask-image: var(--egg-src);
+  mask-image: var(--egg-src);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  animation: egg-shine-sweep 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes egg-shine-sweep {
+  0% { background-position: 85% 0; }
+  55%, 100% { background-position: 15% 0; }
+}
 /* 放入蛋列表只有两列：名字靠左、个体值靠右 */
 #incubatorEggView .nursery-egg-header .pokedex-name,
 #incubatorEggView .nursery-egg-row .pokedex-name { margin-right: auto; }
@@ -9161,6 +9222,27 @@ body.booting { visibility: hidden; }
   box-sizing: border-box;
 }
 .nursery-egg-page .list-scroll { overflow-x: hidden; }
+/* 蛋仓库右上角「收藏」按钮：贴搜索行右端，与其他小按钮同风格 */
+.nursery-egg-fav-btn {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-family: inherit;
+  line-height: 1.5;
+  border: 1px solid rgba(var(--ui-color-rgb),0.25);
+  border-radius: 3px;
+  background: rgba(var(--ui-color-rgb),0.06);
+  color: var(--ui-color);
+  cursor: pointer;
+  white-space: nowrap;
+}
+@media (hover: hover) {
+  .nursery-egg-fav-btn:hover { background: rgba(var(--ui-color-rgb),0.14); }
+}
+.nursery-egg-fav-btn:active { transform: scale(0.96); }
+/* 收藏页没有「丢弃」列，名字列撑开把个体值顶到右缘 */
+.nursery-egg-fav .nursery-egg-header .pokedex-name,
+.nursery-egg-fav .nursery-egg-row .pokedex-name { margin-right: auto; }
 /* 标题后跟的小字（目标蛋组） */
 .nursery-pick-egggroup {
   font-size: 10px;

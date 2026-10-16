@@ -328,7 +328,9 @@ function ctxFor(a, win) {
     // 上交：按 id 从仓库移除（活动改游戏状态只走 grant / take / grantEgg 这几个口子）
     take: (ids, reason) => {
       const arr = (gameData && Array.isArray(gameData.roster)) ? gameData.roster : [];
-      const want = ids || [];
+      // 空位过滤掉：picks 跳着放会留空洞，for...of 会把它当 undefined 交给
+      // findIndex（-1）→ splice(-1,1) 误删仓库末尾的个体
+      const want = (ids || []).filter(Boolean);
       // 全有才交：有一个不在了（被放生/交换/进化改了 id）就整单作废，避免半交还照发全奖
       if (!want.length || want.some(id => !arr.some(p => p.id === id))) return false;
       for (const id of want) arr.splice(arr.findIndex(p => p.id === id), 1);

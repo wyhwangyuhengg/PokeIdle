@@ -338,6 +338,10 @@ def run_checks(data, pokedex):
             add(f"{p}.obtainedAt", f"获得时间在未来（{fmt_time(ot)}）")
         if "inRoster" in m and not isinstance(m.get("inRoster"), bool):
             add(f"{p}.inRoster", f"inRoster 不是布尔（{m.get('inRoster')!r}）")
+        if "fav" in m and not isinstance(m.get("fav"), bool):
+            add(f"{p}.fav", f"fav 不是布尔（{m.get('fav')!r}）")
+        elif m.get("fav") and m.get("kind") != "egg":
+            add(f"{p}.fav", "非蛋条目带收藏标记（孵出后应清除 fav）")
 
     team = data.get("team")
     if team is not None:
@@ -792,7 +796,7 @@ class SaveViewer:
             sid = str(m.get("species", ""))
             name = self.pokedex.get(sid, f"?{sid}")
             if m.get("kind") == "egg":
-                name = f"{name}（蛋）"
+                name = f"{name}（{'蛋・收藏' if m.get('fav') else '蛋'}）"
             tags = ("issue",) if self._has_issue(f"roster.{i}") or self._has_issue(f"roster.{i}.species") else ()
             ivs = m.get("ivs") or {}
             evs = m.get("evs") or {}
