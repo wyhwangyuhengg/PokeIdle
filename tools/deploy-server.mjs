@@ -48,9 +48,9 @@ const remoteCfgDir = remoteConfig.slice(0, remoteConfig.lastIndexOf('/'));
 
 console.log(`[2/4] 推送 server.mjs → ${remoteServer}`);
 run(`${sshBase} "mkdir -p '${remoteCfgDir}'"`);
-run(`${scpBase} "${SERVER_FILE}" ${cfg.user || 'root'}@${cfg.host}:'${remoteServer}'`);
+run(`${scpBase} "${SERVER_FILE}" ${cfg.user || 'root'}@${cfg.host}:"${remoteServer}"`);
 console.log(`      推送 config.js → ${remoteConfig}（事件参数，服务器启动时读它，读不到就用内置兜底值）`);
-run(`${scpBase} "${CONFIG_FILE}" ${cfg.user || 'root'}@${cfg.host}:'${remoteConfig}'`);
+run(`${scpBase} "${CONFIG_FILE}" ${cfg.user || 'root'}@${cfg.host}:"${remoteConfig}"`);
 
 console.log(`[3/4] 重启 pm2：${pm2Name}`);
 run(`${sshBase} "pm2 restart ${pm2Name} >/dev/null 2>&1; sleep 2; pm2 list | grep -E '${pm2Name}'"`);

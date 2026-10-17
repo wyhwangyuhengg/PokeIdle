@@ -6,16 +6,92 @@ import { gameData, allPokemon, getPokemonByIndex, phase, saveGame, pushNav, popN
 import { $, showView, isOnGameView, updateBackpack, updateStats, tryLoadImage, tryLoadPokemonIcon, consoleLayerStyle } from './ui.js';
 import { TYPE_COLORS } from './items.js';
 import * as road from './road.js';
+import { fourDirGeom, fourDirSrc, fourDirAnim, fourDirStaticAnim, fourDirDelay, fourDirFitBox, fourDirFitContent, fourDirRowBox, DIR_ROW } from './four-dir.js';
 
-// 走路帧序 1-7-2-7（1-indexed）→ 0-indexed；随从没有跑/骑动作，只加快帧率
-const FOLLOWER_FRAME_SEQ = [0, 6, 1, 6];
 const FOLLOWER_STEP_MS = { walk: 150, run: 112, bike: 62 }; // 由主角 0.6s/0.45s/0.25s 循环 ÷4 帧得来
+const FOLLOWER_SCALE = 1.35;  // 路上随从按源像素的固定倍率放大（不做归一，保留宝可梦之间的体型差）
+const FOLLOWER_MAX = 60;      // 单只随从内容最长边的上限，只给传说级/巨鲸这类封顶
+const FOLLOWER_GAP = 10;      // 随从内容右边界到主角贴图左边缘的横向间距（主角骑车时贴图更宽，按左缘算才不会蹭到车轮）
+const LOCK_WALK_PX_PER_S = 220; // 抽出后走向卡片的移动速度（像素/秒），按恒定速度分两段走
+const LOCK_WALK_BOX = 48;       // 走过去时的显示尺寸，与走马灯一致；到位后才放大到卡片尺寸
+const LOCK_CARD_SIZE = 74;      // 卡片里的大图尺寸（内容最长边）
 const FOLLOWER_TIER_LABEL = { N: '常见', R: '稀有', SR: '超稀有', UR: '传说' };
 let _followerAnimRaf = null;
 let _followerEl = null;       // 跟随宝可梦 DOM 元素
-let _followerFrame = 0;       // 当前帧索引（FOLLOWER_FRAME_SEQ 下标）
-let _followerLastSwap = 0;    // 上次换帧时间
-let _followerFrameCount = 1;  // 总帧数（由图片宽度决定）
+let _followerRoadGeom = null; // 路上随从的四向几何表
+let _followerFootOffset = 0;  // 四向素材画布顶到脚底的距离（已乘缩放），用于和主角落地对齐
+let _followerRightEdge = 0;   // 随从右向内容右边界到画布左缘的距离（已乘缩放），用于贴边定位
+
+// 变体（index 含 -）没有四向素材
+function followerGeom(index) {
+  const key = String(index);
+  return key.includes('-') ? null : fourDirGeom(key);
+}
+
+// 随从池就是有四向图的宝可梦；走动取 walk
+function followerSpriteRel(index, anim = 'walk') {
+  return fourDirSrc(followerGeom(index), anim);
+}
+
+// 静止展示用正面 idle；素材 idle 只有一帧时退回正面行走帧
+function followerStaticRel(index) {
+  const geom = followerGeom(index);
+  return fourDirSrc(geom, fourDirStaticAnim(geom));
+}
+
+function loadFollowerStatic(img, index) {
+  const geom = followerGeom(index);
+  if (!geom) return Promise.resolve({ ok: false, geom: null, anim: 'walk' });
+  const anim = fourDirStaticAnim(geom);
+  return tryLoadImage(img, fourDirSrc(geom, anim)).then(ok => ({ ok, geom, anim }));
+}
+
+function loadFollowerSprite(img, index, anim = 'walk') {
+  const geom = followerGeom(index);
+  if (!geom) return Promise.resolve({ ok: false, geom: null });
+  return tryLoadImage(img, fourDirSrc(geom, anim)).then(ok => ({ ok, geom }));
+}
+
+// ===== 四向 UI 动画（走马灯 / 滚动格 / 卡片大图共用）=====
+let _fdImgs = [];
+let _fdRaf = null;
+
+// opts.content 按内容框归一（消除透明留白）；否则 opts.box 按画布边长
+function startFourDirAnim(img, geom, opts = {}) {
+  const row = opts.row || 0;
+  const anim = opts.anim || 'walk';
+  if (opts.content) fourDirFitContent(img, geom, anim, opts.content, { row });
+  else fourDirFitBox(img, geom, anim, opts.box || 48, { row });
+  const item = { img, anim: fourDirAnim(geom, anim), row, frame: 0, nextAt: performance.now() };
+  const i = _fdImgs.findIndex(m => m.img === img);
+  if (i >= 0) _fdImgs.splice(i, 1);
+  _fdImgs.push(item);
+  if (!_fdRaf) _fdRaf = requestAnimationFrame(fdAnimTick);
+}
+
+function fdAnimTick() {
+  const now = performance.now();
+  _fdImgs = _fdImgs.filter(m => m.img && m.img.isConnected);
+  for (const m of _fdImgs) {
+    if (now < m.nextAt) continue;
+    const n = Math.max(1, m.anim.n);
+    if (m.frame >= n) m.frame = 0;
+    m.img.style.objectPosition = `-${m.frame * m.anim.w}px -${m.row * m.anim.h}px`;
+    m.nextAt = now + fourDirDelay(m.anim, m.frame);
+    m.frame = (m.frame + 1) % n;
+  }
+  _fdRaf = _fdImgs.length ? requestAnimationFrame(fdAnimTick) : null;
+}
+
+// 切换已播动画的方向行（锁定到位后转正面用）
+function setFourDirRow(img, row) {
+  const m = _fdImgs.find(it => it.img === img);
+  if (!m) return;
+  m.row = row;
+  m.frame = 0;
+  m.nextAt = performance.now();
+  img.style.objectPosition = `0px -${row * m.anim.h}px`;
+}
 
 // 按主角步态返回随从换帧间隔（毫秒）
 function followerStepMs() {
@@ -29,12 +105,9 @@ function followerStepMs() {
 // 稀有度分桶：<0.4 / 0.4~0.6 / 0.6~0.8 / ≥0.8
 function tierOfRarity(r) { return r < 0.4 ? 'N' : r < 0.6 ? 'R' : r < 0.8 ? 'SR' : 'UR'; }
 
-// 只有编号 ≤ 649 的宝可梦带走路动画，卡池只收这批
+// 卡池 = 所有带四向走路贴图的宝可梦（变体无贴图，自然排除）
 function getFollowerPool() {
-  return (allPokemon || []).filter(p => {
-    const idx = Number(p.index);
-    return idx >= 1 && idx <= 649;
-  });
+  return (allPokemon || []).filter(p => !!followerGeom(p.index));
 }
 
 // 按稀有度概率抽一个档位
@@ -239,7 +312,6 @@ export function showFollowerView() {
 function renderFollowerView() {
   const content = $('followerContent');
   if (!content) return;
-  stopMoveAnim();
   const f = gameData?.follower;
   const pool = getFollowerPool();
 
@@ -253,7 +325,7 @@ function renderFollowerView() {
     const groups = f.groups || [];
     const boostPct = Math.round((f.boost || 0) * 100);
     const types = poke?.types || [];
-    const movePath = `./pokemon-data/pokemon-move/${f.index}-${f.name}.png`;
+    const movePath = followerStaticRel(f.index);
 
     content.innerHTML = `
       <div class="follower-display">
@@ -276,7 +348,9 @@ function renderFollowerView() {
         <button class="gacha-btn" id="followerDismissBtn">送走</button>
       </div>`;
     const animImg = $('followerAnimImg');
-    if (animImg) tryLoadImage(animImg, movePath).then(ok => { if (ok) startMoveAnim(animImg, 150); });
+    if (animImg) loadFollowerStatic(animImg, f.index).then(r => {
+      if (r.ok) startFourDirAnim(animImg, r.geom, { content: 74, anim: r.anim });
+    });
     const dismissBtn = $('followerDismissBtn');
     if (dismissBtn) dismissBtn.addEventListener('click', stopFollower);
     // 倒计时只刷新文本，避免整页重渲染打断帧动画
@@ -323,7 +397,9 @@ function renderFollowerView() {
         <div class="follower-actions"><button class="gacha-btn" disabled>抽取中…</button></div>`;
       startFollowerRoll();
     } else if (_drawPhase === 'locking') {
-      const movePath = `./pokemon-data/pokemon-move/${_drawResult.index}-${_drawResult.name}.png`;
+      const movePath = followerSpriteRel(_drawResult.index);
+      // 结果页大图走静止素材（与走路不是同一张），提前抢载，收尾切换不闪空
+      preloadMoveImages([followerStaticRel(_drawResult.index)]);
       // 锁定阶段：图片挂全屏 overlay 上自由放大平移，不被容器裁剪；卡片区只用来量坐标。
       // 布局与结果页一致（右侧信息占位透明），动画结束无跳变
       const lockGroups = getFollowerGroups(_drawResult.types);
@@ -362,10 +438,11 @@ function renderFollowerView() {
       const lockWrap = $('followerLockWrap');
       const lockImg = $('followerLockImg');
       const lockArea = $('followerLockArea');
-      if (lockImg) tryLoadImage(lockImg, movePath).then(ok => {
-        if (ok && lockImg.naturalWidth && lockImg.naturalHeight) {
-          lockImg.style.display = '';
-        }
+      if (lockImg) loadFollowerSprite(lockImg, _drawResult.index).then(r => {
+        if (!r.ok) return;
+        // 抽出后不停帧：保持朝左走的行走帧，以走马灯同尺寸一路走到左侧卡片；到位再转身正面并放大
+        if (r.geom) startFourDirAnim(lockImg, r.geom, { box: LOCK_WALK_BOX, row: DIR_ROW.left });
+        if (lockImg.naturalWidth && lockImg.naturalHeight) lockImg.style.display = '';
       });
       // 渲染完成后量坐标：wrap 定位到卡片区，transform 从显示区中心放大，再平移归位
       requestAnimationFrame(() => {
@@ -404,7 +481,9 @@ function renderFollowerView() {
           const leftItems = adj([-1, -2, -3, -4]).reverse();
           const rightItems = adj([1, 2, 3, 4]);
           const mk = (items) => items.map(p => {
-            return `<div class="follower-lock-ghost"><img data-src="./pokemon-data/pokemon-move/${String(p.index).padStart(4,'0')}-${p.name}.png" alt="${p.name}"></div>`;
+            const geom = followerGeom(p.index);
+            const rel = fourDirSrc(geom, 'walk');
+            return `<div class="follower-lock-ghost"><img ${geom ? `data-fd="${p.index}"` : ''} data-src="${rel}" alt="${p.name}"></div>`;
           }).join('');
           // 残影行以显示区中心为锚点；中间留目标格空位，左右两排从两侧散开
           ghosts.innerHTML = `
@@ -413,34 +492,67 @@ function renderFollowerView() {
               <div class="follower-lock-holder"></div>
               <div class="follower-lock-row is-right">${mk(rightItems)}</div>
             </div>`;
-          animateMoveImgs(ghosts, 'img');
+          // 残影沿用滚动格的朝向（朝右走），与滚动现场一致
+          animateMoveImgs(ghosts, 'img', { box: 40, row: DIR_ROW.right });
         }
-        // 分两步：先在显示区中央原地放大，再向左平移到卡片区位置。
-        // 用双 rAF 保证初始态先渲染，过渡不会跳变
+        // 以走马灯尺寸淡入显示区中央，按这个尺寸走到卡片位，到位后才放大
         lockWrap.style.transition = 'none';
-        lockWrap.style.transform = `translate(${dx}px, ${dy}px) scale(0.3)`;
+        lockWrap.style.transform = `translate(${dx}px, ${dy}px)`;
         lockWrap.style.opacity = '0';
         requestAnimationFrame(() => {
-          lockWrap.style.transition = 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease';
-          lockWrap.style.transform = `translate(${dx}px, ${dy}px) scale(1)`;
+          lockWrap.style.transition = 'opacity 0.18s ease';
           lockWrap.style.opacity = '1';
-          setTimeout(() => {
-            lockWrap.style.transition = 'transform 0.35s cubic-bezier(0.33, 0, 0.2, 1)';
-            lockWrap.style.transform = 'translate(0, 0) scale(1)';
-            // 平移动画末尾才淡入卡片背景，避免提前露出圆角
+          // 恒速分两段走：先纵向到卡片同高，再横向走到卡片，两段都按行走速度，不做斜向滑行
+          const walkMs = px => Math.max(180, Math.abs(px) / LOCK_WALK_PX_PER_S * 1000);
+          const tY = Math.round(walkMs(dy));
+          const tX = Math.round(walkMs(dx));
+          requestAnimationFrame(() => {
+            lockWrap.style.transition = `transform ${tY}ms linear`;
+            lockWrap.style.transform = `translate(${dx}px, 0)`;
             setTimeout(() => {
-              lockArea.style.transition = 'background 0.3s ease';
-              lockArea.style.background = '';
-            }, 300);
-          }, 420);
+              lockWrap.style.transition = `transform ${tX}ms linear`;
+              lockWrap.style.transform = 'translate(0, 0)';
+              setTimeout(() => {
+                // 到位：转身朝前，同时放大进卡片。放大倍数 = 卡片尺寸 / 走过的尺寸
+                const geom = followerGeom(_drawResult.index);
+                let grow = 1;
+                if (geom) {
+                  const kWalk = fourDirFitBox(lockImg, geom, 'walk', LOCK_WALK_BOX, { row: DIR_ROW.left });
+                  const b = fourDirRowBox(geom, 'walk');
+                  const kCard = LOCK_CARD_SIZE / Math.max(1, b[2] - b[0] + 1, b[3] - b[1] + 1);
+                  grow = kCard / kWalk;
+                }
+                setFourDirRow(lockImg, DIR_ROW.down);
+                lockWrap.style.transition = 'transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1)';
+                lockWrap.style.transform = `translate(0, 0) scale(${grow})`;
+                setTimeout(() => {
+                  // 放大结束后换成卡片布局，同时把 wrap 缩放归位（两者同一帧，视觉不变）
+                  if (geom) fourDirFitContent(lockImg, geom, 'walk', LOCK_CARD_SIZE, { row: DIR_ROW.down });
+                  lockWrap.style.transition = 'none';
+                  lockWrap.style.transform = 'translate(0, 0)';
+                  lockArea.style.transition = 'background 0.3s ease';
+                  lockArea.style.background = '';
+                  setTimeout(finishLock, 60);
+                }, 230);
+              }, tX);
+            }, tY);
+          });
         });
       });
-      // 移除 overlay 并切结果页（图已停在卡片区，无跳变）
-      setTimeout(() => {
-        overlay.remove();
+      // 切结果页：图已停在卡片区，与结果页同尺寸、同位置
+      let lockDone = false;
+      const finishLock = () => {
+        if (lockDone) return;
+        lockDone = true;
         _drawPhase = 'idle';
-        renderDrawResult(_drawResult, getFollowerGroups(_drawResult.types));
-      }, 950);
+        // 结果页大图与锁定动画不是同一张素材：等新图真加载出来再撤 overlay，免得卡片区闪空
+        const ready = renderDrawResult(_drawResult, getFollowerGroups(_drawResult.types));
+        let dropped = false;
+        const drop = () => { if (!dropped) { dropped = true; overlay.remove(); } };
+        Promise.resolve(ready).then(drop, drop);
+        setTimeout(drop, 600);
+      };
+      setTimeout(finishLock, 2400);
     } else if (_drawPhase === 'multi-rolling') {
       // 5 连抽：顶部收集区（5 槽）+ 当前滚动格
       const slots = '<div class="follower-multi-slot"></div>'.repeat(5);
@@ -467,7 +579,8 @@ function renderFollowerView() {
           <button class="gacha-btn" id="followerDrawBtn" ${canDraw ? '' : 'disabled'}>抽取随从 ${FOLLOWER_DRAW_COST}<img class="gacha-coin-icon" src="./items/goods/candy.png" alt="糖"></button>
           <button class="gacha-btn" id="followerDrawMultiBtn" ${canDrawMulti ? '' : 'disabled'}>5连抽 ${FOLLOWER_DRAW_COST * 5}<img class="gacha-coin-icon" src="./items/goods/candy.png" alt="糖"></button>
         </div>`;
-      animateMoveImgs(content, '.follower-marquee-item img');
+      // 空闲走马灯播放朝右行走帧
+      animateMoveImgs(content, '.follower-marquee-item img', { box: 48, row: DIR_ROW.right });
       const drawBtn = $('followerDrawBtn');
       if (drawBtn) drawBtn.addEventListener('click', doDraw);
       const multiBtn = $('followerDrawMultiBtn');
@@ -492,59 +605,31 @@ function followerMarqueeItems() {
   const shuffled = [...pool].sort(() => Math.random() - 0.5);
   const picked = shuffled.slice(0, Math.min(14, shuffled.length));
   const items = picked.map(p => {
+    const geom = followerGeom(p.index);
+    const rel = fourDirSrc(geom, 'walk');
     return `<div class="follower-marquee-item tier-${tierOfRarity(p.rarity || 0)}">
-      <img data-src="./pokemon-data/pokemon-move/${String(p.index).padStart(4,'0')}-${p.name}.png" alt="${p.name}">
+      <img ${geom ? `data-fd="${p.index}"` : ''} data-src="${rel}" alt="${p.name}">
     </div>`;
   });
   return items.join('') + items.join('');
 }
 
-// ===== 走马灯帧动画（共享 RAF 驱动全部走马灯项）=====
-let _marqueeImgs = [];
-let _marqueeRaf = null;
-
-// 本批 move 图先抢载进缓存，滚动中不闪现未加载状态
+// 本批图先抢载进缓存，滚动中不闪现未加载状态
 function preloadMoveImages(rels) {
   rels.forEach(rel => tryLoadImage(new Image(), rel));
 }
 
-// 容器内的 move 图走标准加载通道（Tauri 下相对 src 会失败），加载完播帧动画
-function animateMoveImgs(scope, selector, scale) {
+// 容器内的图走标准加载通道（Tauri 下相对 src 会失败），加载完播帧动画
+function animateMoveImgs(scope, selector, opts = {}) {
   scope.querySelectorAll(selector).forEach(img => {
     const rel = img.dataset.src;
-    if (rel) tryLoadImage(img, rel).then(ok => { if (ok) startMarqueeAnim(img, scale); });
+    if (!rel) return;
+    tryLoadImage(img, rel).then(ok => {
+      if (!ok) return;
+      const geom = followerGeom(img.dataset.fd);
+      startFourDirAnim(img, geom, { box: opts.box || 48, row: opts.row, anim: opts.anim === 'idle' ? fourDirStaticAnim(geom) : opts.anim });
+    });
   });
-}
-
-function startMarqueeAnim(img, scale = 1.6) {
-  const w = img.naturalWidth, h = img.naturalHeight;
-  if (!w || !h) return;
-  const frameCount = Math.max(1, Math.round(w / h));
-  // 单帧布局 + 以中心为原点放大；scale 供 5 连抽槽位这类小容器收小用
-  img.style.width = h + 'px';
-  img.style.height = h + 'px';
-  img.style.objectFit = 'none';
-  img.style.objectPosition = '0px 0px';
-  img.style.transform = `scale(${scale})`;
-  img.style.transformOrigin = 'center';
-  _marqueeImgs.push({ img, frameCount, frameW: w / frameCount, frame: 0, last: performance.now() });
-  if (!_marqueeRaf) _marqueeRaf = requestAnimationFrame(marqueeTick);
-}
-
-function marqueeTick() {
-  const now = performance.now();
-  // 过滤已被移除的项，空则停掉共享循环
-  _marqueeImgs = _marqueeImgs.filter(m => m.img && m.img.isConnected);
-  for (const m of _marqueeImgs) {
-    if (now - m.last >= 200) {
-      m.frame = (m.frame + 1) % FOLLOWER_FRAME_SEQ.length;
-      m.last = now;
-      const idx = FOLLOWER_FRAME_SEQ[m.frame] % m.frameCount;
-      m.img.style.objectPosition = `-${idx * m.frameW}px 0px`;
-    }
-  }
-  if (_marqueeImgs.length > 0) _marqueeRaf = requestAnimationFrame(marqueeTick);
-  else _marqueeRaf = null;
 }
 
 // ===== 抽卡动画状态（滚动 → 锁定 → 结果）=====
@@ -648,13 +733,15 @@ function buildRollTrack(track, count, pick) {
   for (let i = 0; i < count; i++) {
     const p = pick(i);
     _rollItems.push(p);
-    const rel = `./pokemon-data/pokemon-move/${String(p.index).padStart(4,'0')}-${p.name}.png`;
+    const geom = followerGeom(p.index);
+    const rel = fourDirSrc(geom, 'walk');
     rels.push(rel);
-    html += `<div class="follower-roll-item"><img class="follower-roll-img" data-src="${rel}" alt="${p.name}"></div>`;
+    html += `<div class="follower-roll-item"><img class="follower-roll-img" ${geom ? `data-fd="${p.index}"` : ''} data-src="${rel}" alt="${p.name}"></div>`;
   }
   preloadMoveImages(rels);
   track.innerHTML = html;
-  animateMoveImgs(track, '.follower-roll-img');
+  // 滚动格同样播朝右行走帧
+  animateMoveImgs(track, '.follower-roll-img', { box: 48, row: DIR_ROW.right });
 }
 
 // 滚动抽卡：全新随机一批随从格，向右减速滚动后吸附到目标格居中
@@ -709,7 +796,7 @@ function startMultiRoll() {
   const pool = getFollowerPool();
   const ITEM_STEP = 56;
   // 预热 5 只结果图，槽位上浮时直接命中缓存
-  preloadMoveImages(results.map(r => `./pokemon-data/pokemon-move/${r.index}-${r.name}.png`));
+  preloadMoveImages(results.map(r => followerStaticRel(r.index)));
   const itemCount = 44;
   buildRollTrack(track, itemCount, () => pool[Math.floor(Math.random() * pool.length)]);
   // 滚动参数与单抽相同：右移减速滑行约 1100px
@@ -752,7 +839,9 @@ function startMultiRoll() {
 function collectMultiPoke(i, cur) {
   const collect = $('followerMultiCollect');
   if (!collect) return;
-  const movePath = `./pokemon-data/pokemon-move/${cur.index}-${cur.name}.png`;
+  const geom = followerGeom(cur.index);
+  const anim = fourDirStaticAnim(geom);
+  const movePath = fourDirSrc(geom, anim);
   const slots = collect.querySelectorAll('.follower-multi-slot');
   const slot = slots[i];
   if (slot) {
@@ -761,7 +850,9 @@ function collectMultiPoke(i, cur) {
       : cur.tier === 'SR' ? '<span class="follower-slot-star">✦</span>' : '';
     slot.innerHTML = `<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="${movePath}" alt="${cur.name}">${star}`;
     const img = slot.querySelector('img');
-    if (img) tryLoadImage(img, movePath).then(ok => { if (ok) startMarqueeAnim(img, 1.0); });
+    if (img) tryLoadImage(img, movePath).then(ok => {
+      if (ok) startFourDirAnim(img, geom, { box: 34, anim });
+    });
     slot.classList.add('filled');
     // 飞入动画：从下方 24px 移入槽位
     slot.style.opacity = '0';
@@ -774,13 +865,12 @@ function collectMultiPoke(i, cur) {
   }
 }
 
-// 抽卡结果页：左 move 帧动画 + 右信息，底部跟随/放走
+// 抽卡结果页：左侧大图 + 右侧信息，底部跟随/放走
 function renderDrawResult(result, groups) {
   const content = $('followerContent');
   if (!content) return;
-  stopMoveAnim();
   const boostPct = Math.round(getEffectiveBoost(result.tier) * 100);
-  const movePath = `./pokemon-data/pokemon-move/${result.index}-${result.name}.png`;
+  const movePath = followerStaticRel(result.index);
   const dex = result.dex || followerDexInfo(result.index);
 
   // 信息条按顺序淡入（图片已由锁定动画带到位，不再淡入）
@@ -807,7 +897,10 @@ function renderDrawResult(result, groups) {
       <button class="gacha-btn follower-release-btn" id="followerReleaseBtn">放走</button>
     </div>`;
   const animImg = $('followerAnimImg');
-  if (animImg) tryLoadImage(animImg, movePath).then(ok => { if (ok) startMoveAnim(animImg, 150); });
+  // 返回大图就绪的 promise，锁定收尾要等它出来再撤 overlay
+  const imgReady = animImg ? loadFollowerStatic(animImg, result.index).then(r => {
+    if (r.ok) startFourDirAnim(animImg, r.geom, { content: 74, anim: r.anim });
+  }) : Promise.resolve();
   const followBtn = $('followerFollowBtn');
   const releaseBtn = $('followerReleaseBtn');
   if (followBtn) followBtn.addEventListener('click', () => {
@@ -819,6 +912,7 @@ function renderDrawResult(result, groups) {
     clearPending(); // 放走：结果作废，清除待处理标记
     renderFollowerView();
   });
+  return imgReady;
 }
 
 // 5 连抽结果页：顶部收集槽（点击切换右侧信息），底部跟随/放走全部
@@ -831,15 +925,16 @@ function renderMultiResult() {
   const sel = results[_multiSel];
   const boostPct = Math.round(getEffectiveBoost(sel.tier) * 100);
   const groups = getFollowerGroups(sel.types);
-  const movePath = `./pokemon-data/pokemon-move/${sel.index}-${sel.name}.png`;
+  const movePath = followerStaticRel(sel.index);
   const dex = sel.dex || followerDexInfo(sel.index);
   // 顶部收集槽：填满已抽到图片，选中槽高亮，点击切换
   const slots = results.map((r, i) => {
-    const p = `./pokemon-data/pokemon-move/${r.index}-${r.name}.png`;
+    const geom = followerGeom(r.index);
+    const p = fourDirSrc(geom, fourDirStaticAnim(geom));
     const star = r.tier === 'UR' ? '<span class="follower-slot-star ur">✦</span>'
       : r.tier === 'SR' ? '<span class="follower-slot-star">✦</span>' : '';
     return `<div class="follower-multi-slot${i === _multiSel ? ' selected' : ''}" data-mi="${i}">
-      <img data-src="${p}" alt="${r.name}">${star}
+      <img ${geom ? `data-fd="${r.index}"` : ''} data-src="${p}" alt="${r.name}">${star}
     </div>`;
   }).join('');
   content.innerHTML = `
@@ -864,9 +959,11 @@ function renderMultiResult() {
       <button class="gacha-btn follower-follow-btn" id="followerFollowBtn">让它跟随</button>
       <button class="gacha-btn follower-release-btn" id="followerReleaseBtn">放走全部</button>
     </div>`;
-  animateMoveImgs(content, '#followerMultiCollect img', 1.0);
+  animateMoveImgs(content, '#followerMultiCollect img', { box: 34, anim: 'idle' });
   const big = $('followerMultiBig');
-  if (big) tryLoadImage(big, movePath).then(ok => { if (ok) startMoveAnim(big, 150); });
+  if (big) loadFollowerStatic(big, sel.index).then(r => {
+    if (r.ok) startFourDirAnim(big, r.geom, { content: 74, anim: r.anim });
+  });
   // 点槽位切换右侧信息：重渲染整页
   content.querySelectorAll('.follower-multi-slot').forEach(slot => {
     slot.addEventListener('click', () => {
@@ -899,6 +996,8 @@ let _followerDexSortBy = '';     // '' 编号 | 'star' 星级 | 'count' 次数
 let _followerDexSortDir = 1;     // 1 = 多到少，-1 = 少到多（仅星级/次数生效）
 
 export function showFollowerDexView() {
+  _followerDetailIndex = null;
+  leaveFollowerDetailTitle();
   pushNav('followerDexView');
   showView('followerDexView');
   ensureFollowerDexShell();
@@ -906,6 +1005,8 @@ export function showFollowerDexView() {
 }
 
 export function closeFollowerDexView() {
+  // 详情态下返回先回列表，再返一次才离开图鉴
+  if (_followerDetailIndex != null) { backToFollowerDexList(); return; }
   closeFollowerDexDropdowns();
   popNav();
   showView('followerView');
@@ -952,7 +1053,7 @@ function followerDexRowsHtml() {
     const got = !!(gameData?.followerDex || {})[key];
     const info = followerDexInfo(key);
     const name = got ? (p.form || p.name) : '？？？';
-    return `<div class="pokedex-entry follower-dex-row${got ? '' : ' disabled'}">
+    return `<div class="pokedex-entry follower-dex-row${got ? '' : ' disabled'}" data-fdx-idx="${key}">
       <span class="fdx-name"><img class="roster-icon-img" ${got ? `data-fd-icon="${key}"` : 'data-fd-unknown'} alt="" style="width:18px;height:18px;" />${name}</span>
       <span class="fdx-type">${got ? typeBadgesHtml(p.types) : ''}</span>
       <span class="fdx-star">${got ? `★${info.star}` : ''}</span>
@@ -962,7 +1063,7 @@ function followerDexRowsHtml() {
 }
 
 function followerDexHeaderHtml() {
-  // 类名要塞进 class 属性里（之前当成文本内容了，页面上直接显示成「星级 sort-desc」）
+  // 排序箭头类名要拼进 class 属性
   const cls = (k) => _followerDexSortBy === k ? (_followerDexSortDir === 1 ? 'sort-desc' : 'sort-asc') : '';
   return `<div class="follower-dex-header">
     <span class="fdx-name">随从</span>
@@ -1093,6 +1194,10 @@ function renderFollowerDexList() {
     typeDd.innerHTML = [['', '全部属性'], ...FOLLOWER_DEX_TYPES.map(t => [t, t])]
       .map(([k, n]) => `<div class="region-dropdown-item${_followerDexType === k ? ' active' : ''}" data-dk="${k}">${n}</div>`).join('');
   }
+  // 已获得的行可点进详情；未获得的不绑定
+  list.querySelectorAll('.follower-dex-row:not(.disabled)').forEach(row => {
+    row.addEventListener('click', () => showFollowerDetail(row.dataset.fdxIdx));
+  });
   // 已获得的行加载真实图标，未获得的加载 unknown 占位图
   list.querySelectorAll('[data-fd-unknown]').forEach(img => tryLoadImage(img, 'pokemon-data/icon/unknown.png'));
   list.querySelectorAll('[data-fd-icon]').forEach(img => {
@@ -1101,53 +1206,91 @@ function renderFollowerDexList() {
   });
 }
 
-// ===== 通用 move 帧动画 =====
-// 在任意 img 上按 FOLLOWER_FRAME_SEQ 循环播走路帧；viewSize 是放大后的视觉尺寸（px）
-let _uiAnimRaf = null;
-let _uiAnimImg = null;
+// ===== 随从详情页（图鉴列表点已获得的随从进入，版式照抽取结果页）=====
+let _followerDetailIndex = null;
+let _followerDetailTitle = null; // 接管前的 appTitle 状态
 
-function startMoveAnim(img, stepMs, viewSize = 80) {
-  stopMoveAnim();
-  _uiAnimImg = img;
-  const tryInit = () => {
-    const w = img.naturalWidth, h = img.naturalHeight;
-    if (!w || !h) { _uiAnimImg = null; return; } // 图片尚未解码，交给 load 事件兜底
-    const frameCount = Math.max(1, Math.round(w / h));
-    const frameW = w / frameCount;
-    // 单帧布局 + transform 放大（object-fit:none 下放大布局会露出多帧）
-    img.style.width = h + 'px';
-    img.style.height = h + 'px';
-    img.style.objectFit = 'none';
-    img.style.objectPosition = '0px 0px';
-    img.style.transform = `scale(${viewSize / h})`;
-    let frame = 0;
-    let last = performance.now();
-    function advance() {
-      if (!_uiAnimImg || !_uiAnimImg.isConnected) { _uiAnimRaf = null; return; }
-      const now = performance.now();
-      if (now - last >= stepMs) {
-        frame = (frame + 1) % FOLLOWER_FRAME_SEQ.length;
-        last = now;
-        const idx = FOLLOWER_FRAME_SEQ[frame] % frameCount;
-        _uiAnimImg.style.objectPosition = `-${idx * frameW}px 0px`;
-      }
-      _uiAnimRaf = requestAnimationFrame(advance);
-    }
-    _uiAnimRaf = requestAnimationFrame(advance);
-  };
-  if (img.complete && img.naturalWidth) {
-    tryInit();
-  } else {
-    img.addEventListener('load', tryInit, { once: true });
-  }
+// 返回链入口：详情是否开着（main.js 用不到，保留给外部判断）
+export function isFollowerDetailOpen() { return _followerDetailIndex != null; }
+
+// 标题栏接管为「随从详情」+ 返回箭头（照图鉴相遇日志的写法）
+function enterFollowerDetailTitle() {
+  const t = $('appTitle');
+  if (!t || _followerDetailTitle != null) return;
+  _followerDetailTitle = { html: t.innerHTML, action: t.dataset.action || '' };
+  t.innerHTML = '<svg style="width:16px;height:16px;vertical-align:middle;fill:var(--ui-color);transform:translateY(-1px);" viewBox="0 0 1024 1024"><use xlink:href="#icon-back"/></svg> 随从详情';
+  t.dataset.action = 'back';
 }
 
-function stopMoveAnim() {
-  if (_uiAnimRaf) {
-    cancelAnimationFrame(_uiAnimRaf);
-    _uiAnimRaf = null;
+function leaveFollowerDetailTitle() {
+  const t = $('appTitle');
+  if (t && _followerDetailTitle != null) {
+    t.innerHTML = _followerDetailTitle.html;
+    t.dataset.action = _followerDetailTitle.action;
   }
-  _uiAnimImg = null;
+  _followerDetailTitle = null;
+}
+
+function followerDetailPageHtml(key) {
+  const p = getPokemonByIndex(key);
+  if (!p) return '';
+  const info = followerDexInfo(key);
+  const tier = tierOfRarity(p.rarity || 0);
+  const boostPct = Math.round(getEffectiveBoost(tier) * 100);
+  const name = p.form || p.name;
+  // 不加 .view-list 的水平内缩：左右各多收 6px 会挤掉信息区宽度，主/副增益 tag 会换行
+  return `<div class="follower-dex-page view-list" style="flex:1;display:flex;flex-direction:column;min-height:0;padding:0 0 4px;">
+    <div class="follower-display">
+      <div class="follower-display-inner">
+        <div class="follower-card-col">
+          <div class="follower-card-area">
+            <img class="follower-big-img" id="followerDetailImg" src="${followerStaticRel(key)}" alt="${name}">
+          </div>
+          <div class="follower-time-line">时长：${Math.round(followerDurMs(key) / 60000)} 分钟</div>
+        </div>
+        <div class="follower-info">
+          <div class="follower-info-name">${name}</div>
+          <div class="follower-info-line"><span class="tier-badge tier-${tier} follower-tier-badge">${FOLLOWER_TIER_LABEL[tier] || tier}</span><span style="font-weight:700;">${starIcons(info.star)}</span></div>
+          <div class="follower-info-line">${typeBadgesHtml(p.types)}</div>
+          <div class="follower-info-line follower-effect-row">${followerGainTagsHtml(p.types, boostPct, tier)}</div>
+        </div>
+      </div>
+    </div>
+    <div class="follower-dex-detail-meta">
+      <span>图鉴编号 #${key}</span>
+      <span>已抽到 ${info.count} 次</span>
+    </div>
+  </div>`;
+}
+
+// 详情页里的大图播正面待机帧，与结果页一致
+function loadFollowerDetailImg(key) {
+  const img = $('followerDetailImg');
+  const p = getPokemonByIndex(key);
+  if (!img || !p) return;
+  loadFollowerStatic(img, key).then(r => {
+    if (r.ok) startFourDirAnim(img, r.geom, { content: LOCK_CARD_SIZE, anim: r.anim });
+  });
+}
+
+export function showFollowerDetail(index) {
+  const key = String(index);
+  if (!(gameData?.followerDex || {})[key]) return; // 只放已解锁的进来
+  const box = $('followerDexView');
+  if (!box) return;
+  _followerDetailIndex = key;
+  enterFollowerDetailTitle();
+  box.innerHTML = followerDetailPageHtml(key);
+  loadFollowerDetailImg(key);
+}
+
+function backToFollowerDexList() {
+  _followerDetailIndex = null;
+  leaveFollowerDetailTitle();
+  const box = $('followerDexView');
+  if (box) box.innerHTML = '';
+  ensureFollowerDexShell();
+  renderFollowerDexList();
 }
 
 // ===== 跟随渲染（挂机页主角身后）=====
@@ -1169,22 +1312,19 @@ function renderFollowerOnRoad() {
   img.draggable = false;
   el.appendChild(img);
 
-  const movePath = `./pokemon-data/pokemon-move/${f.index}-${f.name}.png`;
-  tryLoadImage(img, movePath).then(ok => {
-    if (!ok) return;
-    const w = img.naturalWidth, h = img.naturalHeight;
-    if (!w || !h) return;
-    _followerFrameCount = Math.max(1, Math.round(w / h));
-    img.style.width = h + 'px';
-    img.style.height = h + 'px';
-    img.style.objectFit = 'none';
-    img.style.objectPosition = '0px 0px';
-    img.style.transform = 'scale(2)';
-    img.style.transformOrigin = 'left top';
+  loadFollowerSprite(img, f.index).then(r => {
+    if (!r.ok) return;
+    _followerRoadGeom = r.geom;
+    // 四向素材横向朝右（行 1）：按源像素固定倍率缩放，只对超大体型封顶
+    const box = fourDirRowBox(r.geom, 'walk');
+    const maxEdge = Math.max(box[2] - box[0] + 1, box[3] - box[1] + 1);
+    const target = maxEdge * Math.min(FOLLOWER_SCALE, FOLLOWER_MAX / maxEdge);
+    const k = fourDirFitContent(img, r.geom, 'walk', target, { row: DIR_ROW.right, origin: 'left top' });
+    // 脚底 = 右向内容框底边（与贴边定位同一套数据；ay 与实际脚底有偏差不用）
+    _followerFootOffset = (box[3] + 1) * k;
+    _followerRightEdge = (box[2] + 1) * k;
     // 定位到主角左侧：以 screen 为参考系，与主角行走图底部对齐
     positionFollowerOnRoad();
-    _followerFrame = 0;
-    _followerLastSwap = performance.now();
     startFollowerAnim();
     // 重新按当前视图状态决定显隐（避免 startFollower 在随从弹窗里被误隐藏）
     updateFollowerVisibility();
@@ -1193,7 +1333,7 @@ function renderFollowerOnRoad() {
   updateFollowerVisibility();
 }
 
-// 随从定位：主角左侧一格（主角行走图中心向左一个身位，脚底与主角脚底对齐）
+// 随从定位：贴在主角左侧，脚底与主角对齐
 function positionFollowerOnRoad() {
   const el = $('followerRoad');
   if (!el) return;
@@ -1204,68 +1344,68 @@ function positionFollowerOnRoad() {
   const cRect = charEl.getBoundingClientRect();
   // 主角/屏幕无布局时跳过（全 0 坐标会把随从写到屏幕外），可见后由动画帧兜底重定位
   if (cRect.width === 0 || cRect.height === 0 || sRect.width === 0 || sRect.height === 0) return;
-  // 主角中心 x（相对 screen）
-  const charCX = cRect.left - sRect.left + cRect.width / 2;
-  // 放在主角左侧，隔开约 1.5 个身位，避免与主角行走图重叠
-  const gap = 46;
-  el.style.left = (charCX - gap - cRect.width) + 'px';
-  // 脚底对齐主角：主角底部相对 screen 的距离 - 随从视觉高度
-  const charBottomRel = cRect.bottom - sRect.top;
-  const imgEl = $('followerRoadImg');
-  const fh = imgEl ? imgEl.getBoundingClientRect().height : 64;
-  el.style.top = (charBottomRel - fh) + 'px';
+  // #screen 有 3px 边框：绝对定位以 padding box 为原点，rect 是 border box，需补偿
+  const originX = sRect.left + screen.clientLeft;
+  const originY = sRect.top + screen.clientTop;
+  // 锚主角贴图左缘，随从按内容右边界贴边，骑车贴图更宽也不顶到车轮
+  const charLeft = cRect.left - originX;
+  el.style.left = (charLeft - FOLLOWER_GAP - _followerRightEdge) + 'px';
+  const charBottomRel = cRect.bottom - originY;
+  el.style.top = (charBottomRel - _followerFootOffset) + 'px';
 }
 
 function removeFollowerFromRoad() {
   stopFollowerAnim();
+  _followerRoadGeom = null;
+  _followerFootOffset = 0;
+  _followerRightEdge = 0;
   if (_followerEl) {
     _followerEl.remove();
     _followerEl = null;
   }
-  _followerFrame = 0;
+}
+
+// 路上随从：四向素材横向朝右（行 1），步频跟随主角速度
+function startRoadFourDirAnim(img, geom) {
+  const anim = fourDirAnim(geom, 'walk');
+  const n = Math.max(1, anim.n);
+  const row = DIR_ROW.right;
+  const base = FOLLOWER_STEP_MS.walk;
+  let frame = 0;
+  let nextAt = performance.now();
+  function advance() {
+    if (!_followerEl || !_followerEl.isConnected) { _followerAnimRaf = null; return; }
+    const hide = !isOnGameView() || phase !== 'idle';
+    _followerEl.style.display = hide ? 'none' : '';
+    if (hide) { _followerAnimRaf = requestAnimationFrame(advance); return; }
+    // 可见兜底：此前定位时主角/屏幕无布局被跳过，或布局后位置仍无效（越界），重算一次
+    if (!_followerEl.style.left || !_followerEl.style.top) positionFollowerOnRoad();
+    const wg = $('walkGif');
+    const stopped = wg ? (wg.classList.contains('get-item') || wg.classList.contains('fishing')) : false;
+    const now = performance.now();
+    if (stopped) {
+      // 停下：定格朝右站立帧
+      img.style.objectPosition = `0px -${row * anim.h}px`;
+      nextAt = now;
+      _followerAnimRaf = requestAnimationFrame(advance);
+      return;
+    }
+    if (now >= nextAt) {
+      if (frame >= n) frame = 0;
+      img.style.objectPosition = `-${frame * anim.w}px -${row * anim.h}px`;
+      nextAt = now + fourDirDelay(anim, frame) * (followerStepMs() / base);
+      frame = (frame + 1) % n;
+    }
+    _followerAnimRaf = requestAnimationFrame(advance);
+  }
+  _followerAnimRaf = requestAnimationFrame(advance);
 }
 
 function startFollowerAnim() {
   stopFollowerAnim();
   const img = $('followerRoadImg');
-  if (!img) return;
-  _followerFrame = 0;
-  _followerLastSwap = performance.now();
-  const frameW = img.naturalWidth / _followerFrameCount;
-  // 主角拾取道具 / 钓鱼时随从停下，定格站立帧
-  function isStopped() {
-    const wg = $('walkGif');
-    return wg ? (wg.classList.contains('get-item') || wg.classList.contains('fishing')) : false;
-  }
-  // 主角离开主界面/遭遇/战斗时随从隐藏，回主界面自动恢复（每帧同步，同主角动画的隐现节奏）
-  function shouldHide() {
-    return !isOnGameView() || phase !== 'idle';
-  }
-  function advance() {
-    if (!_followerEl || !_followerEl.isConnected) { _followerAnimRaf = null; return; }
-    const hide = shouldHide();
-    _followerEl.style.display = hide ? 'none' : '';
-    if (hide) { _followerAnimRaf = requestAnimationFrame(advance); return; }
-    // 可见兜底：此前定位时主角/屏幕无布局被跳过，或布局后位置仍无效（越界），重算一次
-    if (!_followerEl.style.left || !_followerEl.style.top) positionFollowerOnRoad();
-    if (isStopped()) {
-      // 定格第 9 帧（1-indexed）
-      const idx = 8 % _followerFrameCount;
-      img.style.objectPosition = `-${idx * frameW}px 0px`;
-      _followerAnimRaf = requestAnimationFrame(advance);
-      return;
-    }
-    const now = performance.now();
-    if (now - _followerLastSwap >= followerStepMs()) {
-      _followerFrame = (_followerFrame + 1) % FOLLOWER_FRAME_SEQ.length;
-      _followerLastSwap = now;
-      // 帧序映射：FOLLOWER_FRAME_SEQ 里的值对帧数取模（3 帧图同样适用）
-      const idx = FOLLOWER_FRAME_SEQ[_followerFrame] % _followerFrameCount;
-      img.style.objectPosition = `-${idx * frameW}px 0px`;
-    }
-    _followerAnimRaf = requestAnimationFrame(advance);
-  }
-  _followerAnimRaf = requestAnimationFrame(advance);
+  if (!img || !_followerRoadGeom) return;
+  startRoadFourDirAnim(img, _followerRoadGeom);
 }
 
 function stopFollowerAnim() {

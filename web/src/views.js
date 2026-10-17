@@ -9,7 +9,7 @@ import { renderAchievements, refreshAchievements } from './achievements.js';
 import { TEAM_MAX } from './team.js';
 import { clearBattleTier } from './battle-view.js';
 import { showDetailCard, hideDetailCard } from './item-detail.js';
-import { APP_VERSION, BUILD_STAMP } from './build-info.js';
+import { APP_VERSION } from './build-info.js';
 import { hasUpdate } from './telemetry.js';
 import { hotMeta } from './hot-update.js';
 import { LUCK_WINDOW } from './scoring.js';
@@ -1673,7 +1673,7 @@ export function renderSettings(container, s) {
   const paintVersion = () => {
     const el = container.querySelector('#settingsVersion');
     if (!el) return;
-    const base = [`v${APP_VERSION}`, BUILD_STAMP].filter(Boolean).join(' · ');
+    const base = `v${APP_VERSION}`;
     const meta = hotMeta();
     const pending = meta ? (meta.pending || 0) : 0;   // 还没更上的资源数
     const behind = hasUpdate() || pending > 0;        // 有新版本，或有资源没更上
@@ -2312,7 +2312,7 @@ const TUTORIAL_SECTIONS = [
     title: '培育',
     html: `<p>在<b>手机</b>主页打开<b>饲育屋</b>：点<b>告示牌</b>放入两只宝可梦配对。普通配对要求<b>一雄一雌</b>且<b>至少共有一个蛋组</b>——只有<b>同蛋组</b>的宝可梦才能一起孵蛋。</p>`
       + `<p><b>百变怪</b>可无视性别，与<b>任意非「未发现蛋组」</b>的宝可梦繁殖（后代按那一族的最低阶算）；但<b>「未发现蛋组」</b>的宝可梦<b>不能</b>与百变怪配对。</p>`
-      + `<p>投喂它们爱吃的<b>树果</b>开始繁殖：先选择<b>连续繁殖轮数</b>（<b>1~10 轮</b>），树果按轮数 <b>×N</b> 一次性扣除；每轮 <b>5~10 分钟</b>产一枚蛋并<b>自动入库</b>、自动续下一轮，无需手动收蛋；一批完成后直接恢复轮数选择界面，可立即开始下一批。</p>`
+      + `<p>投喂它们爱吃的<b>树果</b>开始繁殖：先选择<b>连续繁殖轮数</b>（<b>1~10 轮</b>），树果按轮数 <b>×N</b> 一次性扣除；每轮 <b>2~8 分钟</b>产一枚蛋并<b>自动入库</b>、自动续下一轮，无需手动收蛋；一批完成后直接恢复轮数选择界面，可立即开始下一批。</p>`
       + `<p>繁殖期间取出亲本会<b>终止剩余轮次</b>（树果不退，已产蛋不丢）；产出的<b>宝可梦蛋</b>放入<b>孵蛋器</b>里孵化（详见「<b>孵蛋</b>」章节）。</p>`
       + `<p><b>个体值遗传</b>：<b>1 项</b>完全随机，<b>5 项</b>继承自双亲（默认 50% 随机取父或母）。可从这 5 项中<b>锁定一项</b>，指定该维固定继承父方或母方的数值。</p>`
       + `<p><b>如何培育 6V</b>：优先找两只高个体亲本繁殖，用后代中更优秀的替换亲本，反复迭代拉高双亲基础。遗传的 5 项中，双亲都到 31 的项必然还是 31（从双亲二选一，任意一方都是 31）；但唯一纯随机项完全随机（0~31），有 1/6 概率正好落在某一维——所以最终要赌的还是这 <b>1 个随机项</b>（出 31 的概率 1/32）。锁定功能可在关键维缺一只亲本时帮补短板。</p>`
@@ -2604,7 +2604,7 @@ export function showDeclarationView() {
       <p style="margin:12px 0 4px;padding-top:8px;border-top:1px dashed rgba(var(--ui-color-rgb),0.2);"><b>版权声明</b></p>
       <p style="margin:4px 0;">宝可梦（Pokémon）及其相关角色、名称、标志、音乐、插图与动画，版权均归 Nintendo / Creatures Inc. / GAME FREAK inc. / The Pokémon Company 所有。</p>
       <p style="margin:4px 0;">本项目为个人学习与娱乐交流的粉丝作品，<b>非官方游戏，与官方无任何关联</b>，不用于任何商业用途。</p>
-      <p style="margin:4px 0;">项目使用的宝可梦动画素材来自非官方社区资源（Pokémon Showdown），版权归属其原始权利方，本项目不主张任何所有权。</p>
+      <p style="margin:4px 0;">项目使用的宝可梦动画素材来自非官方社区资源（Pokémon Showdown），行走图素材来自 PMD SpriteCollab（CC BY-NC 4.0）；版权均归属其原始权利方，本项目不主张任何所有权。</p>
       <p style="margin:4px 0;">如涉及侵权，请联系作者删除相关内容。</p>
     </div>
   `;

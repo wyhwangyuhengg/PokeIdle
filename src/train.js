@@ -13,6 +13,7 @@ import { removePokemonFromAllTeams, isInAnyTeam } from './team.js';
 import { BERRY_ICONS, BERRY_NAMES, TYPE_COLORS, pokemonSourceBadge } from './items.js';
 import { matchPinyinPartial } from './pokedex.js';
 import { setupSourceFilter, closeAllDropdowns, sourceFilterLabel } from './filters.js';
+import { fourDirGeom, fourDirSrc, fourDirRowBox, DIR_ROW } from './four-dir.js';
 
 // 升级经验需求（与对战结算一致）
 const expNeed = (lv) => 25 + lv * 20;
@@ -58,12 +59,7 @@ TRAIN.h = TRAIN.tiles.length;
 const TRAIN_W = TRAIN.w * TILE;
 const TRAIN_H = TRAIN.h * TILE;
 
-// 移动帧动画（pokemon-move 9 帧 sprite，单帧 32×32）：方向帧序列（0-indexed，对应 1-7-2-7 / 3-8-4-8 / 5-9-6-9）
-// 向左复用向右序列，靠 scaleX(-1) 镜像
-const MOVE_SEQ = { right: [0, 6, 1, 6], up: [2, 7, 3, 7], down: [4, 8, 5, 8] };
-const MOVE_FRAME_MS = 200;
 const MOVE_DUR_MS = 600; // 覆盖 0.5s 位移过渡，帧动画稍长避免瞬停
-const MOVE_SCALE = 1.4; // 移动帧单帧 32px 比 icon 视觉小，放大到接近 icon 尺寸（可调）
 
 // 可走动瓦片：水域（水系宝可梦专属）与陆地；陆地宝可梦不去第一行、最下面一行与最后一列
 const TILE_WATER = new Set(['1,26', '1,22']); // 深水 + 水池上缘浅水，四行高度
@@ -403,43 +399,82 @@ function syncWalkers() {
     _walkerPos.set(slot.id, { c: start.c, r: start.r, facing: start.facing || 1 });
     _walkers.set(slot.id, {
       el, img, isWater,
-      move: false,           // 是否启用移动帧动画
-      scale: 1,              // 本体显示放大倍率（move 素材启用后设为 MOVE_SCALE）
-      frameCount: 1, frameW: 1,
-      seq: MOVE_SEQ.right, frame: 0,
-      moving: false, moveUntil: 0, lastFrameAt: 0,
+      moving: false, moveUntil: 0,
       nextAt: Date.now() + randInt(400, 1400),
     });
-    // 移动帧动画：仅无变体本体尝试；素材缺失/非多帧自动回退 icon+跳动。
-    // 同一 img 只走一个请求：非变体先试 move，失败回退 icon；变体直接加载 icon，
-    // 避免静态 icon 请求被 move 请求抢占导致缓存未建立、src 停留失败 URL 破图
+    // 走动素材优先四向，失败再退静态 icon：同一 img 只走一个请求，避免 src 停在失败 URL 破图
     const w = _walkers.get(slot.id);
-    if (!String(poke.index).includes('-')) {
-      const moveSrc = './pokemon-data/pokemon-move/' + String(poke.index).padStart(4, '0') + '-' + poke.name + '.png';
-      const iconSrc = poke.icon;
-      tryLoadImage(img, moveSrc).then(ok => {
-        if (!ok) { if (iconSrc) tryLoadImage(img, iconSrc); return; }
-        const nw = img.naturalWidth, nh = img.naturalHeight;
-        const fc = nw && nh ? Math.max(1, Math.round(nw / nh)) : 1;
-        if (fc < 2) { if (iconSrc) tryLoadImage(img, iconSrc); return; } // 非多帧素材不启用
-        w.move = true;
-        w.frameCount = fc;
-        w.frameW = nw / fc;
-        img.style.objectFit = 'none';
-        img.style.objectPosition = '0px 0px';
-        img.classList.add('move'); // 移动帧模式彻底停用上下跳动，行走切帧、静止保持帧
-        // 放大本体：水系贴水面向上（origin bottom，底部不浸水）、陆地居中放大
-        w.scale = MOVE_SCALE;
-        const pf = (_walkerPos.get(slot.id) || { facing: 1 }).facing;
-        const flipEl = el.querySelector('.train-walker-flip');
-        flipEl.style.transformOrigin = isWater ? 'bottom' : 'center';
-        flipEl.style.transform = (pf < 0 ? 'scaleX(-1) ' : '') + 'scale(' + MOVE_SCALE + ')';
-        addMoveAnim(w);
-      });
-    } else if (poke.icon) {
-      // 变体无移动素材：直接加载静态图标
-      tryLoadImage(img, poke.icon);
-    }
+    const isVariant = String(poke.index).includes('-');
+    const geom = isVariant ? null : fourDirGeom(String(poke.index));
+    if (geom) loadFourDirWalker(w, img, geom).then(ok => { if (!ok && poke.icon) tryLoadImage(img, poke.icon); });
+    else if (poke.icon) tryLoadImage(img, poke.icon);
+  });
+}
+
+// ---------- 四向走动素材 ----------
+// 网格图列=帧、行=方向；walk / idle 两图层叠放显隐切换，按内容框归一，落地基线对齐静态 icon
+const FD_CONTENT_MAX = 30; // 内容最长边的目标像素
+const FD_GROUND_Y = 34;    // 内容底在 .train-walker(32×32) 内的落地 y
+
+function layoutFourDir(w) {
+  const { Walk, Idle } = w.fd;
+  const box = 32; // .train-walker 固定 32×32
+  const b = fourDirRowBox(w.fd, 'walk');
+  const cw = Math.max(1, b[2] - b[0] + 1);
+  const ch = Math.max(1, b[3] - b[1] + 1);
+  const k = FD_CONTENT_MAX / Math.max(cw, ch);
+  const cx = (b[0] + b[2] + 1) / 2; // 内容水平中心
+  const cb = b[3] + 1;              // 内容底边
+  const place = (img, anim) => {
+    img.style.position = 'absolute';
+    img.style.width = anim.w + 'px';
+    img.style.height = anim.h + 'px';
+    img.style.objectFit = 'none';
+    img.style.left = (box / 2 - cx * k) + 'px';
+    img.style.top = (FD_GROUND_Y - cb * k) + 'px';
+    img.style.transformOrigin = '0px 0px';
+    img.style.transform = 'scale(' + k + ')';
+  };
+  place(w.walkImg, Walk);
+  place(w.idleImg, Idle);
+  setFourDirPos(w, w.walkImg, Walk, 0);
+  setFourDirPos(w, w.idleImg, Idle, 0);
+}
+
+function setFourDirPos(w, img, anim, frame) {
+  img.style.objectPosition = '-' + (frame * anim.w) + 'px -' + (w.fdRow * anim.h) + 'px';
+}
+
+function applyFourDirRow(w) {
+  setFourDirPos(w, w.walkImg, w.fd.Walk, 0);
+  setFourDirPos(w, w.idleImg, w.fd.Idle, 0);
+}
+
+function loadFourDirWalker(w, img, geom) {
+  return tryLoadImage(img, fourDirSrc(geom, 'walk')).then(ok => {
+    if (!ok || !img.isConnected) return false;
+    const idleImg = document.createElement('img');
+    idleImg.className = 'train-walker-img fd move';
+    idleImg.alt = '';
+    img.classList.add('fd', 'move');
+    w.el.querySelector('.train-walker-flip').insertBefore(idleImg, img);
+    // 四向素材不走镜像，清掉创建时按旧朝向写上的翻转
+    w.el.querySelector('.train-walker-flip').style.transform = '';
+    w.fd = geom;
+    w.walkImg = img;
+    w.idleImg = idleImg;
+    w.fdRow = DIR_ROW.down;
+    w.fdAnim = null;
+    w.fdFrame = 0;
+    w.fdNextAt = 0;
+    w.fdIdleOk = false;
+    layoutFourDir(w);
+    img.style.display = 'block';
+    idleImg.style.display = 'none';
+    // 待机图晚一拍加载：失败就退化成走图第一帧静止
+    tryLoadImage(idleImg, fourDirSrc(geom, 'idle')).then(ok2 => { w.fdIdleOk = !!ok2; });
+    addMoveAnim(w);
+    return true;
   });
 }
 
@@ -456,23 +491,37 @@ function moveTick() {
   const now = performance.now();
   _moveImgs = _moveImgs.filter(m => m.img && m.img.isConnected);
   for (const w of _moveImgs) {
-    if (!w.moving) continue;
-    if (now > w.moveUntil) {
-      w.moving = false; // 位移结束：切到站立过渡帧（帧7/8/9，序列第二帧），别停在抬脚的帧
-      const idx = w.seq[1] % w.frameCount;
-      w.img.style.objectPosition = `-${idx * w.frameW}px 0px`;
-      continue;
-    }
-    if (now - w.lastFrameAt >= MOVE_FRAME_MS) {
-      w.lastFrameAt = now;
-      w.frame = (w.frame + 1) % w.seq.length;
-      const idx = w.seq[w.frame] % w.frameCount;
-      const pos = `-${idx * w.frameW}px 0px`;
-      w.img.style.objectPosition = pos;
-    }
+    if (w.fd) fourDirTick(w, now);
   }
   if (_moveImgs.length > 0) _moveRaf = requestAnimationFrame(moveTick);
   else _moveRaf = null;
+}
+
+// 四向切帧：走动按 Walk 的 d[]、停下按 Idle 的 d[] 循环；两层图按状态显隐
+function fourDirTick(w, now) {
+  if (w.moving && now > w.moveUntil) w.moving = false;
+  const useIdle = !w.moving && w.fdIdleOk;
+  const anim = useIdle ? w.fd.Idle : w.fd.Walk;
+  const img = useIdle ? w.idleImg : w.walkImg;
+  if (w.fdAnim !== anim || w.fdShow !== useIdle) {
+    w.fdAnim = anim;
+    w.fdShow = useIdle;
+    w.fdFrame = 0;
+    w.fdNextAt = now;
+    w.walkImg.style.display = useIdle ? 'none' : 'block';
+    w.idleImg.style.display = useIdle ? 'block' : 'none';
+  }
+  // 待机图缺失：静止时停在走图第 0 帧
+  if (!w.moving && !w.fdIdleOk) {
+    setFourDirPos(w, w.walkImg, w.fd.Walk, 0);
+    return;
+  }
+  if (now < w.fdNextAt) return;
+  const n = Math.max(1, anim.n);
+  if (w.fdFrame >= n) w.fdFrame = 0;
+  setFourDirPos(w, img, anim, w.fdFrame);
+  w.fdNextAt = now + Math.max(16, (anim.d[w.fdFrame] || 6) * 1000 / 60);
+  w.fdFrame = (w.fdFrame + 1) % n;
 }
 
 // 每 tick 让在场宝可梦随机移动一格；偷懒中的原地发呆；不与其它宝可梦重叠
@@ -485,12 +534,7 @@ function walkerTick(now = Date.now()) {
     // 偷懒的宝可梦暂停上下跳动画并停掉移动帧
     w.img.classList.toggle('lazy', lazy);
     w.el.classList.toggle('lazy', lazy);
-    if (lazy && w.moving) {
-      w.moving = false;
-      // 偷懒原地：切到站立过渡帧（帧7/8/9），别停在抬脚的帧
-      const idx = w.seq[1] % w.frameCount;
-      w.img.style.objectPosition = `-${idx * w.frameW}px 0px`;
-    }
+    if (lazy && w.moving) w.moving = false;
     if (now < w.nextAt) continue;
     if (lazy) continue; // 偷懒中不动
     w.nextAt = now + randInt(900, 2200);
@@ -510,26 +554,28 @@ function walkerTick(now = Date.now()) {
       if (occupied.has(nc + ',' + nr)) continue;
       prev.c = nc;
       prev.r = nr;
-      // 图标素材默认朝左、move 素材默认朝右：向左走 icon 不镜像 / move 镜像，向右相反
-      if (dc !== 0) prev.facing = w.move ? (dc < 0 ? -1 : 1) : (dc < 0 ? 1 : -1);
+      // 图标素材默认朝左：向左走不镜像，向右镜像；四向素材只用方向行，不做镜像
+      if (dc !== 0 && !w.fd) prev.facing = dc < 0 ? 1 : -1;
       _walkerPos.set(id, prev);
       w.el.style.left = (nc * TILE) + 'px';
       w.el.style.top = (nr * TILE) + 'px';
       w.el.style.zIndex = 10 + nr * TILE; // 俯视层级随 y 递增
       w.img.classList.remove('idle'); // 开始走动：恢复上下跳动（停下时 transitionend 再加回）
-      // 移动帧：按方向选帧序列并启动切帧（左/右共用向右序列，向左靠镜像翻转）
-      if (w.move) {
-        w.seq = dc === 0 && dr < 0 ? MOVE_SEQ.up : dc === 0 && dr > 0 ? MOVE_SEQ.down : MOVE_SEQ.right;
-        w.frame = 0;
-        w.lastFrameAt = performance.now();
-        w.moveUntil = w.lastFrameAt + MOVE_DUR_MS;
+      if (w.fd) {
+        // 四向素材：按移动方向换行（下0/右1/上2/左3），并从第 0 帧起播
+        w.fdRow = dc !== 0 ? (dc < 0 ? DIR_ROW.left : DIR_ROW.right) : (dr < 0 ? DIR_ROW.up : DIR_ROW.down);
+        applyFourDirRow(w);
+        w.fdAnim = null;
+        w.fdFrame = 0;
+        w.fdNextAt = performance.now();
+        w.moveUntil = w.fdNextAt + MOVE_DUR_MS;
         w.moving = true;
-        // 立即切到新方向第一帧：贴图先朝移动方向，再开始位移（避免起步时仍显示旧方向帧）
-        w.img.style.objectPosition = `-${(w.seq[0] % w.frameCount) * w.frameW}px 0px`;
       }
-      // 镜像与缩放：水系贴水面向上放大（origin bottom 已在 move 回调设置），陆地居中
-      const flipEl = w.el.querySelector('.train-walker-flip');
-      flipEl.style.transform = (prev.facing < 0 ? 'scaleX(-1) ' : '') + (w.scale > 1 ? 'scale(' + w.scale + ')' : '');
+      // 图标素材只按朝向镜像；四向素材的缩放写在图自身上，容器不再做翻转/缩放
+      if (!w.fd) {
+        const flipEl = w.el.querySelector('.train-walker-flip');
+        flipEl.style.transform = prev.facing < 0 ? 'scaleX(-1)' : '';
+      }
       break;
     }
   }

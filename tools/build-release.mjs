@@ -19,7 +19,7 @@ const args = process.argv.slice(2);
 const skipPc = args.includes('--skip-pc') || process.env.SKIP_PC === '1';
 const skipAndroid = args.includes('--skip-android') || process.env.SKIP_ANDROID === '1';
 
-const { version, stamp } = await syncVersion(); // 版本号/版本戳：package.json 是唯一手改处
+const { version } = await syncVersion(); // 版本号：package.json 是唯一手改处
 
 // 资源清单：必须在构建之前生成，src/ 里带着它一起进包，作为玩家端热更的对比基线；
 // 同一份再存到 tools/hot-baseline.json，deploy-res.mjs 拿它算"玩家端要下载哪些文件"
@@ -59,9 +59,7 @@ if (pcOk) {
   if (!picked) {
     console.log(`[release] 没在 ${nsisDir} 找到安装包`);
   } else {
-    // 收进 dist 时文件名带上版本戳（与安卓包一致）：口袋挂机_<version>_x64<stamp>-setup.exe
-    const named = stamp && !picked.includes(stamp) ? picked.replace('-setup', `${stamp}-setup`) : picked;
-    const target = join(distDir, basename(named));
+    const target = join(distDir, basename(picked));
     await copyFile(join(nsisDir, picked), target);
     await utimes(target, new Date(), new Date()).catch(() => {});   // 同 APK：时间戳记成拷贝时刻
     const [a, b] = [await sha256(join(nsisDir, picked)), await sha256(target)];

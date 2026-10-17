@@ -51,35 +51,28 @@ const ORIGINS = new Set([
 if (!SALT) console.warn('[server] 未设置 TELEMETRY_SALT（仅限本地调试）');
 
 // ---- 版本公告 ----
-// 客户端每次心跳带上自己的版本（`安装标识|版本|版本戳`），服务端记下见过的最新一份，
+// 客户端每次心跳带上自己的版本（`安装标识|版本`），服务端记下见过的最新一份，
 // 并在响应里告诉这个客户端"你是不是旧的" —— 设置页据此显示（可更新）。
 
 const PIN_VER = process.env.LATEST_VERSION || '';
-const PIN_STAMP = process.env.LATEST_STAMP || '';
 const VER_RE = /^\d+(\.\d+){1,3}$/;
-function verRank(s) { // 版本号相同时的先后：正式版 > 其它标记 > betaN
-  if (!s) return 1e6;
-  const m = /^beta(\d*)$/i.exec(s);
-  return m ? (Number(m[1]) || 0) : 5e5;
-}
-function cmpVer(a, b) { // >0 表示 a 比 b 新
-  const pa = String(a.ver).split('.').map(Number);
-  const pb = String(b.ver).split('.').map(Number);
+function cmpVer(a, b) { // 逐段数字比较，第三段就是补丁号
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const d = (pa[i] || 0) - (pb[i] || 0);
     if (d) return d;
   }
-  return verRank(a.stamp) - verRank(b.stamp);
+  return 0;
 }
 function latestVersion() {
-  if (PIN_VER) return { ver: PIN_VER, stamp: PIN_STAMP };
+  if (PIN_VER) return PIN_VER;
   syncVersionFile();
   return db.version;
 }
-function noteVersion(ver, stamp) {
+function noteVersion(ver) {
   if (PIN_VER || !VER_RE.test(ver || '')) return;
-  const next = { ver, stamp: String(stamp || '').slice(0, 16) };
-  if (!db.version || cmpVer(next, db.version) > 0) { db.version = next; save(); }
+  if (!db.version || cmpVer(ver, db.version) > 0) { db.version = ver; save(); }
 }
 // ---- 限时活动 ----
 // 只发"开关 + 时间段 + 参数"，玩法在客户端（和全服事件同构）。
@@ -100,9 +93,10 @@ function loadActivities() {
   return _actList;
 }
 
-function isOutdated(ver, stamp) {  const cur = latestVersion();
+function isOutdated(ver) {
+  const cur = latestVersion();
   if (!cur || !VER_RE.test(ver || '')) return false;
-  return cmpVer(cur, { ver, stamp: stamp || '' }) > 0;
+  return cmpVer(cur, ver) > 0;
 }
 
 // ---------- 在线统计 ----------
@@ -110,7 +104,7 @@ const seen = new Map();  // hash -> { last, beats }
 const rate = new Map();  // ip -> { n, ts }
 // 落盘就一个文件 data/stats.json：{ days: { '2026-10-12': [哈希...] }, total: [哈希...] }
 const DB_FILE = path.join(DATA_DIR, 'stats.json');
-const db = { days: {}, total: [], version: null }; // version = 见过的最新版本（客户端心跳带上来的）
+const db = { days: {}, total: [], version: null }; // version = 见过的最新版本字符串（客户端心跳带上来的）
 const totalSet = new Set();
 let day = dayKey();
 let today = new Set();
@@ -134,7 +128,8 @@ function syncVersionFile() {
     const j = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     const v = j && j.version;
     if (v === null) db.version = null;                      // 显式写成 null 视为清空
-    else if (v && typeof v.ver === 'string') db.version = v;
+    else if (typeof v === 'string') db.version = v;
+    else if (v && typeof v.ver === 'string') db.version = v.ver;   // 兼容老格式 { ver, stamp }
   } catch (_) { /* 文件不存在或内容坏了：保持内存里的值 */ }
 }
 function save() {
@@ -153,7 +148,8 @@ function load() {
     const j = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     if (j && typeof j.days === 'object') db.days = j.days || {};
     if (Array.isArray(j && j.total)) j.total.forEach((h) => totalSet.add(h));
-    if (j && j.version && typeof j.version.ver === 'string') db.version = j.version;
+    if (j && typeof j.version === 'string') db.version = j.version;
+    else if (j && j.version && typeof j.version.ver === 'string') db.version = j.version.ver;
     today = new Set(db.days[day] || []);
     return;
   } catch (_) {}
@@ -309,10 +305,10 @@ const ROUTES = [
       else if (++r.n > RATE_BURST) { rate.set(ip, r); return json(res, 429, { ok: false }, allowOrigin(req)); }
       rate.set(ip, r);
 
-      // body 是 `安装标识|版本|版本戳`；老客户端只发标识，照样接受（只是不知道它的版本）
-      const [id, ver, stamp] = body.trim().split('|');
+      // body 是 `安装标识|版本`；老客户端还会多带一段版本戳，忽略即可
+      const [id, ver] = body.trim().split('|');
       if (!/^[0-9a-f]{16,64}$/.test(id || '')) return json(res, 400, { ok: false }, allowOrigin(req));
-      if (ver) noteVersion(ver, stamp);
+      if (ver) noteVersion(ver);
       const h = hashOf(id);
       const cur = seen.get(h);
       if (cur) { cur.last = now; cur.beats++; } else seen.set(h, { last: now, beats: 1 });
@@ -321,7 +317,7 @@ const ROUTES = [
       if (totalSet.size < 500000) totalSet.add(h);
       // 不回统计值：客户端不需要，也少一个被探测的口子；只回报版本，设置页据此提示可更新
       const latest = latestVersion();
-      json(res, 200, { ok: true, update: isOutdated(ver, stamp), latest: latest ? latest.ver : null, stamp: latest ? latest.stamp : null }, allowOrigin(req));
+      json(res, 200, { ok: true, update: isOutdated(ver), latest: latest || null }, allowOrigin(req));
     },
   },
   {

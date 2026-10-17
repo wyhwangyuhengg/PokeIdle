@@ -164,7 +164,7 @@ npm run build             # 产出 web/dist
 
 - 宝可梦 GIF 动画：[play.pokemonshowdown.com](https://play.pokemonshowdown.com/)
 - 宝可梦游戏原声：[khinsider.com](https://downloads.khinsider.com/game-soundtracks)
-- 精灵行走图素材：[TaTaTaZJJ/pokemon-overworld-for-gba](https://github.com/TaTaTaZJJ/pokemon-overworld-for-gba)
+- 精灵行走图素材：[PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)（CC BY-NC 4.0）
 
 ## 开源协议
 

@@ -7,7 +7,7 @@ import { TYPE_COLORS, typeIconColor, pokemonSourceBadge, itemIconSrc, MINT_KEYS 
 import { evolutionRows, applyEvolution, condItems, moveCondText, evoPreEvos, evolutionData, loadEvolution } from './evolution.js';
 import { playEvolution } from './evo-view.js';
 import { matchPinyinPartial, describeLogEntry } from './pokedex.js';
-import { REGION_CYCLE, EXP_CANDY_XP, RELEASE_XP_RATE, MAX_LEVEL, MINT_NATURES } from './config.js';
+import { REGION_CYCLE, EXP_CANDY_XP, RELEASE_XP_RATE, MAX_LEVEL, MINT_NATURES, ITEM_NAMES } from './config.js';
 import { showGoodbyeConfirm, startShinySparkleOn, stopShinySparkleLoop } from './animation.js';
 import { chooseMoves, fallbackMoves } from './moves.js';
 import { NATURES } from './battle-core.js';
@@ -1484,7 +1484,7 @@ function openCrownPanel() {
       const k = row.dataset.crownStat;
       const label = (IV_KEYS.find(([kk]) => kk === k) || [])[1] || k;
       const who = crownWho(entry);
-      showConfirmBar(`用「${CROWN_SILVER}」，把${who}的${label}练到 31？`, () => {
+      showConfirmBar(`用「${ITEM_NAMES[CROWN_SILVER] || CROWN_SILVER}」，把${who}的${label}练到 31？`, () => {
         if (!useCrown(entry, CROWN_SILVER, k)) return;
         _crownFlash = [k];
         showRosterDetail(_detailId); // 就地刷新详情（数值与持有数量都变了）
@@ -1495,7 +1495,7 @@ function openCrownPanel() {
     const goldBtn = e.target.closest('[data-crown-gold]');
     if (goldBtn && !goldBtn.disabled) {
       const who = crownWho(entry);
-      showConfirmBar(`用「${CROWN_GOLD}」，把${who}的六项个体值全部练到 31？`, () => {
+      showConfirmBar(`用「${ITEM_NAMES[CROWN_GOLD] || CROWN_GOLD}」，把${who}的六项个体值全部练到 31？`, () => {
         if (!useCrown(entry, CROWN_GOLD)) return;
         _crownFlash = IV_STATS.slice();
         showRosterDetail(_detailId);

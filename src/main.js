@@ -1,4 +1,6 @@
 // ===== 口袋挂机 - 入口模块 =====
+// 启动兜底据此区分「加载慢」和「主脚本没跑起来」
+window.__POKEIDLE_BOOTED__ = true;
 // 禁用全局右键菜单（桌面端 webview 的原生右键菜单）
 document.addEventListener('contextmenu', e => e.preventDefault());
 import { CATCH_RATES, SAVE_INTERVAL, ITEM_RATES, ITEM_NAMES, ROAD_SPECIAL_CHANCE, ROAD_WIDTH_MIN, ROAD_WIDTH_MAX, ROAD_SWITCH_CYCLES, BIKE_RESTORE_MAX_GAP_MS, PX_PER_METER, AUTO_CATCH_BALLS_DEFAULT } from './config.js';

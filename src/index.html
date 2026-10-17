@@ -8,11 +8,25 @@
   <script>
     (function () {
       var SITE = 'https://pokeidle.shiliu.space';
+      // 版本号由 tools/sync-version.mjs 改写：经典脚本这里 import 不了 build-info.js
+      var APP_VER = '1.19.1';
+      var VER_TEXT = '（v' + APP_VER + '）';
       var lines = [], box = null, detail = null, detailToggle = null, detailOpen = false;
 
       function stamp() { try { return new Date().toLocaleString(); } catch (e) { return String(Date.now()); } }
-      function add(title, detailText) {
-        lines.push('[' + stamp() + '] ' + title + '\n' + (detailText || ''));
+      // 浮层文案按出错类型分开：一律写"版本没对上"，玩家会拿着这个说法去乱重装
+      var DESC = {
+        script: { label: '脚本错误', title: '游戏出错了', text: '游戏代码执行时出错了。装最新版重进试试。' },
+        promise: { label: '未处理的 Promise 异常', title: '游戏出错了', text: '游戏代码执行时出错了。装最新版重进试试。' },
+        resource: { label: '资源加载失败', title: '资源没加载全', text: '游戏文件没加载全，多半是网络不稳或缓存有问题。刷新一下或换个网络再进。' },
+        dead: { label: '启动卡死', title: '游戏没能启动', text: '本地资源和热更新版本没对上。安装最新安装包后再进游戏即可。' },
+        slow: { label: '启动较慢', title: '游戏启动较慢', text: '网络慢或素材较多，还在加载中。稍等一会儿，或者换个网络重新进。' },
+      };
+      var primary = null;   // 第一条错误的文案，决定浮层标题和小字
+      function add(kind, detailText) {
+        var info = DESC[kind] || DESC.script;
+        lines.push('[' + stamp() + '] ' + info.label + '\n' + (detailText || ''));
+        if (!primary) primary = info;
         paint();
       }
       function openSite(e) {
@@ -94,12 +108,12 @@
           var title = document.createElement('div');
           title.setAttribute('style', 'font-size:17px;font-weight:bold;letter-spacing:2px;' +
             'color:var(--ui-color-darker,#1d4937);margin-bottom:8px');
-          title.textContent = '游戏没能启动';
+          title.textContent = primary.title;
 
           var desc = document.createElement('div');
           desc.setAttribute('style', 'font-size:12px;line-height:1.7;letter-spacing:0.5px;' +
             'color:var(--color-muted,#7c7c7c);margin-bottom:18px');
-          desc.textContent = '本地资源和热更新版本没对上。安装最新安装包后再进游戏即可。';
+          desc.textContent = primary.text + VER_TEXT;
 
           var dl = document.createElement('a');
           dl.href = SITE;
@@ -167,7 +181,7 @@
 
       window.onerror = function (msg, url, line, col, err) {
         if (hotModuleError(msg) && healHotCache()) return true;   // 已安排重载，不必再画报错
-        add('脚本错误', msg + '\n' + (url || '') + (line ? ':' + line + ':' + col : '') +
+        add('script', msg + '\n' + (url || '') + (line ? ':' + line + ':' + col : '') +
           (err && err.stack ? '\n' + err.stack : ''));
         return false;
       };
@@ -175,22 +189,26 @@
         var r = e && e.reason;
         var text = (r && (r.stack || r.message)) || String(r);
         if (hotModuleError(text) && healHotCache()) return;
-        add('未处理的 Promise 异常', text);
+        add('promise', text);
       });
       window.addEventListener('error', function (e) {
         var t = e && e.target;
         if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
-          add('资源加载失败', (t.tagName === 'SCRIPT' ? '脚本 ' : '样式 ') + (t.src || t.href || ''));
+          add('resource', (t.tagName === 'SCRIPT' ? '脚本 ' : '样式 ') + (t.src || t.href || ''));
         }
       }, true);
-      // 主脚本正常会尽快摘掉 body.booting 放行整页；8 秒还在藏着，就是没启动起来（白屏/黑屏）
+      // 主脚本正常会尽快摘掉 body.booting 放行整页；8 秒还藏着才管。
+      // 入口有没有真的跑起来，看 main.js 打的标记：跑起来了就是下资源慢，没跑起来才算启动失败
       setTimeout(function () {
         var b = document.body;
-        if (b && (' ' + b.className + ' ').indexOf(' booting ') >= 0) {
-          if (healHotCache()) return;   // 先按热更缓存打架自愈一次，兜不住的再把错误亮出来
-          add('启动卡死', '主脚本 8 秒内没有完成启动，页面一直处于隐藏状态。\n地址：' + location.href +
+        if (!b || (' ' + b.className + ' ').indexOf(' booting ') < 0) return;
+        if (window.__POKEIDLE_BOOTED__) {
+          add('slow', '主脚本已启动，8 秒内还没放行页面（仍在加载资源）。\n地址：' + location.href +
             '\nUA：' + navigator.userAgent);
+          return;
         }
+        add('dead', '主脚本 8 秒内没有开始执行，页面一直处于隐藏状态。\n地址：' + location.href +
+          '\nUA：' + navigator.userAgent);
       }, 8000);
     })();
   </script>

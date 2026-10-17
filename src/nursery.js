@@ -8,11 +8,12 @@ import { BERRY_ICONS, BERRY_NAMES, pokemonSourceBadge } from './items.js';
 import { ensureBerryFarm } from './berry.js';
 import { removePokemonFromAllTeams } from './team.js';
 import { familyRoot } from './evolution.js';
+import { fourDirGeom, fourDirSrc, fourDirDelay, FOUR_DIR_SCALE, DIR_ROW } from './four-dir.js';
 
 const BERRY_DIR = './items/berries/';
 // 产蛋时长区间（分钟，本期固定随机，后续可做同种/同蛋组和睦度加成）
-const BREED_MIN_MIN = 5;
-const BREED_MAX_MIN = 10;
+const BREED_MIN_MIN = 2;
+const BREED_MAX_MIN = 8;
 const EGG_SHINY_CHANCE = 1 / 4096; // 蛋的闪光概率：与原版一致的低概率，不与亲本闪光挂钩
 
 const TILE = 24;
@@ -21,11 +22,7 @@ const BOARD_IMG = './items/berry-trees/board.png';
 const BOX_IMG = './items/berry-trees/box.png';
 const randInt = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
 
-// 移动帧动画（与训练场一致）：pokemon-move 9 帧 sprite，单帧 32×32；向左复用向右序列，靠 scaleX(-1) 镜像
-const MOVE_SEQ = { right: [0, 6, 1, 6], up: [2, 7, 3, 7], down: [4, 8, 5, 8] };
-const MOVE_FRAME_MS = 200;
 const MOVE_DUR_MS = 600; // 覆盖 0.5s 位移过渡，帧动画稍长避免瞬停
-const MOVE_SCALE = 1.4; // 移动帧单帧 32px 比 icon 视觉小，放大到接近 icon 尺寸
 
 // 饲育屋地图（{col,row} 为 terrain tileset 坐标）：围栏环绕 + 草地/花丛，11x9
 const NURSERY = {
@@ -610,44 +607,22 @@ function syncWalkers() {
       facing: cell.facing ?? (Math.random() < 0.5 ? 1 : -1),
       // 各自随机起步时间，避免两只同时迈步（共速）
       nextAt: Date.now() + randInt(400, 1400),
-      move: false,           // 是否启用移动帧动画
-      scale: 1,              // 本体显示放大倍率（move 素材启用后设为 MOVE_SCALE）
-      frameCount: 1, frameW: 1,
-      seq: MOVE_SEQ.right, frame: 0,
-      moving: false, moveUntil: 0, lastFrameAt: 0,
+      moving: false, moveUntil: 0,
     };
     w.el.className = 'nursery-walker';
     w.flipEl.className = 'nursery-walker-flip';
     w.img.className = 'nursery-walker-img';
     // 像素图标（与训练场一致）；素材默认朝左，向右走才镜像。
-    // 同一 img 只走一个请求：非变体先试 move，失败回退 icon；变体直接加载 icon，
-    // 避免静态 icon 请求被 move 请求抢占导致缓存未建立、src 停留失败 URL 破图
+    // 同一 img 只走一个请求：非变体先试四向走路图，失败回退 icon；变体直接加载 icon，
+    // 避免静态 icon 请求被四向请求抢占导致缓存未建立、src 停留失败 URL 破图
     // 随机相位：多只亲本的弹跳动画错开，避免同步
     w.img.style.animationDelay = '-' + (Math.random() * 0.5).toFixed(2) + 's';
     if (w.facing < 0) w.flipEl.style.transform = 'scaleX(-1)';
-    // 移动帧动画（与训练场一致）：仅无变体本体尝试；素材缺失/非多帧自动回退 icon+跳动
-    if (poke && !String(poke.index).includes('-')) {
-      const moveSrc = './pokemon-data/pokemon-move/' + String(poke.index).padStart(4, '0') + '-' + poke.name + '.png';
-      tryLoadImage(w.img, moveSrc).then(ok => {
-        if (!ok) { if (poke?.icon) tryLoadImage(w.img, poke.icon); return; } // 无 move 素材回退 icon+跳动
-        const nw = w.img.naturalWidth, nh = w.img.naturalHeight;
-        const fc = nw && nh ? Math.max(1, Math.round(nw / nh)) : 1;
-        if (fc < 2) { if (poke?.icon) tryLoadImage(w.img, poke.icon); return; } // 非多帧素材回退 icon+跳动
-        w.move = true;
-        w.frameCount = fc;
-        w.frameW = nw / fc;
-        w.img.style.objectFit = 'none';
-        w.img.style.objectPosition = '0px 0px';
-        w.img.classList.add('move'); // 移动帧模式彻底停用上下跳动，行走切帧、静止保持帧
-        w.scale = MOVE_SCALE;
-        w.flipEl.style.transformOrigin = 'center';
-        w.flipEl.style.transform = (w.facing < 0 ? 'scaleX(-1) ' : '') + 'scale(' + MOVE_SCALE + ')';
-        addMoveAnim(w);
-      });
-    } else if (poke?.icon) {
-      // 变体无移动素材：直接加载静态图标
-      tryLoadImage(w.img, poke.icon);
-    }
+    // 走动素材优先级：四向 → 静态 icon
+    const isVariant = !!poke && String(poke.index).includes('-');
+    const geom = poke && !isVariant ? fourDirGeom(String(poke.index)) : null;
+    if (geom) loadNurseryFourDir(w, geom).then(ok => { if (!ok && poke.icon) tryLoadImage(w.img, poke.icon); });
+    else if (poke && poke.icon) tryLoadImage(w.img, poke.icon);
     w.flipEl.appendChild(w.img);
     w.el.appendChild(w.flipEl);
     // 爱心粒子层（繁殖进行中才显示，由 syncWalkers 末尾同步显隐）：头顶 ♥ 上浮放大淡出
@@ -688,6 +663,97 @@ function syncWalkers() {
   }
 }
 
+// ---------- 四向走动素材 ----------
+// 「列=帧、行=方向」；walk / idle 两图层叠在同一位置靠显隐切换，脚底锚点对齐格子底部中心
+function layoutNurseryFourDir(w) {
+  const { Walk, Idle, ax, ay } = w.fd;
+  const box = 32; // .nursery-walker 固定 32×32
+  const place = (img, anim) => {
+    img.style.position = 'absolute';
+    img.style.width = anim.w + 'px';
+    img.style.height = anim.h + 'px';
+    img.style.objectFit = 'none';
+    img.style.left = (box / 2 - ax) + 'px';
+    img.style.top = (box - ay) + 'px';
+    img.style.transformOrigin = ax + 'px ' + ay + 'px';
+    img.style.transform = 'scale(' + FOUR_DIR_SCALE + ')';
+  };
+  place(w.walkImg, Walk);
+  place(w.idleImg, Idle);
+  setNurseryFourDirPos(w, w.walkImg, Walk, 0);
+  setNurseryFourDirPos(w, w.idleImg, Idle, 0);
+}
+
+function setNurseryFourDirPos(w, img, anim, frame) {
+  img.style.objectPosition = '-' + (frame * anim.w) + 'px -' + (w.fdRow * anim.h) + 'px';
+}
+
+function setNurseryFourDirRow(w, row) {
+  if (w.fdRow === row) return;
+  w.fdRow = row;
+  setNurseryFourDirPos(w, w.walkImg, w.fd.Walk, 0);
+  setNurseryFourDirPos(w, w.idleImg, w.fd.Idle, 0);
+  // 换行后从头播当前动作
+  w.fdAnim = null;
+  w.fdFrame = 0;
+  w.fdNextAt = performance.now();
+}
+
+function loadNurseryFourDir(w, geom) {
+  return tryLoadImage(w.img, fourDirSrc(geom, 'walk')).then(ok => {
+    if (!ok || !w.img.isConnected) return false;
+    const idleImg = document.createElement('img');
+    idleImg.className = 'nursery-walker-img fd move';
+    idleImg.alt = '';
+    w.img.classList.add('fd', 'move');
+    w.flipEl.insertBefore(idleImg, w.img);
+    // 四向素材自己带左右帧，不再镜像
+    w.flipEl.style.transform = '';
+    w.fd = geom;
+    w.walkImg = w.img;
+    w.idleImg = idleImg;
+    w.fdRow = DIR_ROW.down;
+    w.fdAnim = null;
+    w.fdFrame = 0;
+    w.fdNextAt = 0;
+    w.fdIdleOk = false;
+    layoutNurseryFourDir(w);
+    w.img.style.display = 'block';
+    idleImg.style.display = 'none';
+    // 待机图晚一拍加载：失败就退化成走图第一帧静止
+    tryLoadImage(idleImg, fourDirSrc(geom, 'idle')).then(ok2 => { w.fdIdleOk = !!ok2; });
+    addMoveAnim(w);
+    return true;
+  });
+}
+
+// 四向切帧：走动按 Walk 的 d[]、停下按 Idle 的 d[] 循环
+function nurseryFourDirTick(w, now) {
+  if (w.moving && now > w.moveUntil) w.moving = false;
+  const useIdle = !w.moving && w.fdIdleOk;
+  const anim = useIdle ? w.fd.Idle : w.fd.Walk;
+  const img = useIdle ? w.idleImg : w.walkImg;
+  if (w.fdAnim !== anim || w.fdShow !== useIdle) {
+    w.fdAnim = anim;
+    w.fdShow = useIdle;
+    w.fdFrame = 0;
+    w.fdNextAt = now;
+    w.walkImg.style.display = useIdle ? 'none' : 'block';
+    w.idleImg.style.display = useIdle ? 'block' : 'none';
+  }
+  // 待机图缺失：静止时停在走图第 0 帧
+  if (!w.moving && !w.fdIdleOk) {
+    setNurseryFourDirPos(w, w.walkImg, w.fd.Walk, 0);
+    return;
+  }
+  if (now < w.fdNextAt) return;
+  const n = Math.max(1, anim.n);
+  if (w.fdFrame >= n) w.fdFrame = 0;
+  setNurseryFourDirPos(w, img, anim, w.fdFrame);
+  w.fdNextAt = now + fourDirDelay(anim, w.fdFrame);
+  w.fdFrame = (w.fdFrame + 1) % n;
+}
+
 // ---------- 移动帧驱动（与训练场一致：共享 RAF 切帧，参考随从走马灯） ----------
 let _moveImgs = [];
 let _moveRaf = null;
@@ -701,19 +767,7 @@ function moveTick() {
   const now = performance.now();
   _moveImgs = _moveImgs.filter(m => m.img && m.img.isConnected);
   for (const w of _moveImgs) {
-    if (!w.moving) continue;
-    if (now > w.moveUntil) {
-      w.moving = false; // 位移结束：切到站立过渡帧（帧7/8/9，序列第二帧），别停在抬脚的帧
-      const idx = w.seq[1] % w.frameCount;
-      w.img.style.objectPosition = `-${idx * w.frameW}px 0px`;
-      continue;
-    }
-    if (now - w.lastFrameAt >= MOVE_FRAME_MS) {
-      w.lastFrameAt = now;
-      w.frame = (w.frame + 1) % w.seq.length;
-      const idx = w.seq[w.frame] % w.frameCount;
-      w.img.style.objectPosition = `-${idx * w.frameW}px 0px`;
-    }
+    if (w.fd) nurseryFourDirTick(w, now);
   }
   if (_moveImgs.length > 0) _moveRaf = requestAnimationFrame(moveTick);
   else _moveRaf = null;
@@ -781,23 +835,19 @@ function walkerTick() {
     w.busy = true;
     w.x = next.c * TILE;
     w.y = next.r * TILE;
-    // move 素材默认朝右、icon 素材默认朝左：向左走 icon 不镜像 / move 镜像，向右相反
-    const nf = w.move
-      ? (next.c < cur.c ? -1 : next.c > cur.c ? 1 : w.facing)
-      : (next.c < cur.c ? 1 : next.c > cur.c ? -1 : w.facing);
+    // 图标素材默认朝左：向左走不镜像，向右镜像；四向素材自带左右帧，不做镜像
+    const nf = next.c < cur.c ? 1 : next.c > cur.c ? -1 : w.facing;
     if (nf !== w.facing) {
-      w.flipEl.style.transform = (nf < 0 ? 'scaleX(-1) ' : '') + (w.scale > 1 ? 'scale(' + w.scale + ')' : '');
+      if (!w.fd) w.flipEl.style.transform = nf < 0 ? 'scaleX(-1)' : '';
       w.facing = nf;
     }
-    // 移动帧：按方向选帧序列并启动切帧（左/右共用向右序列，向左靠镜像翻转）
-    if (w.move) {
-      w.seq = next.c === cur.c && next.r < cur.r ? MOVE_SEQ.up : next.c === cur.c && next.r > cur.r ? MOVE_SEQ.down : MOVE_SEQ.right;
-      w.frame = 0;
-      w.lastFrameAt = performance.now();
-      w.moveUntil = w.lastFrameAt + MOVE_DUR_MS;
+    // 四向素材按行走方向换行
+    if (w.fd) {
+      setNurseryFourDirRow(w, next.c !== cur.c
+        ? (next.c < cur.c ? DIR_ROW.left : DIR_ROW.right)
+        : (next.r < cur.r ? DIR_ROW.up : DIR_ROW.down));
+      w.moveUntil = performance.now() + MOVE_DUR_MS;
       w.moving = true;
-      // 立即切到新方向第一帧：贴图先朝移动方向，再开始位移（避免起步时仍显示旧方向帧）
-      w.img.style.objectPosition = `-${(w.seq[0] % w.frameCount) * w.frameW}px 0px`;
     }
     w.el.style.left = w.x + 'px';
     w.el.style.top = w.y + 'px';
@@ -815,14 +865,16 @@ function walkerTick() {
         const w = _walkers.get(id);
         if (!w || w.facing === f) return;
         w.facing = f;
-        w.flipEl.style.transform = (f < 0 ? 'scaleX(-1) ' : '') + (w.scale > 1 ? 'scale(' + w.scale + ')' : '');
+        w.flipEl.style.transform = f < 0 ? 'scaleX(-1)' : '';
       };
       const leftId = pa.c < pb.c ? aId : bId;
       const rightId = pa.c < pb.c ? bId : aId;
-      // 面对面：左边的朝右、右边的朝左。move 素材默认朝右（朝右不镜像）、icon 默认朝左（朝右才镜像），facing 取值相反
+      // 面对面：左边的朝右、右边的朝左。icon 默认朝左，朝右才镜像
       const lw = _walkers.get(leftId), rw = _walkers.get(rightId);
-      applyFacing(leftId, lw && lw.move ? 1 : -1);
-      applyFacing(rightId, rw && rw.move ? -1 : 1);
+      if (lw && lw.fd) setNurseryFourDirRow(lw, DIR_ROW.right);
+      else applyFacing(leftId, -1);
+      if (rw && rw.fd) setNurseryFourDirRow(rw, DIR_ROW.left);
+      else applyFacing(rightId, 1);
     }
   }
 }
@@ -1316,7 +1368,7 @@ function breedAreaHtml(n, ea, eb, r) {
     </div>`;
 }
 
-// 「投喂并开始繁殖」：扣除 N 轮所需树果 → 进入连续产蛋计时（每轮 5~10 分钟真实时间）。
+// 「投喂并开始繁殖」：扣除 N 轮所需树果 → 进入连续产蛋计时（每轮 2~8 分钟真实时间）。
 // 繁殖中不可重复开启；上一批全部完成后（done）可覆盖开始新一批
 function startBreeding() {
   const n = ensureNursery();

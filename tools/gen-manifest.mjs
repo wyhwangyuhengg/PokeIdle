@@ -31,7 +31,7 @@ function walk(dir, out = []) {
 const app = (() => {
   try {
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
-    return `${pkg.version || ''}${pkg.buildStamp ? '-' + pkg.buildStamp : ''}`;
+    return pkg.version || '';
   } catch (_) { return ''; }
 })();
 

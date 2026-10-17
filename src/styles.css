@@ -8921,6 +8921,16 @@ body.booting { visibility: hidden; }
 .train-walker-img.move {
   animation: none;
 }
+/* 四向素材：两个图层绝对定位叠放取帧，宽高、位置与缩放由脚本按几何表写入 */
+.train-walker-img.fd {
+  position: absolute;
+  animation: none;
+}
+/* 静态 icon：收到与四向素材一致的内容上限，避免图标比行走动画显大 */
+.train-walker-img:not(.fd):not(.move) {
+  box-sizing: border-box;
+  padding: 1px;
+}
 /* 偷懒睡觉粒子：三个 z 从头顶错开上飘、放大淡出循环（仅偷懒时显示） */
 .train-walker-zzz {
   position: absolute;
@@ -9225,6 +9235,11 @@ body.booting { visibility: hidden; }
 }
 /* 使用移动帧动画的亲本：彻底停用上下跳动，行走切帧、静止保持帧 */
 .nursery-walker-img.move {
+  animation: none;
+}
+/* 四向素材：walk / idle 两图层绝对定位叠放取帧，尺寸与缩放由脚本按几何表写入 */
+.nursery-walker-img.fd {
+  position: absolute;
   animation: none;
 }
 /* 停下休息的亲本：停止跳动并保持落底姿势（move 帧动画不受影响） */
@@ -11637,6 +11652,19 @@ body.booting { visibility: hidden; }
 .follower-dex-header .fdx-type { width: 56px; flex-shrink: 0; }
 .follower-dex-header .fdx-star { width: 26px; flex-shrink: 0; text-align: right; }
 .follower-dex-header .fdx-count { width: 44px; flex-shrink: 0; text-align: right; }
+
+/* 详情页底部信息行（图鉴编号 / 已抽到次数） */
+.follower-dex-detail-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 4px 2px;
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.85;
+  border-top: 1px solid rgba(var(--ui-color-rgb), 0.2);
+}
 
 /* 随从图鉴入口（随从页右上角）：视觉走 .incubator-log-btn */
 #followerDexBtn {
