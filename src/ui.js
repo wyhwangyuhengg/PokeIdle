@@ -1,6 +1,6 @@
 // ===== UI 管理 =====
 import { phase, currentEncounter, gameData, saveGame, _fishing, _eggHatching, _navStack } from './state.js';
-import { formatNum, getCurrentRegion, getCurrentRoadInfo, anyIncubatorReady, getIncubatorUnlockCost, getMassOutbreak, getTwist, getRoadNumForEdge, getPokemonByIndex, isPokemon, genderBadge, effPerfectCount } from './state.js';
+import { formatNum, getCurrentRegion, getCurrentRoadInfo, anyIncubatorReady, getIncubatorUnlockCost, getMassOutbreak, getTwist, getRoadNumForEdge, getPokemonByIndex, isPokemon, genderBadge } from './state.js';
 import { ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, PX_PER_METER, eggSprite } from './config.js';
 import { formatLogTime } from './pokedex.js';
 import * as road from './road.js';
@@ -53,7 +53,7 @@ export function showNowPlaying(title, artist) {
 
 // ---------- 视图切换 ----------
 // 全部全屏视图 id：显示切换与"记录返回来源"共用同一份列表
-const VIEW_IDS = ['idleView','introView','phoneView','musicView','pokedexView','encounterView','hatchView','hatchAllView','gpsView','bountyView','dataView','achievementView','shopView','settingsView','tutorialView','declarationView','systemLogView','incubatorView','incubatorEggView','mixerView','berryView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','casinoGameView','casinoPenguinView','mahjongView','gachaView','gachaHistoryView','casinoHistoryView','albumView','itemBoxView','followerView','followerDexView','dispatchView','evoView','activityView','memoryView','birdView','eventsView'];
+const VIEW_IDS = ['idleView','introView','phoneView','musicView','pokedexView','encounterView','hatchView','hatchAllView','gpsView','bountyView','dataView','achievementView','shopView','settingsView','tutorialView','declarationView','systemLogView','incubatorView','incubatorEggView','mixerView','berryView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','casinoGameView','casinoPenguinView','mahjongView','gachaView','gachaHistoryView','casinoHistoryView','albumView','itemBoxView','followerView','followerDexView','dispatchView','evoView','activityView','memoryView','birdView','flowView','eventsView'];
 const CASINO_VIEWS = new Set(['casinoView', 'casinoGameView', 'casinoPenguinView', 'mahjongView', 'gachaView', 'gachaHistoryView', 'casinoHistoryView']);
 // 舞台类视图 = 游戏画面（挂机/遇敌），其余都是下屏的应用类
 const STAGE_VIEWS = new Set(['idleView', 'encounterView']);
@@ -83,7 +83,7 @@ export function closeAppArea() {
 }
 
 // 当前页标记与入口按钮高亮：showView 与「下半屏回手机首页」共用同一套记账
-const PHONE_VIEWS = new Set(['phoneView','gpsView','pokedexView','incubatorView','hatchView','hatchAllView','berryView','mixerView','dataView','achievementView','systemLogView','tutorialView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','albumView','itemBoxView','musicView','activityView','memoryView','birdView','eventsView']);
+const PHONE_VIEWS = new Set(['phoneView','gpsView','pokedexView','incubatorView','hatchView','hatchAllView','berryView','mixerView','dataView','achievementView','systemLogView','tutorialView','rosterView','moveEditView','tradeView','battleView','teamView','trainView','nurseryView','casinoView','albumView','itemBoxView','musicView','activityView','memoryView','birdView','flowView','eventsView']);
 export function syncViewChrome(id) {
   document.documentElement.dataset.view = id;
   _currentView = id;
@@ -276,7 +276,7 @@ export function showView(id) {
     title.innerHTML = '口袋挂机';
     title.dataset.action = '';
   } else {
-    const names = { phoneView:'手机', pokedexView:'图鉴', gpsView:'导航', bountyView:'地区悬赏', dataView:'统计', achievementView:'成就', shopView:'商店', settingsView:'设置', tutorialView:'教程', declarationView:'版权声明', systemLogView:'系统日志', incubatorView:'孵蛋器', incubatorEggView:'放入蛋', followerDexView:'随从图鉴', hatchView:'孵化', hatchAllView:'孵化全部', evoView:'进化', mixerView:'混合器', berryView:'农场', rosterView:'宝可梦', moveEditView:'配招', tradeView:'交换', battleView:'对战', teamView:'配队', trainView:'训练', nurseryView:'饲育屋', dispatchView:'派遣', casinoView:'游戏厅', casinoGameView:'21 点', casinoPenguinView:'跳企鹅', mahjongView:'口袋麻将', gachaView:'抽卡机', gachaHistoryView:'抽卡记录', casinoHistoryView:'战绩记录', albumView:'卡册', itemBoxView:'道具盒', musicView:'音乐', followerView:'随从', activityView:'限时活动', memoryView:'宝可翻牌', birdView:'鸟了个鸟', eventsView:'全服事件' };
+    const names = { phoneView:'手机', pokedexView:'图鉴', gpsView:'导航', bountyView:'地区悬赏', dataView:'统计', achievementView:'成就', shopView:'商店', settingsView:'设置', tutorialView:'教程', declarationView:'版权声明', systemLogView:'系统日志', incubatorView:'孵蛋器', incubatorEggView:'放入蛋', followerDexView:'随从图鉴', hatchView:'孵化', hatchAllView:'孵化全部', evoView:'进化', mixerView:'混合器', berryView:'农场', rosterView:'宝可梦', moveEditView:'配招', tradeView:'交换', battleView:'对战', teamView:'配队', trainView:'训练', nurseryView:'饲育屋', dispatchView:'派遣', casinoView:'游戏厅', casinoGameView:'21 点', casinoPenguinView:'跳企鹅', mahjongView:'口袋麻将', gachaView:'抽卡机', gachaHistoryView:'抽卡记录', casinoHistoryView:'战绩记录', albumView:'卡册', itemBoxView:'道具盒', musicView:'音乐', followerView:'随从', activityView:'限时活动', memoryView:'宝可翻牌', birdView:'鸟了个鸟', flowView:'宝可连线', eventsView:'全服事件' };
     title.innerHTML = `<svg style="width:16px;height:16px;vertical-align:middle;fill:var(--ui-color);transform:translateY(-1px);" viewBox="0 0 1024 1024"><use xlink:href="#icon-back"/></svg> ${names[chromeId]||''}`;
     title.dataset.action = 'back';
   }
@@ -986,21 +986,20 @@ function slotEggSrc(s) {
   return eggSprite(poke?.types?.[0]);
 }
 
-// 蛋列表图标（蛋仓库 / 孵蛋器选蛋页共用）：闪光蛋 / 6V 蛋套一层壳加扫光，普通蛋就是原图。
+// 蛋列表图标（蛋仓库 / 孵蛋器选蛋页共用）：闪光蛋套扫光壳，6V 由个体值列高亮。
 // 扫光的遮罩取蛋图自身的透明通道（--egg-src），光只落在蛋身上、不铺满方形底色
 export function eggIconHtml(eg, poke) {
   const src = eggSprite(poke?.types?.[0]);
   const img = `<img class="roster-icon-img" src="${src}" alt="蛋" style="width:18px;height:18px;" />`;
-  return (eg.shiny || effPerfectCount(eg) >= 6) ? `<span class="egg-icon-shine" style="--egg-src:url('${src}')">${img}</span>` : img;
+  return eg.shiny ? `<span class="egg-icon-shine" style="--egg-src:url('${src}')">${img}</span>` : img;
 }
 
-// 槽位里的蛋图标：闪光 / 6V 的培育蛋套扫光壳；神秘蛋（eggRef 为空）结果未知，不加
+// 槽位里的蛋图标：闪光蛋套扫光壳；神秘蛋（eggRef 为空）结果未知，不加
 function slotEggImgHtml(s, shake) {
   const eggEntry = s && s.eggRef ? (gameData.roster || []).find(r => r.id === s.eggRef) : null;
   const src = slotEggSrc(s);
   const img = `<img src="${src}" alt="蛋"${shake ? ' class="shake"' : ''} />`;
-  const glow = eggEntry && (eggEntry.shiny || effPerfectCount(eggEntry) >= 6);
-  return glow ? `<span class="egg-icon-shine" style="--egg-src:url('${src}')">${img}</span>` : img;
+  return eggEntry && eggEntry.shiny ? `<span class="egg-icon-shine" style="--egg-src:url('${src}')">${img}</span>` : img;
 }
 
 // 六维个体值斜杠串：31/31/31/31/31/31（HP/攻击/防御/特攻/特防/速度，与繁殖页面一致；
@@ -1068,10 +1067,11 @@ function renderEggPickList() {
         : sorted.map(eg => {
             const poke = getPokemonByIndex(String(eg.species));
             const name = poke ? poke.name : `#${eg.species}`;
+            const iv = eggIvSlash(eg);
             return `
               <div class="pokedex-entry roster-row nursery-egg-row" data-egg-pick="${eg.id}">
-                <span class="pokedex-name">${eggIconHtml(eg, poke)}<span class="egg-name-text">${name}的蛋${eg.shiny ? ' ★' : ''}</span></span>
-                <span class="roster-iv">${eggIvSlash(eg)}</span>
+                <span class="pokedex-name">${eggIconHtml(eg, poke)}<span class="egg-name-text">${name}</span><span class="egg-name-suffix">的蛋</span>${eg.shiny ? '<span class="egg-shiny">★</span>' : ''}</span>
+                <span class="roster-iv${iv === '31/31/31/31/31/31' ? ' iv-perfect' : ''}">${iv}</span>
               </div>`;
           }).join('');
       // 重新绑定行点击
@@ -1113,10 +1113,11 @@ function renderEggPickList() {
           : sorted.map(eg => {
               const poke = getPokemonByIndex(String(eg.species));
               const name = poke ? poke.name : `#${eg.species}`;
+              const iv = eggIvSlash(eg);
               return `
                 <div class="pokedex-entry roster-row nursery-egg-row" data-egg-pick="${eg.id}">
-                  <span class="pokedex-name">${eggIconHtml(eg, poke)}<span class="egg-name-text">${name}的蛋${eg.shiny ? ' ★' : ''}</span></span>
-                  <span class="roster-iv">${eggIvSlash(eg)}</span>
+                  <span class="pokedex-name">${eggIconHtml(eg, poke)}<span class="egg-name-text">${name}</span><span class="egg-name-suffix">的蛋</span>${eg.shiny ? '<span class="egg-shiny">★</span>' : ''}</span>
+                  <span class="roster-iv${iv === '31/31/31/31/31/31' ? ' iv-perfect' : ''}">${iv}</span>
                 </div>`;
             }).join('')}
       </div>

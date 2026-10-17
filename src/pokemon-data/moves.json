@@ -11599,14 +11599,7 @@
             "why": "",
             "impl": true,
             "effect": {
-                "kind": "stat",
-                "target": "foe",
-                "stats": [
-                    {
-                        "stat": "攻击",
-                        "delta": -1
-                    }
-                ]
+                "kind": "protect"
             },
             "pp": 5
         },

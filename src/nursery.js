@@ -1349,7 +1349,8 @@ export function settleBreeding() {
   const n = ensureNursery();
   const b = n.breeding;
   if (!b) return 0;
-  const target = Math.min(b.roundsTotal, b.roundsDone + Math.floor((Date.now() - b.startedAt) / b.durMs));
+  // 只按经过时间推算应产轮数，不能再叠加 roundsDone
+  const target = Math.min(b.roundsTotal, Math.floor((Date.now() - b.startedAt) / b.durMs));
   let produced = 0;
   while (b.roundsDone < target) {
     const [a, c] = n.parents;
@@ -1771,10 +1772,11 @@ export function renderEggView() {
   function eggRowHtml(eg) {
     const poke = getPokemonByIndex(String(eg.species));
     const name = poke ? poke.name : `#${eg.species}`;
+    const iv = eggIvSlash(eg);
     return `
       <div class="pokedex-entry roster-row nursery-egg-row" data-egg-id="${eg.id}">
-        <span class="pokedex-name">${eggIconHtml(eg, poke)}<span class="egg-name-text">${name}的蛋</span>${eg.shiny ? '<span class="egg-shiny">★</span>' : ''}</span>
-        <span class="roster-iv">${eggIvSlash(eg)}</span>
+        <span class="pokedex-name">${eggIconHtml(eg, poke)}<span class="egg-name-text">${name}</span><span class="egg-name-suffix">的蛋</span>${eg.shiny ? '<span class="egg-shiny">★</span>' : ''}</span>
+        <span class="roster-iv${iv === '31/31/31/31/31/31' ? ' iv-perfect' : ''}">${iv}</span>
         ${_favView ? '' : eggDiscardCell(eg)}
       </div>`;
   }

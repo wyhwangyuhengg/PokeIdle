@@ -24,7 +24,7 @@
   }
   .row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .row > label { flex: 0 0 132px; font-size: 12px; font-weight: 700; color: var(--ui-color-dark); }
-  input[type="number"], input[type="text"], select {
+  input[type="number"], input[type="text"], input[type="datetime-local"], select {
     font: inherit; font-size: 13px; padding: 5px 8px; border: 2px solid var(--console-edge);
     border-radius: 3px; background: #fffdf6; color: #1f1f1f; width: 130px;
   }
@@ -42,6 +42,10 @@
     font: 12px/1.5 var(--mono); color: #1f1f1f; background: #fffdf6;
     border: 2px solid var(--console-edge); border-radius: 3px;
   }
+  #existing { height: 180px; }
+  #json { height: 260px; }
+  .col { flex: 1 1 320px; min-width: 0; }
+  .col textarea { margin-top: 0; }
   .out { margin-top: 16px; }
   .out-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .out-head b { font-size: 12px; color: var(--ui-color-dark); }
@@ -61,12 +65,19 @@
         <option value="mass-bounty">大量悬赏</option>
         <option value="poke-flip">宝可翻牌</option>
         <option value="bird-stack">鸟了个鸟</option>
+        <option value="flow-link">宝可连线</option>
       </select>
     </div>
     <div class="row" id="rowPerTier">
       <label>每档只数</label>
       <input type="number" id="perTier" min="1" max="20" value="3" />
       <span class="hint">四档（进化道具 / 薄荷·王冠 / 大师球·闪耀护符 / 闪光蛋），每档 3 只、共 12 只</span>
+    </div>
+    <div class="row">
+      <label>开始时间</label>
+      <input type="datetime-local" id="startAt" />
+      <button class="ghost" id="now" style="padding:4px 10px;">现在</button>
+      <span class="hint">留空 = 点「生成」的那一刻</span>
     </div>
     <div class="row">
       <label>持续时长</label>
@@ -76,10 +87,17 @@
     <div class="row">
       <label>闪光蛋物种</label>
       <input type="text" id="egg" placeholder="留空 = 随机" />
-      <span class="hint">图鉴编号，如 0133（伊布）；大量悬赏第四档、宝可翻牌与鸟了个鸟兑换所里的闪光蛋都用它</span>
+      <span class="hint">图鉴编号，如 0133（伊布）；大量悬赏第四档，以及宝可翻牌 / 鸟了个鸟 / 宝可连线兑换所里的闪光蛋都用它</span>
+    </div>
+    <div class="row" style="align-items: flex-start;">
+      <label style="padding-top: 6px;">已有清单</label>
+      <div class="col">
+        <textarea id="existing" spellcheck="false" placeholder='把服务器 activity.json 的全部内容粘进来（{"list":[...]}），也可以只粘 [...]；留空 = 新建。生成时新活动会追加到末尾。'></textarea>
+        <span class="hint" id="existingHint">未粘贴：将生成全新清单</span>
+      </div>
     </div>
     <div class="row" style="margin: 16px 0 0;">
-      <button id="gen">生成（from = 现在）</button>
+      <button id="gen">生成并追加</button>
       <button class="ghost" id="reset">恢复默认</button>
       <span class="hint" id="genHint"></span>
     </div>
@@ -105,8 +123,8 @@
 //   ① 进化道具 ×1  ② 薄荷/王冠 ×1  ③ 大师球 / 闪耀护符 ×1  ④ 闪光蛋 ×1
 const FORM_KEY = 'pokeidle_activity_form_v1';
 const $ = (id) => document.getElementById(id);
-const FIELDS = ['kind', 'perTier', 'hours', 'egg'];
-const DEFAULTS = { kind: 'mass-bounty', perTier: 3, hours: 168, egg: '' };
+const FIELDS = ['kind', 'perTier', 'hours', 'egg', 'startAt', 'existing'];
+const DEFAULTS = { kind: 'mass-bounty', perTier: 3, hours: 168, egg: '', startAt: '', existing: '' };
 
 function readForm() {
   return {
@@ -114,6 +132,8 @@ function readForm() {
     perTier: Math.max(1, Math.min(20, Number($('perTier').value) || 3)),
     hours: Math.max(1, Math.min(720, Number($('hours').value) || 168)),
     egg: $('egg').value.trim(),
+    startAt: $('startAt').value,
+    existing: $('existing').value,
   };
 }
 function writeForm(f) {
@@ -121,6 +141,8 @@ function writeForm(f) {
   $('perTier').value = f.perTier;
   $('hours').value = f.hours;
   $('egg').value = f.egg;
+  $('startAt').value = f.startAt;
+  $('existing').value = f.existing;
 }
 function saveForm() { try { localStorage.setItem(FORM_KEY, JSON.stringify(readForm())); } catch (_) {} }
 function loadForm() {
@@ -135,12 +157,55 @@ function fmt(ms) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+// datetime-local 输入框需要的本地时间格式
+function inputFmt(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 粘贴的已有清单：支持整份 {"list":[...]}、只有 [...], 或单条活动对象
+function parseExisting(raw) {
+  const t = raw.trim();
+  if (!t) return [];
+  let data;
+  try { data = JSON.parse(t); }
+  catch (e) { throw new Error(`粘贴的内容不是合法 JSON：${e.message}`); }
+  let list;
+  if (Array.isArray(data)) list = data;
+  else if (data && typeof data === 'object' && Array.isArray(data.list)) list = data.list;
+  else if (data && typeof data === 'object' && typeof data.id === 'string') list = [data];
+  else throw new Error('粘贴的内容里找不到 list 数组');
+  list.forEach((a, i) => {
+    if (!a || typeof a !== 'object' || typeof a.id !== 'string'
+      || !Number.isFinite(Number(a.from)) || !Number.isFinite(Number(a.to))) {
+      throw new Error(`第 ${i + 1} 条活动缺少 id / from / to`);
+    }
+  });
+  return list;
+}
+
+function syncExistingHint() {
+  const el = $('existingHint');
+  const raw = $('existing').value.trim();
+  if (!raw) { el.textContent = '未粘贴：将生成全新清单'; el.style.color = ''; return; }
+  try {
+    const list = parseExisting(raw);
+    el.textContent = `已识别 ${list.length} 条，新活动会追加到末尾`;
+    el.style.color = '';
+  } catch (e) {
+    el.textContent = e.message;
+    el.style.color = '#b23b3b';
+  }
+}
 
 // 所有随机都由 payload.seed 决定：客户端用同一个 seed 定"固定哪一只"（全野池随机、去神兽）
 // 和四档奖励 —— 全服完全一致，改 seed 就换一只、换一份奖励，不用读排期。
 function build() {
   const f = readForm();
-  const from = Date.now();                      // from 就是按下的这一刻
+  const base = parseExisting(f.existing);
+  const from = f.startAt ? new Date(f.startAt).getTime() : Date.now();
+  if (!Number.isFinite(from)) throw new Error('开始时间格式不对');
   const to = from + f.hours * 3600 * 1000;
   const item = { id: f.kind, from, to };
   // 鸟了个鸟不需要种子（玩法与奖励都写死在客户端），但"闪光蛋物种"照样由 eggSpecies 指定
@@ -149,7 +214,7 @@ function build() {
   if (f.kind === 'mass-bounty') payload.perTier = f.perTier;
   if (f.egg) payload.eggSpecies = f.egg.padStart(4, '0');
   if (Object.keys(payload).length) item.payload = payload;
-  return { text: JSON.stringify({ list: [item] }) };
+  return { text: JSON.stringify({ list: base.concat([item]) }, null, 2), from, to, baseCount: base.length };
 }
 
 $('gen').addEventListener('click', async () => {
@@ -158,18 +223,20 @@ $('gen').addEventListener('click', async () => {
   btn.disabled = true;
   $('genHint').textContent = '正在生成…';
   try {
-    const { text } = build();
+    const { text, from, to, baseCount } = build();
     $('json').value = text;
-    const f = readForm();
-    const from = Date.now();
-    $('outTitle').textContent = `生成的 JSON（${fmt(from)} 起，到 ${fmt(from + f.hours * 3600e3)} 止）`;
+    $('outTitle').textContent = baseCount
+      ? `生成的 JSON（保留原有 ${baseCount} 条，追加 1 条：${fmt(from)} 起，到 ${fmt(to)} 止）`
+      : `生成的 JSON（${fmt(from)} 起，到 ${fmt(to)} 止）`;
     $('out').hidden = false;
     const k = $('kind').value;
     $('genHint').textContent = k === 'mass-bounty'
       ? '目标与四档奖励都由 payload.seed 决定（目标从全野池随机、去神兽）：改 seed 换一只、换一份奖励'
       : k === 'poke-flip'
         ? '宝可翻牌：payload.seed 决定兑换所那颗闪光蛋的物种，改它换一颗'
-        : '鸟了个鸟：不需要种子，但填了闪光蛋物种会带上 eggSpecies';
+        : k === 'flow-link'
+          ? '宝可连线：奖励固定的几件货由 payload.seed 摇，改它换一份；难度由玩家在活动页自选'
+          : '鸟了个鸟：不需要种子，但填了闪光蛋物种会带上 eggSpecies';
   } catch (e) {
     $('genHint').textContent = `生成失败：${e.message}（点「生成」重试）`;
   } finally { btn.disabled = false; }
@@ -180,14 +247,17 @@ $('copy').addEventListener('click', async () => {
   catch (_) { $('json').select(); document.execCommand('copy'); btn.textContent = '已复制'; }
   setTimeout(() => { btn.textContent = '复制'; }, 1200);
 });
-$('reset').addEventListener('click', () => { writeForm(DEFAULTS); saveForm(); $('out').hidden = true; });
+$('reset').addEventListener('click', () => { writeForm(DEFAULTS); saveForm(); $('out').hidden = true; syncExistingHint(); });
+$('now').addEventListener('click', () => { $('startAt').value = inputFmt(Date.now()); saveForm(); });
+$('existing').addEventListener('input', syncExistingHint);
 FIELDS.forEach(id => $(id).addEventListener('change', saveForm));
-// 「每档只数」只对大量悬赏有意义，选宝可翻牌时收起来
+// 「每档只数」只对大量悬赏有意义，其余活动收起来
 function syncRows() { $('rowPerTier').style.display = $('kind').value === 'mass-bounty' ? '' : 'none'; }
 $('kind').addEventListener('change', syncRows);
 
 loadForm();
 syncRows();
+syncExistingHint();
 </script>
 </body>
 </html>

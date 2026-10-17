@@ -253,6 +253,8 @@ function goBack() {
   if ($('memoryView')?.style.display === 'flex') { import('./memory-game.js').then(m => m.leaveMemoryGame()); return; }
   // 鸟了个鸟：返回 = 结算本局（币照给）并回活动页
   if ($('birdView')?.style.display === 'flex') { import('./bird-game.js').then(m => m.leaveBirdGame()); return; }
+  // 宝可连线：返回 = 本局作废（不给气球）并回活动页
+  if ($('flowView')?.style.display === 'flex') { import('./flow-game.js').then(m => m.leaveFlowGame()); return; }
   const target = popNav();
   // 手游双屏：弹回舞台页时下半屏若还停在 app 页面，退回手机首页
   if (isDualLayout() && isStageView(target) && getAppChannelView() !== 'phoneView') {

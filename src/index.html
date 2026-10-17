@@ -7,65 +7,175 @@
        这里就是唯一还能把错误留在屏幕上的地方，玩家截图/复制就能发回来。 -->
   <script>
     (function () {
-      var lines = [], box = null;
+      var SITE = 'https://pokeidle.shiliu.space';
+      var lines = [], box = null, detail = null, detailToggle = null, detailOpen = false;
+
       function stamp() { try { return new Date().toLocaleString(); } catch (e) { return String(Date.now()); } }
-      function add(title, detail) {
-        lines.push('[' + stamp() + '] ' + title + '\n' + (detail || ''));
+      function add(title, detailText) {
+        lines.push('[' + stamp() + '] ' + title + '\n' + (detailText || ''));
         paint();
+      }
+      function openSite(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        var m = window.__POKEIDLE_MOBILE__;
+        if (m && m.openExternal) { try { m.openExternal(SITE); return; } catch (err) {} }
+        if (window.open) { try { window.open(SITE, '_blank'); return; } catch (err) {} }
+        try { location.href = SITE; } catch (err) {}
+      }
+      function errorText() {
+        return '口袋挂机 ' + location.href + '\n' + navigator.userAgent + '\n\n' + lines.join('\n\n');
+      }
+      // 老 WebView 里 textarea 挪到屏幕外会复制失败，这里放视口内只缩成 1px
+      function copyByTextarea(text) {
+        var host = document.body || document.documentElement;
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.setAttribute('style', 'position:fixed;left:0;top:0;width:1px;height:1px;padding:0;border:0;' +
+          'opacity:0;font-size:12px;z-index:2147483647');
+        host.appendChild(ta);
+        var ok = false;
+        try {
+          ta.focus();
+          ta.select();
+          ta.setSelectionRange(0, ta.value.length);
+          ok = document.execCommand('copy');
+        } catch (e) { ok = false; }
+        host.removeChild(ta);
+        return ok;
+      }
+      function copyAll(btn) {
+        var text = errorText();
+        var label = btn.dataset.label || btn.textContent;   // 连点时别把「已复制」记成原始文案
+        btn.dataset.label = label;
+        var finish = function (ok) {
+          btn.textContent = ok ? '已复制' : '复制失败，请展开详情长按选中';
+          // 回到原样，方便再点一次
+          clearTimeout(copyAll._t);
+          copyAll._t = setTimeout(function () { btn.textContent = label; }, ok ? 1500 : 2600);
+          if (!ok && !detailOpen) toggleDetail();
+        };
+        var clip = navigator.clipboard;
+        // 优先走异步剪贴板 API（https 下可用），失败再退回 execCommand 并检查返回值
+        if (clip && clip.writeText) {
+          clip.writeText(text).then(function () { finish(true); }, function () { finish(copyByTextarea(text)); });
+        } else {
+          finish(copyByTextarea(text));
+        }
+      }
+      function toggleDetail() {
+        detailOpen = !detailOpen;
+        if (detail) detail.style.display = detailOpen ? 'block' : 'none';
+        if (detailToggle) detailToggle.textContent = detailOpen ? '收起错误详情' : '查看错误详情';
       }
       function paint() {
         var host = document.body || document.documentElement;
         if (!host) return;
         if (!box) {
           box = document.createElement('div');
+          // visibility 必须显式覆盖：body.booting 把整页 visibility:hidden，浮层挂在 body 下会被一起藏掉
           box.setAttribute('style', 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;' +
-            'background:#141414;color:#f2f2f2;font:12px/1.55 monospace;padding:12px 12px 68px;' +
-            'overflow:auto;-webkit-overflow-scrolling:touch;white-space:pre-wrap;word-break:break-all;' +
-            '-webkit-user-select:text;user-select:text');
+            'visibility:visible;background:var(--console-body);' +
+            'display:flex;align-items:center;justify-content:center;' +
+            'padding:24px;box-sizing:border-box;overflow:auto;-webkit-overflow-scrolling:touch;' +
+            'font-family:monospace;-webkit-user-select:text;user-select:text');
+
+          var card = document.createElement('div');
+          card.setAttribute('style', 'width:100%;max-width:340px;box-sizing:border-box;' +
+            'background:var(--console-body,#e8dcc0);border:2px solid var(--console-border,#c4b692);' +
+            'box-shadow:0 6px 0 var(--console-shadow,#b8a88a);border-radius:8px;padding:22px 20px 18px');
+
+          var badge = document.createElement('div');
+          badge.setAttribute('style', 'width:26px;height:26px;line-height:26px;text-align:center;' +
+            'margin-bottom:12px;background:var(--ui-color,#376d56);color:var(--console-body,#e8dcc0);' +
+            'font-weight:bold;font-size:16px;border-radius:4px');
+          badge.textContent = '!';
+
+          var title = document.createElement('div');
+          title.setAttribute('style', 'font-size:17px;font-weight:bold;letter-spacing:2px;' +
+            'color:var(--ui-color-darker,#1d4937);margin-bottom:8px');
+          title.textContent = '游戏没能启动';
+
+          var desc = document.createElement('div');
+          desc.setAttribute('style', 'font-size:12px;line-height:1.7;letter-spacing:0.5px;' +
+            'color:var(--color-muted,#7c7c7c);margin-bottom:18px');
+          desc.textContent = '本地资源和热更新版本没对上。安装最新安装包后再进游戏即可。';
+
+          var dl = document.createElement('a');
+          dl.href = SITE;
+          dl.onclick = openSite;
+          dl.setAttribute('style', 'display:block;padding:13px 10px;text-align:center;' +
+            'background:var(--ui-color,#376d56);color:var(--console-body,#e8dcc0);' +
+            'font-size:14px;font-weight:bold;letter-spacing:2px;text-decoration:none;' +
+            'border-radius:6px;box-shadow:0 3px 0 var(--ui-color-dark,#24563f)');
+          dl.textContent = '去官网下载最新版';
+
+          var copy = document.createElement('button');
+          copy.textContent = '复制错误信息';
+          copy.setAttribute('style', 'display:block;width:100%;margin-top:10px;padding:10px;' +
+            'background:transparent;color:var(--ui-color-dark,#24563f);font-family:monospace;' +
+            'font-size:12px;letter-spacing:1px;border:2px solid var(--console-border,#c4b692);' +
+            'border-radius:6px');
+          copy.onclick = function () { copyAll(copy); };
+
+          detailToggle = document.createElement('button');
+          detailToggle.textContent = '查看错误详情';
+          detailToggle.setAttribute('style', 'display:block;width:100%;margin-top:12px;padding:4px;' +
+            'background:transparent;border:0;color:var(--color-muted,#7c7c7c);' +
+            'font-family:monospace;font-size:11px;letter-spacing:1px');
+          detailToggle.onclick = toggleDetail;
+
+          detail = document.createElement('div');
+          // 全局 *{user-select:none} 会盖掉继承，这里必须显式放开，才能长按选中报错文字
+          detail.setAttribute('style', 'display:none;margin-top:10px;padding:10px;' +
+            'background:var(--item-bg,rgba(0,0,0,0.06));border-radius:4px;' +
+            'font-size:10px;line-height:1.6;color:var(--color-text,#1f1f1f);' +
+            'white-space:pre-wrap;word-break:break-all;max-height:34vh;overflow:auto;' +
+            '-webkit-user-select:text;user-select:text;-webkit-touch-callout:default');
+
+          card.appendChild(badge);
+          card.appendChild(title);
+          card.appendChild(desc);
+          card.appendChild(dl);
+          card.appendChild(copy);
+          card.appendChild(detailToggle);
+          card.appendChild(detail);
+          box.appendChild(card);
           host.appendChild(box);
         }
-        box.style.display = 'block'; // 玩家点过"关闭"后再出错要能重新露出
-        box.innerHTML = '';
-        var title = document.createElement('div');
-        title.setAttribute('style', 'color:#ff6b6b;font-weight:bold;font-size:14px;margin-bottom:10px');
-        title.textContent = '口袋挂机 · 启动出错（请截图或点下面按钮复制，发给作者）';
-        box.appendChild(title);
-        var body = document.createElement('div');
-        body.textContent = lines.join('\n\n');
-        box.appendChild(body);
+        box.style.display = 'flex'; // 玩家点过"关闭"后再出错要能重新露出
+        if (detail) detail.textContent = lines.slice(-5).join('\n\n');
+        if (detailOpen) detail.style.display = 'block';
+      }
 
-        var bar = document.createElement('div');
-        bar.setAttribute('style', 'position:fixed;left:0;right:0;bottom:0;padding:10px;background:#1e1e1e;display:flex;gap:10px');
-        var copy = document.createElement('button');
-        copy.textContent = '复制全部';
-        copy.setAttribute('style', 'flex:1;padding:10px;font-size:14px;color:#fff;background:#2f6df6;border:0;border-radius:6px');
-        copy.onclick = function () {
-          var ta = document.createElement('textarea');
-          ta.value = lines.join('\n\n');
-          ta.setAttribute('style', 'position:fixed;left:-9999px;top:0');
-          host.appendChild(ta);
-          ta.select();
-          try { document.execCommand('copy'); copy.textContent = '已复制'; }
-          catch (e) { copy.textContent = '复制失败，请长按选中'; }
-          host.removeChild(ta);
-        };
-        var close = document.createElement('button');
-        close.textContent = '关闭';
-        close.setAttribute('style', 'padding:10px 20px;font-size:14px;color:#f2f2f2;background:#3a3a3a;border:0;border-radius:6px');
-        close.onclick = function () { box.style.display = 'none'; };
-        bar.appendChild(copy);
-        bar.appendChild(close);
-        box.appendChild(bar);
+      // 热更新若把新旧文件混在一起（例如 items.js 已是新版、ui.js 还是旧版），main.js 会卡在
+      // 模块导入阶段直接起不来，也就永远进不到游戏里做对账。这里在入口兜底：确认是这个毛病，
+      // 就把热更缓存整块丢掉重载一次，退回包里的完整版本；一分钟内只自愈一次，避免死循环。
+      function healHotCache() {
+        if (!window.caches || !caches.delete) return false;
+        var last = 0;
+        try { last = Number(sessionStorage.getItem('pokeidle_hot_heal')) || 0; } catch (e) { return false; }
+        if (last && Date.now() - last < 60000) return false;
+        try { sessionStorage.setItem('pokeidle_hot_heal', String(Date.now())); } catch (e) {}
+        var go = function () { try { location.reload(); } catch (e) {} };
+        caches.delete('pokeidle-hot').then(go, go);
+        return true;
+      }
+      function hotModuleError(msg) {
+        return /does not provide an export named|error loading dynamically imported module|failed to fetch dynamically imported module|importing a module script failed/i.test(msg || '');
       }
 
       window.onerror = function (msg, url, line, col, err) {
+        if (hotModuleError(msg) && healHotCache()) return true;   // 已安排重载，不必再画报错
         add('脚本错误', msg + '\n' + (url || '') + (line ? ':' + line + ':' + col : '') +
           (err && err.stack ? '\n' + err.stack : ''));
         return false;
       };
       window.addEventListener('unhandledrejection', function (e) {
         var r = e && e.reason;
-        add('未处理的 Promise 异常', (r && (r.stack || r.message)) || String(r));
+        var text = (r && (r.stack || r.message)) || String(r);
+        if (hotModuleError(text) && healHotCache()) return;
+        add('未处理的 Promise 异常', text);
       });
       window.addEventListener('error', function (e) {
         var t = e && e.target;
@@ -77,6 +187,7 @@
       setTimeout(function () {
         var b = document.body;
         if (b && (' ' + b.className + ' ').indexOf(' booting ') >= 0) {
+          if (healHotCache()) return;   // 先按热更缓存打架自愈一次，兜不住的再把错误亮出来
           add('启动卡死', '主脚本 8 秒内没有完成启动，页面一直处于隐藏状态。\n地址：' + location.href +
             '\nUA：' + navigator.userAgent);
         }
@@ -615,6 +726,13 @@
                 <div class="bg-board" id="bgBoard"></div>
               </div>
               <div class="bg-tray" id="bgTray"></div>
+            </div>
+
+            <!-- 宝可连线（限时活动里的小游戏）：拖出成对宝可梦之间的线，铺满全盘 -->
+            <div id="flowView" class="view-fixed" style="display:none;">
+              <div class="fl-stage" id="flStage">
+                <div class="fl-board" id="flBoard"></div>
+              </div>
             </div>
 
             <!-- 对战（NPC 挑战） -->

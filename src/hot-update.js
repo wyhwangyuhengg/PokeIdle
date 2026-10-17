@@ -20,6 +20,7 @@ const SKIP = new Set(['res-manifest.json', 'sw.js', 'build-info.js']);
 
 let _busy = false;       // 正在下载/应用，防重入
 let _checking = false;   // 进游戏时那次静默比对
+let _failStreak = 0;     // 连续几次有文件没下全，用来提示玩家别再反复点
 
 // 轻提示：复用全局提示条，1.6 秒自动收；动态引入避免和 ui.js 成环
 function toast(msg) {
@@ -188,12 +189,14 @@ function showProgress() {
   return { set };
 }
 
-// 下载差异文件：逐个校验 sha1，坏的跳过（下次再补）；返回成功数
+// 下载差异文件：逐个校验 sha1，坏的跳过。只写缓存，清单等整批都成功后才提交，
+// 避免出现"新 index.html + 旧 main.js"这种新旧混用的状态
 async function download(changes, ui) {
   const cache = await caches.open(CACHE);
   const applied = await readApplied(cache);
   const queue = changes.list.slice();
   const total = changes.list.length;
+  const loaded = {};
   let done = 0, got = 0;
   ui.set(0, total, 0, changes.bytes);
   const worker = async () => {
@@ -209,7 +212,7 @@ async function download(changes, ui) {
           if (!h || h === info.hash) {
             await cache.put(new Request(`${location.origin}/${path}`),
               new Response(buf, { headers: { 'Content-Type': res.headers.get('Content-Type') || 'application/octet-stream' } }));
-            applied.files[path] = info.hash;
+            loaded[path] = info.hash;
             done++; got += buf.byteLength;
             ui.set(done, total, got, changes.bytes);
             continue;
@@ -220,10 +223,7 @@ async function download(changes, ui) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) || 0 }, worker));
-  await writeApplied(cache, changes.gen || applied.gen, applied.files);
-  lsSet(META_KEY, JSON.stringify({ app: changes.app || '', gen: changes.gen, at: Date.now(), applied: Object.keys(applied.files).length, pending: 0, added: done }));
-  try { (await navigator.serviceWorker.ready).active?.postMessage('pokeidle-hot-refresh'); } catch (_) {}
-  return done;
+  return { cache, applied, loaded, done, total };
 }
 
 // 待更新的资源数（读那条记录）：手机页右上角据此显示「可更新」
@@ -232,13 +232,34 @@ export function hotPendingCount() {
   return meta ? (meta.pending || 0) : 0;
 }
 
-// 玩家点「更新」：先落盘存档，再下载差异、重启交回 SW 提供新文件
+// 玩家点「更新」：先落盘存档，再下载差异、重启交回 SW 提供新文件。
+// 整批文件都到位才提交清单并重启；缺一个就整批作废留在旧版本，避免新旧资源混用
 async function applyChanges(changes) {
-  try { window.__saveLastChance && window.__saveLastChance(); } catch (_) {}
-  const ui = showProgress();
-  const done = await download(changes, ui);
-  if (done > 0) location.reload();
-  else hideOverlay();
+  if (_busy) return;
+  _busy = true;
+  try {
+    try { window.__saveLastChance && window.__saveLastChance(); } catch (_) {}
+    const ui = showProgress();
+    const { cache, applied, loaded, done, total } = await download(changes, ui);
+    if (done !== total) {
+      hideOverlay();
+      _failStreak++;
+      toast(_failStreak >= 3 ? '多次更新失败，请检查网络后再试' : `有 ${total - done} 个文件没下载成功，稍后重试`);
+      return;
+    }
+    _failStreak = 0;
+    Object.assign(applied.files, loaded);
+    await writeApplied(cache, changes.gen || applied.gen, applied.files);
+    lsSet(META_KEY, JSON.stringify({ app: changes.app || '', gen: changes.gen, at: Date.now(), applied: Object.keys(applied.files).length, pending: 0, added: done }));
+    try { (await navigator.serviceWorker.ready).active?.postMessage('pokeidle-hot-refresh'); } catch (_) {}
+    location.reload();
+  } catch (e) {
+    console.warn('[热更] 应用更新出错：', e && e.message);
+    hideOverlay();
+    toast('更新失败，请稍后重试');
+  } finally {
+    _busy = false;
+  }
 }
 
 // 进游戏时只做一次静默的比对，不打扰玩家；有更新就在手机页右上角闪「可更新」。

@@ -62,13 +62,22 @@ function moveCat(mv) {
   }
   return 'status';
 }
-// 招式先制度：双倍奉还/镜面反射等反击招先制度 -5（永远最后出手），守住/挺住先制 +4，
-// 击掌奇袭/迎头一击优先度 +3（仅出场第一回合使用，且必定先手）
+// 招式先制度：反击类永远最后出手，守住类 +4，其余先制招式按正作数值；未列出的为 0
+const MOVE_PRIORITY = {
+  '帮助': 5,
+  '王者盾牌': 4,
+  '击掌奇袭': 3, '快速防守': 3, '广域防守': 3,
+  '神速': 2, '迎头一击': 2, '佯攻': 2,
+  '电光一闪': 1, '音速拳': 1, '子弹拳': 1, '冰砾': 1,
+  '影子偷袭': 1, '水流喷射': 1, '突袭': 1,
+};
 function movePriority(mv) {
+  if (!mv) return 0;
   const k = (mv.effect || {}).kind;
   if (k === 'counter' || k === 'mirrorCoat') return -5;
+  const p = MOVE_PRIORITY[mv.name];
+  if (p != null) return p;
   if (k === 'protect' || k === 'endure') return 4;
-  if (mv.name === '击掌奇袭' || mv.name === '迎头一击') return 3;
   return 0;
 }
 // 换人/新宝可梦上场：清空反击/镜面反射记录及替身/寄生种子/两回合蓄力等仅对当前个体的战斗标记
@@ -84,6 +93,8 @@ function resetCounter(mon) {
   mon.disabledMove = null; mon.disableTurns = 0;   // 定身法/无理取闹：换人后解除
   mon.lockedMove = null; mon.encoreTurns = 0;      // 再来一次：换人后解除
   mon.tauntTurns = 0;                              // 挑衅：换人后解除
+  mon.recharge = false;                            // 破坏光线类：换人后不再需要休息
+  mon.protectMove = null;                          // 守护招式名随本回合结束失效
   mon.entryRound = null;                           // 击掌奇袭：换人/上场后视为刚出场
 }
 
@@ -2289,11 +2300,11 @@ async function sleepCheckAttack(mon, side, moveId, battle) {
   await doAttack(mon, side, moveId, battle);
 }
 
-// ---------- 两回合招式（挖洞/飞翔/潜水/弹跳/神鸟猛击/潜灵奇袭） ----------
+// ---------- 两回合招式（挖洞/飞翔/潜水/弹跳/神鸟猛击/潜灵奇袭/日光束/日光刃） ----------
 // 第一回合进入蓄力状态（chargeMove 挂起），第二回合自动出招结算伤害
-const CHARGE_MOVES = new Set(['挖洞', '飞翔', '潜水', '弹跳', '神鸟猛击', '潜灵奇袭']);
-// 蓄力期间是否离场隐藏（神鸟猛击为原地蓄光，不隐藏）
-const CHARGE_HIDES = { 挖洞: true, 飞翔: true, 潜水: true, 弹跳: true, 潜灵奇袭: true, 神鸟猛击: false };
+const CHARGE_MOVES = new Set(['挖洞', '飞翔', '潜水', '弹跳', '神鸟猛击', '潜灵奇袭', '日光束', '日光刃']);
+// 蓄力期间是否离场隐藏（神鸟猛击/日光束/日光刃为原地蓄力，不隐藏）
+const CHARGE_HIDES = { 挖洞: true, 飞翔: true, 潜水: true, 弹跳: true, 潜灵奇袭: true, 神鸟猛击: false, 日光束: false, 日光刃: false };
 const CHARGE_ENTER_TEXT = {
   挖洞: (n) => `${n} 挖洞钻入了地下！`,
   飞翔: (n) => `${n} 飞向了高空！`,
@@ -2301,18 +2312,22 @@ const CHARGE_ENTER_TEXT = {
   弹跳: (n) => `${n} 高高跃起！`,
   神鸟猛击: (n) => `${n} 开始积蓄力量！`,
   潜灵奇袭: (n) => `${n} 消失在了暗影中！`,
+  日光束: (n) => `${n} 吸收了阳光！`,
+  日光刃: (n) => `${n} 吸收了阳光！`,
 };
 // 进入蓄力的精灵位移动画类：下潜（挖洞/潜水）/ 升空（飞翔/弹跳）/ 原地蓄光 / 隐身
 const CHARGE_ENTER_CLS = {
   挖洞: 'cg-sink', 潜水: 'cg-sink',
   飞翔: 'cg-rise', 弹跳: 'cg-rise',
   神鸟猛击: 'cg-glow',
+  日光束: 'cg-glow', 日光刃: 'cg-glow',
   潜灵奇袭: 'cg-vanish',
 };
 // 第二回合现身攻击的动画类：从地下破土而出 / 从空中俯冲而下 / 显现冲刺
 const CHARGE_OUT_CLS = {
   挖洞: 'cg-out-sink', 潜水: 'cg-out-sink',
   飞翔: 'cg-out-rise', 弹跳: 'cg-out-rise', 神鸟猛击: 'cg-out-rise',
+  日光刃: 'cg-glow',
   潜灵奇袭: 'cg-out-vanish',
 };
 // 第一回合蓄力进入：播放对应离场动画（飞翔升空/挖洞钻地等，过程完整可见），钻地/潜水在脚部溅起尘土与水花。
@@ -2327,23 +2342,29 @@ function playChargeEnter(side, mvName) {
   if (mvName === '挖洞') spawnGroundBurst(side, '#b98f5e', 9);
   else if (mvName === '潜水') spawnGroundBurst(side, '#7fd0f5', 7);
 }
-// 第二回合攻击：先播现身动画（破土/俯冲/跃出），再物理冲刺结算伤害
+// 第二回合攻击：先播现身动画（破土/俯冲/跃出），再冲到对手面前结算伤害；日光束原地发射光柱
 async function playChargeAttack(actor, side, moveId, battle) {
   const mv = _data.moves[moveId];
   const foe = curMon(battle, side === 'bp' ? 'e' : 'p');
   const el = $(`${side}-img`);
+  const solarBeam = mv.name === '日光束';
   setText(`${actor.name}使用${mv.name}攻击！`);
   if (el) {
     el.dataset.charged = ''; // 结束离场蓄力，恢复可被瞄准的在场状态
     resetAnim(el);
     void el.offsetWidth;
-    el.classList.add(CHARGE_OUT_CLS[mv.name] || 'cg-out-vanish');
+    if (!solarBeam) el.classList.add(CHARGE_OUT_CLS[mv.name] || 'cg-out-vanish');
   }
   if (mv.name === '挖洞') spawnGroundBurst(side, '#b98f5e', 10);
   else if (mv.name === '潜水') spawnGroundBurst(side, '#7fd0f5', 8);
   await battleSleep(340); // 等现身动画播完
-  lungeAttack(side); // 两回合招式均为物理攻击：冲撞对手
-  await battleSleep(280);
+  if (solarBeam) {
+    spawnSolarBeam(side === 'bp' ? 'be' : 'bp'); // 对手脚下向上射出一根柔光细柱
+    await battleSleep(500);
+  } else {
+    lungeAttack(side); // 近身招式：冲撞对手
+    await battleSleep(280);
+  }
   const evs = [];
   useMove(actor, foe, moveId, _data, evs, battle);
   await playEvents(evs, battle, foe, mv.type);
@@ -2569,8 +2590,8 @@ async function battleLoop(battle) {
       let pMon = curMon(battle, 'p');
       let eMon = curMon(battle, 'e');
       // 每回合开始清零：双倍奉还记录（严格同回合）+ 守住/挺住/同命标记（先制防护仅当回合生效）
-      pMon.hitByPhys = false; pMon.physDmg = 0; pMon.hitBySpec = false; pMon.specDmg = 0; pMon.protected = false; pMon.endure = false; pMon.destinyBond = false; pMon.whirlwinded = false; pMon.batonPass = false;
-      eMon.hitByPhys = false; eMon.physDmg = 0; eMon.hitBySpec = false; eMon.specDmg = 0; eMon.protected = false; eMon.endure = false; eMon.destinyBond = false; eMon.whirlwinded = false; eMon.batonPass = false;
+      pMon.hitByPhys = false; pMon.physDmg = 0; pMon.hitBySpec = false; pMon.specDmg = 0; pMon.protected = false; pMon.protectMove = null; pMon.endure = false; pMon.destinyBond = false; pMon.whirlwinded = false; pMon.batonPass = false;
+      eMon.hitByPhys = false; eMon.physDmg = 0; eMon.hitBySpec = false; eMon.specDmg = 0; eMon.protected = false; eMon.protectMove = null; eMon.endure = false; eMon.destinyBond = false; eMon.whirlwinded = false; eMon.batonPass = false;
       syncFieldFx(battle); // 回合重置：撤掉上一回合的守住护盾
       const pPre = []; // 我方回合前状态事件（睡眠/麻痹/畏缩/混乱自伤等）
       const ePre = []; // 敌方回合前状态事件
@@ -2617,8 +2638,8 @@ async function battleLoop(battle) {
         pAct = null; // 本回合行动已消耗在换人上
       }
 
-      // 出招：双方都出招时按速度先后（速度更高者先动；平手随机）；
-      // 反击招先制度 -4 强制后手，否则本回合还没吃到物理伤害就出手必然失败
+      // 出招：双方都出招时按先制度、再按速度决定先后（速度平手随机）；
+      // 反击招先制度 -5 强制后手，否则本回合还没吃到伤害就出手必然失败
       const pMove = pAct && pAct.type === 'move' ? pAct.id : null;
       let pFirst;
       if (pMove != null && eMove != null) {

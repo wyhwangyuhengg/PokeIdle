@@ -2394,6 +2394,73 @@ html.mobile-app #quitHide { display: none !important; }
 .bg-result-coins.none { font-size: 11px; font-weight: 600; opacity: .75; }
 .bg-result-btns { display: flex; gap: 10px; margin-top: 4px; }
 
+/* === 宝可连线：按住成对宝可梦拖出线，铺满全盘且互不交叉 === */
+.fl-stage {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  padding: 0;
+}
+/* 棋盘页临时收窄屏幕两侧留白，把宽度让给格子；离开这一页自动恢复 */
+html[data-view="flowView"] .screen-wrapper { padding-left: 2px; padding-right: 2px; }
+html[data-view="flowView"] .app-screen { margin-left: 2px; margin-right: 2px; }
+.fl-board {
+  position: relative;
+  flex: none;
+  box-sizing: content-box;       /* 宽高由脚本按格子数算，别让边框吃掉 1px 导致网格和触摸错位 */
+  touch-action: none;            /* 拖线时别让页面跟着滚 */
+  background-color: rgba(var(--ui-color-rgb), 0.06);
+  background-image:
+    linear-gradient(to right, rgba(var(--ui-color-rgb), 0.16) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(var(--ui-color-rgb), 0.16) 1px, transparent 1px);
+  border: 1px solid rgba(var(--ui-color-rgb), 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.fl-cell {
+  position: absolute;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.fl-cell.on { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .1); }
+.fl-end {
+  position: absolute;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;   /* 手势统一交给棋盘处理 */
+  background-color: var(--fl-soft);
+}
+.fl-end img {
+  width: 78%; height: 78%; object-fit: contain; image-rendering: pixelated;
+}
+/* 通关：色块从中心向外依次弹一下，动效播完才弹结算面板 */
+.fl-cell.win {
+  animation: fl-cell-win .46s ease-out both;
+  animation-delay: calc(var(--fl-d) * 45ms);
+}
+@keyframes fl-cell-win {
+  0% { transform: scale(.86); }
+  55% { transform: scale(1.07); }
+  100% { transform: scale(1); }
+}
+.fl-end.win img { animation: fl-end-win .55s ease-out both; }
+@keyframes fl-end-win {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+/* 电脑版：鼠标悬停时把脚下淡色加深一档（触屏设备不走这套） */
+@media (hover: hover) and (pointer: fine) {
+  .fl-board:not(.done) .fl-end { pointer-events: auto; }
+  .fl-board:not(.done) .fl-end:hover { background-color: var(--fl-hover); }
+  .fl-board:not(.done) { cursor: pointer; }
+}
+/* 结算面板盖在棋盘上：盘面已经铺满线，底色要实一点才看得清字 */
+.fl-board.done {
+  border-color: transparent;      /* 结算时不留棋盘的边线 */
+  background-image: none;
+  background-color: var(--screen-bg);   /* 补上边线位置的颜色，和结算面板连成一片 */
+}
+.fl-board.done .fl-cell { visibility: hidden; }
+.fl-result { inset: -1px; background: var(--screen-bg); border-radius: 3px; }
+
 /* 有音乐时压缩时间区域（上挤），app 图标位置保持不动 */
 #phoneView.has-music .phone-clock { padding: 0 0 2px; }
 #phoneView.has-music .phone-clock .date { font-size: 9px; }
@@ -5762,9 +5829,17 @@ html.mobile-app #quitHide { display: none !important; }
 }
 .nursery-egg-row .pokedex-name { display: flex; align-items: center; overflow: hidden; }
 .nursery-egg-row .pokedex-name .egg-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 「的蛋」后缀不参与省略，名字再长也保住结尾 */
+.nursery-egg-row .pokedex-name .egg-name-suffix { flex-shrink: 0; white-space: nowrap; }
+/* 6V 个体值与闪光星标共用同一套高亮色 */
+.nursery-egg-row .roster-iv.iv-perfect,
+.nursery-egg-row .pokedex-name .egg-shiny { color: var(--ui-color-darker); }
+.nursery-egg-row .roster-iv.iv-perfect { font-weight: 700; }
+[data-theme="dark"] .nursery-egg-row .roster-iv.iv-perfect,
+[data-theme="dark"] .nursery-egg-row .pokedex-name .egg-shiny { color: var(--ui-color); filter: brightness(1.45); }
 /* 闪光星标独立成项，名字截断时不被省略号吞掉 */
 .nursery-egg-row .pokedex-name .egg-shiny { flex-shrink: 0; margin-left: 2px; }
-/* 闪光蛋 / 6V 蛋的图标扫光：高光带在固定的蛋形遮罩里循环扫过。
+/* 闪光蛋的图标扫光：高光带在固定的蛋形遮罩里循环扫过。
    遮罩取蛋图自身的透明通道，光只落在蛋身上；所以动的是 background-position，
    而不是元素本身——元素一动遮罩就跟着偏了。
    外壳尺寸由里面的蛋图撑开（列表 18px、槽位 22px 都能用） */
@@ -5796,7 +5871,7 @@ html.mobile-app #quitHide { display: none !important; }
 }
 /* 放入蛋列表只有两列：名字靠左、个体值靠右 */
 #incubatorEggView .nursery-egg-header .pokedex-name,
-#incubatorEggView .nursery-egg-row .pokedex-name { margin-right: auto; }
+#incubatorEggView .nursery-egg-row .pokedex-name { flex: 1 1 auto; margin-right: auto; }
 /* 蛋列表「丢弃」列：列宽收窄让给名字列；按钮按内容宽度显示（不撑满、不换行）并贴紧右缘 */
 .nursery-egg-row .bounty-trade-btn-col,
 .nursery-egg-header .bounty-trade-btn-col { width: 34px; padding-right: 0; }
@@ -9242,7 +9317,7 @@ body.booting { visibility: hidden; }
 .nursery-egg-fav-btn:active { transform: scale(0.96); }
 /* 收藏页没有「丢弃」列，名字列撑开把个体值顶到右缘 */
 .nursery-egg-fav .nursery-egg-header .pokedex-name,
-.nursery-egg-fav .nursery-egg-row .pokedex-name { margin-right: auto; }
+.nursery-egg-fav .nursery-egg-row .pokedex-name { flex: 1 1 auto; margin-right: auto; }
 /* 标题后跟的小字（目标蛋组） */
 .nursery-pick-egggroup {
   font-size: 10px;

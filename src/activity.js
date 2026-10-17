@@ -248,7 +248,7 @@ function openActivity(id) {
   _openMod = mod;
   _picks = [];
   _openWin = winOf(a, id);
-  pushNav('activityView');   // 子页面压栈：标题栏返回 / 安卓返回键固定回手机页
+  if (getCurrentView() !== 'activityView') pushNav('activityView');   // 已在活动页（切活动）时别再压一层
   showView('activityView');
   paintActivity();
   if (_bodyTimer) clearInterval(_bodyTimer);

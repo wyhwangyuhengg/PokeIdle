@@ -182,9 +182,12 @@ window.__activity = () => import('./activity.js').then(m => { const d = m.activi
 //   __act()                看当前预览与可用活动
 //   __act(null)            取消预览
 //   __act(id, { reset:true })  重开一份存档槽（气球/进度清零）
+//   __act(id, { open:true })   登记后直接打开活动页（宝可连线：__act('flow-link', { open:true })）
 window.__act = (id, opts) => import('./activity.js').then(m => {
   if (id === undefined) { const d = m.activityDebug(); console.log(d); return d; }
-  return m.setDevPreview(id, opts || {});
+  const r = m.setDevPreview(id, opts || {});
+  if (id && opts?.open) m.openActivityById(id);
+  return r;
 });
 
 window.__refreshAll = () => {

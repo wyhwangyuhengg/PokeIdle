@@ -65,6 +65,8 @@ export function createMon(pokeData, level, ivsObj, natureKey, moveIds) {
     stageTypes: [null, null, null, null, null, null, null], // 每项能力最近一次变化来源招式的属性（能力圆点按此着色）
     status: null, statusType: null, sleepTurns: 0, confusionTurns: 0, flinch: false,
     entryRound: null,         // 击掌奇袭：刚出场的回合标记（null=刚上场，出场后第一回合可用）
+    recharge: false,          // 破坏光线类：命中后下一回合必须休息
+    protectMove: null,        // 本回合守护招式的名字（王者盾牌的反伤判定用）
     hitByPhys: false, physDmg: 0, // 双倍奉还结算：最近一次受到的物理伤害（回合开始清零）
     hitBySpec: false, specDmg: 0, // 镜面反射结算：最近一次受到的特殊伤害（回合开始清零）
     protected: false, endure: false, protectStreak: 0, seeded: false, seedSrc: null, subHp: 0, // 守住/挺住/寄生种子/替身
@@ -113,7 +115,11 @@ function hit(actor, target, mv, ef, events, ctx = null) {
   }
   // 守住：本回合免疫招式伤害，但必中招式（accuracy 0）可穿透守住命中（官方：命中—的招式不受守住影响）
   if (target.protected && mv.accuracy !== 0) {
-    events.push({ t: 'block', who: target.name, uid: target.uid, text: `${target.name}用守住挡住了${mv.name}！` });
+    // 王者盾牌：挡下物理招式时降低攻击方的攻击
+    if (target.protectMove === '王者盾牌' && ef.cat === 'phys') {
+      applyStat(actor, [{ stat: '攻击', delta: -1 }], events, '钢');
+    }
+    events.push({ t: 'block', who: target.name, uid: target.uid, text: `${target.name}用${target.protectMove || '守住'}挡住了${mv.name}！` });
     return false;
   }
   const stab = actor.types.includes(atkType) ? 1.5 : 1;
@@ -259,6 +265,9 @@ export function transformMon(mon, source) {
   return true;
 }
 
+// 使用后下一回合必须休息的招式
+const RECHARGE_MOVES = new Set(['破坏光线', '终极冲击', '爆炸烈焰', '加农水炮', '疯狂植物', '岩石炮', '时光咆哮', '棱镜镭射', '流星突击']);
+
 // ---------- 招式执行（返回事件数组） ----------
 export function useMove(actor, target, moveId, data, events = [], ctx = null) {
   const mv = data.moves[moveId];
@@ -290,7 +299,7 @@ export function useMove(actor, target, moveId, data, events = [], ctx = null) {
   if (ef.kind !== 'protect') actor.protectStreak = 0;
   switch (ef.kind) {
     case 'damage':
-      hit(actor, target, mv, ef, events);
+      if (hit(actor, target, mv, ef, events) && RECHARGE_MOVES.has(mv.name)) actor.recharge = true;
       break;
     case 'explode': {
       // 大爆炸：造成伤害后使用者直接倒下（命中或被守住挡下均倒下，miss/属性免疫不倒下）
@@ -664,12 +673,13 @@ export function useMove(actor, target, moveId, data, events = [], ctx = null) {
       // 守住：成功率随连续成功使用递减（官方 1/3^连续成功次数），失败则连续计数清零
       if (actor.protectStreak > 0 && Math.floor(Math.random() * Math.pow(3, actor.protectStreak)) !== 0) {
         actor.protectStreak = 0;
-        events.push(msg(`${actor.name}使出了守住，但是没有成功！`));
+        events.push(msg(`${actor.name}使出了${mv.name}，但是没有成功！`));
         break;
       }
       actor.protectStreak++;
       actor.protected = true;
-      events.push(msg(`${actor.name}使出了守住！`));
+      actor.protectMove = mv.name;
+      events.push(msg(`${actor.name}使出了${mv.name}！`));
       break;
     }
     case 'endure': {
@@ -795,6 +805,11 @@ export function useMove(actor, target, moveId, data, events = [], ctx = null) {
 // 行动前检查，返回是否能行动
 export function preTurn(mon, events) {
   if (mon.hp <= 0) return false;
+  if (mon.recharge) {
+    mon.recharge = false;
+    events.push(msg(`${mon.name}正在恢复体力，无法行动！`));
+    return false;
+  }
   if (mon.status === 'freeze') {
     if (Math.random() < 0.2) clearStatus(mon, events, `${mon.name}解冻了！`);
     else { events.push(msg(`${mon.name}被冻住，无法行动。`)); return false; }
