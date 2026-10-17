@@ -3,6 +3,86 @@
 
 <head>
   <meta charset="UTF-8" />
+  <!-- 入口崩溃取证：本段必须留在 <head> 最前、且只能用最老语法。main.js 一旦没跑起来，
+       这里就是唯一还能把错误留在屏幕上的地方，玩家截图/复制就能发回来。 -->
+  <script>
+    (function () {
+      var lines = [], box = null;
+      function stamp() { try { return new Date().toLocaleString(); } catch (e) { return String(Date.now()); } }
+      function add(title, detail) {
+        lines.push('[' + stamp() + '] ' + title + '\n' + (detail || ''));
+        paint();
+      }
+      function paint() {
+        var host = document.body || document.documentElement;
+        if (!host) return;
+        if (!box) {
+          box = document.createElement('div');
+          box.setAttribute('style', 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;' +
+            'background:#141414;color:#f2f2f2;font:12px/1.55 monospace;padding:12px 12px 68px;' +
+            'overflow:auto;-webkit-overflow-scrolling:touch;white-space:pre-wrap;word-break:break-all;' +
+            '-webkit-user-select:text;user-select:text');
+          host.appendChild(box);
+        }
+        box.style.display = 'block'; // 玩家点过"关闭"后再出错要能重新露出
+        box.innerHTML = '';
+        var title = document.createElement('div');
+        title.setAttribute('style', 'color:#ff6b6b;font-weight:bold;font-size:14px;margin-bottom:10px');
+        title.textContent = '口袋挂机 · 启动出错（请截图或点下面按钮复制，发给作者）';
+        box.appendChild(title);
+        var body = document.createElement('div');
+        body.textContent = lines.join('\n\n');
+        box.appendChild(body);
+
+        var bar = document.createElement('div');
+        bar.setAttribute('style', 'position:fixed;left:0;right:0;bottom:0;padding:10px;background:#1e1e1e;display:flex;gap:10px');
+        var copy = document.createElement('button');
+        copy.textContent = '复制全部';
+        copy.setAttribute('style', 'flex:1;padding:10px;font-size:14px;color:#fff;background:#2f6df6;border:0;border-radius:6px');
+        copy.onclick = function () {
+          var ta = document.createElement('textarea');
+          ta.value = lines.join('\n\n');
+          ta.setAttribute('style', 'position:fixed;left:-9999px;top:0');
+          host.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); copy.textContent = '已复制'; }
+          catch (e) { copy.textContent = '复制失败，请长按选中'; }
+          host.removeChild(ta);
+        };
+        var close = document.createElement('button');
+        close.textContent = '关闭';
+        close.setAttribute('style', 'padding:10px 20px;font-size:14px;color:#f2f2f2;background:#3a3a3a;border:0;border-radius:6px');
+        close.onclick = function () { box.style.display = 'none'; };
+        bar.appendChild(copy);
+        bar.appendChild(close);
+        box.appendChild(bar);
+      }
+
+      window.onerror = function (msg, url, line, col, err) {
+        add('脚本错误', msg + '\n' + (url || '') + (line ? ':' + line + ':' + col : '') +
+          (err && err.stack ? '\n' + err.stack : ''));
+        return false;
+      };
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e && e.reason;
+        add('未处理的 Promise 异常', (r && (r.stack || r.message)) || String(r));
+      });
+      window.addEventListener('error', function (e) {
+        var t = e && e.target;
+        if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+          add('资源加载失败', (t.tagName === 'SCRIPT' ? '脚本 ' : '样式 ') + (t.src || t.href || ''));
+        }
+      }, true);
+      // 主脚本正常会尽快摘掉 body.booting 放行整页；8 秒还在藏着，就是没启动起来（白屏/黑屏）
+      setTimeout(function () {
+        var b = document.body;
+        if (b && (' ' + b.className + ' ').indexOf(' booting ') >= 0) {
+          add('启动卡死', '主脚本 8 秒内没有完成启动，页面一直处于隐藏状态。\n地址：' + location.href +
+            '\nUA：' + navigator.userAgent);
+        }
+      }, 8000);
+    })();
+  </script>
   <link rel="icon" type="image/png" href="favicon.png" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="battle-fx.css" />
