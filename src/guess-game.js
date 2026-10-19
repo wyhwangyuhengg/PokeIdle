@@ -37,6 +37,18 @@ function guessPool() {
 }
 export function guessReady() { return guessPool().length > 0; }
 
+let _byName = null;
+function guessByName() {
+  if (!_byName || !_byName.size) {
+    _byName = new Map();
+    allPokemon.forEach((p) => {
+      const n = p.name || '';
+      if (!p.form && /^[\u4e00-\u9fa5]{2,5}$/.test(n) && !_byName.has(n)) _byName.set(n, p);
+    });
+  }
+  return _byName;
+}
+
 // 干扰字池：全题库出现过的字去重（答案自身的字另外保留，重复字照留）
 let _chars = null;
 function guessChars() {
@@ -184,6 +196,8 @@ function restoreRound(r) {
   _g.used = r.used.slice();
   _g.hinted = !!r.hinted;
   _g.banned = Array.isArray(r.banned) ? r.banned.filter((i) => Number.isInteger(i) && i >= 0 && i < GUESS_CANDS) : [];
+  // 划掉的字按"整字"对齐：老存档可能只划了同字的一部分，框里被划掉的同字也一并收回
+  banChars(new Set(_g.banned.map((i) => _g.cands[i])));
   const first = _g.slots.indexOf('');   // 光标落在最左边的空格上
   _g.cursor = first >= 0 ? first : _g.slots.length - 1;
   _g.gaveUp = false;
@@ -323,22 +337,33 @@ function clickSlot(i) {
   renderRound();
 }
 
+// 拼出的名字和答案是不是同一只：字全对，或者只是同字重排（奇麒麟 / 麒麟奇）
+function sameName(got, answer) {
+  const p = guessByName().get(got);
+  return p && [...p.name].sort().join('') === [...answer.name].sort().join('') ? p : null;
+}
+
 // 点「确定」时判定：答对当场记气球、换下一题；答错整排框变红抖一下，填进去的字留着接着改
 function check() {
   if (!_g) return;
   const hard = _g.lv?.id === 'hard';
   let hit;   // 简单/普通档 = 拼出的那只宝可梦；困难档 = 两行是否都对上
   if (hard) {
-    // 困难档按行比对：第一行必须是第一只、第二行必须是第二只，填反或填错都算错
+    // 困难档按行比对：第一行必须是第一只、第二行必须是第二只，填反或填错都算错；
+    // 同字重排的两只认作同一只
     let base = 0;
+    const got = [];
     hit = _g.answers.every((p) => {
       const n = [...p.name].length;
-      const ok = _g.slots.slice(base, base + n).join('') === p.name;
+      const m = sameName(_g.slots.slice(base, base + n).join(''), p);
       base += n;
-      return ok;
+      if (!m) return false;
+      got.push(m);
+      return true;
     });
+    if (hit) _g.answers = got;   // 揭晓显示玩家实际拼出的那只，免得字和头像对不上
   } else {
-    hit = guessPool().find(p => p.name === _g.slots.join('')) || null;   // 拼出的是不是一只宝可梦
+    hit = guessByName().get(_g.slots.join('')) || null;   // 拼出的是不是一只宝可梦
   }
   if (hit) {
     const gain = guessReward(_g.lv || guessLevelOf(), _g.hinted);   // 用过提示奖励减半
@@ -363,13 +388,29 @@ function check() {
   }, 900);
 }
 
+// 提示划掉的字：整字划掉 —— 候选区里同一个字的所有格子一起划，框里已经放着的同字也一并收回。
+// 只划其中一格会出现"同一个字一半划掉一半还能点"，手动退字时划掉的那格还会复活成可用
+function banChars(kill) {
+  if (!_g || !kill.size) return;
+  _g.banned = _g.cands.map((c, i) => i).filter(i => kill.has(_g.cands[i]));
+  _g.slots.forEach((c, i) => {
+    if (!c || !kill.has(c)) return;
+    if (_g.src[i] >= 0) _g.used[_g.src[i]] = false;
+    _g.src[i] = -1;
+    _g.slots[i] = '';
+  });
+}
+
 // 提示：从候选区划掉几个用不到的字（每题一次，用过奖励减半）
 function hint() {
   if (!_g || _g.state !== 'play' || _g.hinted) return;
   const need = new Set(_g.answers.flatMap(p => [...p.name]));   // 答案要用到的字一个都不能划
-  const spare = _g.cands.map((c, i) => i).filter(i => !need.has(_g.cands[i]) && !_g.used[i]);
+  // 按字去重后再挑：同一个字在候选区可能有多个，划掉的是字不是格子
+  const spare = [...new Set(_g.cands.filter(c => !need.has(c)))];
   if (!spare.length) return;
-  _g.banned = shuffled(spare).slice(0, GUESS_HINT_BAN);
+  banChars(new Set(shuffled(spare).slice(0, GUESS_HINT_BAN)));
+  // 光标别停在已填的格子上：提示刚清出来的空格才是接下来要填的
+  if (_g.slots[cursorAt()]) { const e = _g.slots.indexOf(''); if (e >= 0) _g.cursor = e; }
   _g.hinted = true;
   renderRound();
   saveRound();   // 划掉的字当场落盘，退出重进还在
