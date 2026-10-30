@@ -125,9 +125,59 @@ function migrateCrownKeys(g) {
   }
 }
 
+// 存档结构版本：每加一条读档迁移就 +1，跑过的版本记在 saveRev 上
+const SAVE_REV = 2;
+
+// rev 1：花叶蒂一族的形态编号重排过（白/蓝/黄各前移一位、永恒之花 → -5、超级 → -6）。
+// 存档里到处都是物种编号（图鉴计数、相遇日志、队伍与盒子、蛋、派遣/悬赏/交换…），整棵换一遍
+const SPECIES_REINDEX = { '0670-2': '0670-5', '0670-3': '0670-2', '0670-4': '0670-3', '0670-5': '0670-4', '0670-7': '0670-6' };
+function migrateSpeciesReindex(g) {
+  const walk = (node) => {
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) node[i] = walk(node[i]);
+      return node;
+    }
+    if (node && typeof node === 'object') {
+      const entries = Object.entries(node);
+      const out = entries.some(([k]) => SPECIES_REINDEX[k]) ? {} : node;
+      for (const [k, v] of entries) out[SPECIES_REINDEX[k] || k] = walk(v);
+      return out;
+    }
+    return typeof node === 'string' ? (SPECIES_REINDEX[node] || node) : node;
+  };
+  return walk(g);
+}
+
+// rev 2：无性别物种（genderRate -1）在早期版本的数据里没有这个字段，rollGender 兜底按 50/50 掷成了 ♂/♀
+// （斯魔茶、来悲粗茶这类），盒子里就混出了公母。只把物种本身不允许的性别归位，其余比例不动
+function migrateGenders(g) {
+  const want = (species) => {
+    const rate = getPokemonByIndex(String(species))?.genderRate;
+    if (rate === -1) return 'genderless';
+    if (rate === 0) return 'male';     // 仅雄性
+    if (rate === 8) return 'female';   // 仅雌性
+    return null;                        // 其余比例两性都可能，保持原样
+  };
+  for (const e of g.roster || []) {
+    if (!e || typeof e !== 'object') continue;
+    const w = want(e.species);
+    if (w && e.gender !== w) e.gender = w;
+  }
+}
+
+function migrateSave(g) {
+  if (!g || typeof g !== 'object') return g;
+  const rev = g.saveRev || 0;
+  if (rev >= SAVE_REV) return g;
+  const out = rev < 1 ? migrateSpeciesReindex(g) : g;
+  if (rev < 2) migrateGenders(out);
+  out.saveRev = SAVE_REV;
+  return out;
+}
+
 export function setGameData(d) {
-  gameData = d;
-  if (d && typeof d === 'object') migrateCrownKeys(d);
+  gameData = migrateSave(d);
+  if (gameData && typeof gameData === 'object') migrateCrownKeys(gameData);
 }
 export function setPhase(p) { phase = p; }
 // 野池等级上限表（编号 → 最高等级）：evolution.js 读表后灌进来
@@ -713,6 +763,7 @@ export function saveSessionState(extra) {
   try {
     const state = {
       _savedAt: Date.now(),
+      saveRev: SAVE_REV,
       phase,
       honeyBuffActive,
       honeyPausedRemaining,
@@ -758,6 +809,10 @@ export function restoreSessionState() {
   let state;
   try { state = JSON.parse(raw); } catch (_) { return; }
   if (!state) return;
+  // 老会话没记存档版本：压屏遭遇的编号按旧编号表换掉（会话很短，只会撞上跨版本更新的那一瞬间）
+  if (!state.saveRev && state.encounter && SPECIES_REINDEX[state.encounter.index]) {
+    state.encounter.index = SPECIES_REINDEX[state.encounter.index];
+  }
 
   // 返回恢复所需的 state 快照，由调用方处理
   return state;
