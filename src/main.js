@@ -10,7 +10,7 @@ import { massTick, ensureMassInit as ensureMassInitEvents, twistTick, ensureTwis
 import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, isEvolutionShowActive, isEggShowActive, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView, relayoutStage } from './ui.js';
 import { spawnItemDrop, hasActiveDrop, activateHoney, activateShinyCharm, restoreHoneyRecord, restoreCharmRecord, grantItem, cancelItemDrop, rollCandyMult, ensureEvoMeta, renewBuffLater } from './items.js';
 import { syncBlockVisual, startBlockCountdown, clearBlockCountdown, showMixerView } from './mixer.js';
-import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, settleStaleEncounter, ensureEncounterTextBox, setEncounterAt, syncBattleMusic, encState, setEncPhase, autoCatch } from './battle.js';
+import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, settleStaleEncounter, ensureEncounterTextBox, setEncounterAt, syncBattleMusic, encState, setEncPhase, autoCatch, healStuckBuffPause } from './battle.js';
 import { startIdleRotation } from './messages.js';
 import { tryStartFishing, onRoadChanged, getFishingGuarantee, isFishingPending } from './fishing.js';
 import { helperTick, showBerryView, catchUpHelper } from './berry.js';
@@ -34,7 +34,7 @@ import { retreatBattle, isBattleActive, isBattleSettled, restoreBattleTier, clea
 import { backFromBattlePick, isBattlePicking, migrateTeams, isTeamEditing, closeTeamEdit, isTeamPicking, leaveTeamPick, showTeamView } from './team.js';
 import { showCasinoView } from './casino.js';
 import * as road from './road.js';
-import { startSkyBg, skyBootGuard } from './sky-bg.js';
+import { startSkyBg } from './sky-bg.js';
 import { initBackgroundCatchup, startBackgroundCatchup, notifyAppState, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds, bgPeekAccum, bgTakeStatSeconds } from './background-catchup.js';
 import { startEventRefresh } from './server-events.js';
 import { startActivityRefresh } from './activity.js';
@@ -398,7 +398,7 @@ function onBagClick(itemKey) {
   if ((itemKey === 'bike' || itemKey === 'exp-candy' || isCrown) && isFishingPending()) return;
   if (itemKey === 'sweet-honey') { activateHoney(); }
   else if (itemKey === 'shiny-charm') {
-    if (honeyBuffActive) return;
+    if (charmBuffActive || honeyBuffActive) return;   // 生效中（槽位置灰）：不弹确认框
     // 保底只在普通野生遭遇生效，事件区/树果方块按当前场景换文案，避免误导
     let charmText = '使用闪耀护符？60秒内大幅提升闪光率，并保底遇到一只闪光宝可梦。';
     if (inMassZone() || inTwistZone()) {
@@ -586,6 +586,9 @@ async function onGameTick() {
   if (!nextEncounterTimer && !gameData.wildEncounter && !isFishingPending() && !inMassZone() && !inTwistZone() && !road.isBike()) {
     scheduleNextEncounter();
   }
+
+  // buff 暂停态兜底自愈：没有该暂停的场景却还挂着暂停余量 → 恢复（防止某条收尾路径漏了 resume）
+  healStuckBuffPause();
 
   // 骑行 / 蹲扭曲点期间到期的自动续杯：等离开那儿回到挂机再续上
   renewBuffLater();
@@ -1178,8 +1181,7 @@ async function init() {
     startIdleRotation();
     showView('idleView');
     road.start();
-    skyBootGuard();   // 上次开背景没跑稳就自动关掉，防止反复卡在启动
-    if (gameData?.settings?.idleBackground === true) startSkyBg(true);   // 视差背景默认关，开了才初始化
+    if (gameData?.settings?.idleBackground === true) startSkyBg();   // 视差背景默认关，开了才初始化
 
     // 随从跟随状态在重启后重建：road.start() 清空了 road-layer，需重挂随从 DOM；
     // 同时恢复上次未处理的抽卡结果（未选跟随/放走就退出），重进随从页可继续处理
