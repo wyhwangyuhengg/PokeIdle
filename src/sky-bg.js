@@ -1,7 +1,8 @@
 // ===== 挂机页视差背景（pokeemerald 开场 scene_2）=====
 // 六层：天空 / 远山 / 远景林线 / 云 / 近景林线 / 前景草叶带，横向按路面推进距离做视差。
 // 素材是 8bpp 索引图，昼夜只换调色板不换图；色板按系统时间在 白天 / 黄昏 / 夜晚 之间插值，
-// 日出和日落都走黄昏档。路面那一条（含主角、路上道具）用同色系半透明遮罩一起染色，
+// 日出和日落都走黄昏档；时空扭曲时换成紫色天空色板（植被仍绿）。
+// 路面那一条（含主角、路上道具）用同色系半透明遮罩一起染色，
 // 不然只有天空变暗、路面还是白天会割裂。
 // 只在挂机页画：省电模式、设置里关掉、挂机页不在前台时一律不画。
 import { $ } from './ui.js';
@@ -25,15 +26,17 @@ const ROAD_H = 72;         // 路面条高度（.road-layer 的 height）
 // 每层相对路面推进距离的倍率：路面算 1.0，草叶带最快，林线慢一个数量级，山几乎不动
 const SPEED = { ridge: [0.014, 0.008], far: 0.022, near: 0.12, grass: 0.55, cloud: [0.050, 0.036, 0.024, 0.012] };
 
-// 一天里的相位：日出、日落都走黄昏档
+// 一天里的相位：日出、日落都走黄昏档；薄暮是日落前约一小时的粉色短窗口
 const TIME_KEYS = [
   { h: 0, phase: 'night' }, { h: 5, phase: 'night' },
   { h: 6.5, phase: 'dusk' }, { h: 9, phase: 'day' },
-  { h: 16, phase: 'day' }, { h: 18, phase: 'dusk' },
+  { h: 16, phase: 'day' }, { h: 17.17, phase: 'day' },
+  { h: 17.33, phase: 'twilight' }, { h: 18, phase: 'twilight' },
+  { h: 18.17, phase: 'dusk' },
   { h: 20, phase: 'night' }, { h: 24, phase: 'night' },
 ];
 // 路面遮罩：[r, g, b, alpha]，白天不盖
-const TINT = { day: [0, 0, 0, 0], dusk: [255, 178, 126, 0.14], night: [20, 32, 72, 0.55] };
+const TINT = { day: [0, 0, 0, 0], dusk: [255, 178, 126, 0.14], night: [20, 32, 72, 0.55], twist: [132, 62, 196, 0.12], twilight: [255, 158, 178, 0.12] };
 
 const CLOUD_FRAMES = [
   { x: 0, y: 0, w: 32, h: 32 },
@@ -42,7 +45,7 @@ const CLOUD_FRAMES = [
   { x: 16, y: 40, w: 16, h: 8 },
 ];
 
-let _canvas = null, _ctx = null, _tint = null, _idle = null, _stage = null;
+let _canvas = null, _ctx = null, _tint = null, _idle = null, _stage = null, _screen = null;
 let _w = 0, _h = 0, _dpr = 0, _artTop = 0;
 let _dist = 0;             // 与路面同一套世界距离（px）
 let _bands = null;         // 裁剪好的索引带（只保留可见部分）
@@ -51,7 +54,7 @@ let _clouds = null;        // 云的初始位置/层速（只算一次）
 let _art = null;           // 当前色板渲染出的图层
 let _artKey = '';
 let _off = null;           // 上次的开关状态（只在变化时改 display）
-let _initTimer = null;     // 延后初始化（别卡在 splash 上）
+let _stageW = 0, _stageH = 0, _stageRO = null; // 舞台尺寸缓存：每帧读 clientWidth 会强制同步布局
 
 // ---------- 解码 ----------
 const b64bytes = (b64) => {
@@ -240,8 +243,8 @@ const buildArt = (pal) => {
     _tint.style.backgroundColor = `rgb(${Math.round(t[0])},${Math.round(t[1])},${Math.round(t[2])})`;
     _tint.style.opacity = String(Math.max(0, Math.min(1, t[3])));
   }
-  // 深色天空下文案改用亮色，否则深绿字压在夜色里看不清
-  if (_idle) _idle.classList.toggle('sky-dark-text', pal.name !== 'day');
+  // 只有夜晚/扭曲才把文案换成亮色；黄昏沿用白天的配色
+  if (_idle) _idle.classList.toggle('sky-dark-text', pal.name === 'night' || pal.name === 'twist');
 };
 
 const tile = (img, srcY, srcH, destY, offCss) => {
@@ -282,16 +285,16 @@ const paint = () => {
   }
   if (off) return;
   // 不在挂机页就不画：切到图鉴/商店时别白烧一帧
-  if (!_idle || _idle.style.display === 'none' || !_idle.clientWidth) return;
+  if (!_idle || _idle.style.display === 'none') return;
 
-  // 尺寸只从舞台量（#screenInner），绝不读 canvas 自己：
-  // canvas 是替换元素，只写 top/bottom 时浏览器可能按 height 属性取高，
-  // 再拿 clientHeight 回写 height 就会每帧翻倍，直到把主线程拖死。
-  const stage = _stage || (_stage = $('screenInner') || $('screen'));
-  const stageW = stage ? stage.clientWidth : 0;
-  const stageH = stage ? stage.clientHeight : 0;
-  const cssW = Math.max(0, stageW | 0);
-  const cssH = Math.max(0, (stageH | 0) - ROAD_H);
+  // 尺寸走 ResizeObserver 缓存，别每帧读 clientWidth（强制同步布局）；
+  // 也别读 canvas 自己：只写 top/bottom 时高度会跟着 height 属性走，回写会每帧翻倍
+  if (!_stageW || !_stageH) {
+    if (!_stage) _stage = $('screenInner') || $('screen');
+    if (_stage) { _stageW = _stage.clientWidth; _stageH = _stage.clientHeight; }
+  }
+  const cssW = Math.max(0, _stageW | 0);
+  const cssH = Math.max(0, (_stageH | 0) - ROAD_H);
   if (cssW <= 0 || cssH <= 0) return;
   const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
   if (cssW !== _w || cssH !== _h || dpr !== _dpr) {
@@ -313,9 +316,13 @@ const paint = () => {
   const bucket = Math.floor((now.getHours() * 60 + now.getMinutes()) / 5);
   // 设置里指定了时段就锁死那一档，只有「默认」才跟随系统时间
   const forced = gameData?.settings?.idleBackgroundTime;
-  const pal = (forced === 'day' || forced === 'dusk' || forced === 'night')
-    ? { ...phasePalette(forced), id: `fix-${forced}`, fading: false }
-    : paletteAt(bucket * 5 / 60, document.documentElement.dataset.theme === 'dark');
+  // 时空扭曲：天空换紫，植被保留绿色
+  const twist = !!(_screen || (_screen = $('screen')))?.classList.contains('twist-active');
+  const pal = twist
+    ? { ...phasePalette('twist'), id: 'twist', fading: false }
+    : (forced === 'day' || forced === 'twilight' || forced === 'dusk' || forced === 'night')
+      ? { ...phasePalette(forced), id: `fix-${forced}`, fading: false }
+      : paletteAt(bucket * 5 / 60, document.documentElement.dataset.theme === 'dark');
   // 相位恒定（纯白天/纯夜晚）时不用每档重算，只有渐变段才跟着档位走
   const key = pal.fading ? `${bucket}|${pal.id}` : pal.id;
   if (key !== _artKey) {
@@ -357,8 +364,6 @@ const die = (e) => {
   _dead = true;
   if (_canvas) _canvas.style.display = 'none';
   if (_tint) _tint.style.display = 'none';
-  // 桌面端开不了控制台：把原因写进存档侧，设置页能看见
-  try { localStorage.setItem('skybg_last_error', String(e).slice(0, 120)); } catch (_) {}
   console.warn('[sky-bg] 挂机背景已停用：', e);
 };
 const draw = () => {
@@ -370,12 +375,9 @@ const draw = () => {
 const stepWorld = (speed) => { _dist += speed; };
 
 export function startSkyBg() {
-  if (_dead || _initTimer) return;
-  // 延后一拍再初始化：splash 落位动画期间别插进来做解码/建画布
-  _initTimer = setTimeout(() => {
-    _initTimer = null;
-    initSkyBg();
-  }, 1500);
+  if (_dead) return;
+  // 立即初始化（解码 + 拼图约十几毫秒）：splash 播放时背景就该在，别再延后
+  initSkyBg();
 }
 
 function initSkyBg() {
@@ -384,6 +386,16 @@ function initSkyBg() {
     _idle = $('idleView');
     _tint = $('skyTint');
     _stage = $('screenInner') || $('screen');
+    // 舞台尺寸只在布局变化时量：旋转、切经典/双屏布局都会触发
+    if ('ResizeObserver' in window && _stage) {
+      _stageRO?.disconnect();
+      _stageRO = new ResizeObserver(() => {
+        if (!_stage) return;
+        _stageW = _stage.clientWidth;
+        _stageH = _stage.clientHeight;
+      });
+      _stageRO.observe(_stage);
+    }
     if (!_canvas) {
       _canvas = $('skyCanvas');
       if (!_canvas) return;

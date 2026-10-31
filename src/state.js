@@ -699,7 +699,14 @@ export function setSaveSuspended(v) { _saveSuspended = !!v; }
 
 // 生效中的增益随主存档存一份：会话存档只在 beforeunload 写，安卓强杀不落盘，光靠它会白丢一瓶甜甜蜜。
 // left = 生效中剩余毫秒，paused = 遭遇中挂起的余量
+// buff 状态还没从存档恢复之前，任何 saveGame 都不许重写 gameData.buffs：
+// 启动早期的离线结算会在恢复之前存一次盘，那时内存里 buff 还是 false，
+// 一写就把存档里的记录抹掉——表现就是"刷新能恢复、大退出重进变走路"
+let _buffStateReady = false;
+export function markBuffStateRestored() { _buffStateReady = true; }
+
 function syncBuffRecord() {
+  if (!_buffStateReady) return;
   const rec = {};
   if (honeyBuffActive) {
     if (honeyCountdownEnd > 0) rec.honey = { left: Math.max(0, honeyCountdownEnd - Date.now()) };
@@ -714,6 +721,12 @@ function syncBuffRecord() {
     rec.charm = { guaranteed: true, count: _charmEncounterCount || 0 };
   }
   gameData.buffs = (rec.honey || rec.charm) ? rec : null;
+}
+
+// 退出/被杀的"最后一道防线"直接序列化 gameData，必须先同步 buff 记录，
+// 否则刚续上的杯只在内存里：道具数被扣了，存档里的 buffs 还是上一次的旧值
+export function flushBuffRecord() {
+  if (gameData) syncBuffRecord();
 }
 
 // 写盘健康度：主通道（手机文件 / 桌面数据目录 / 网页 localStorage）写失败时说明这次存档没落盘，
@@ -732,15 +745,25 @@ function reportSaveResult(ok) {
   )).catch(() => {});
 }
 
-export async function saveGame() {
-  if (!gameData) return;
-  if (_saveSuspended) return;
+// 一场遭遇会连着存好几次：合并成"标脏 + 单飞 + 最小间隔"，同一批只写一次。
+// await saveGame() 仍会等到落盘；退出/切后台用 flushSave 跳过间隔。
+const SAVE_MIN_GAP = 500;
+let _saving = null;        // 正在跑的批次：dirty 清空前一直复用
+let _saveDirty = false;
+let _saveLastAt = 0;       // 上次写盘完成时刻
+let _saveNoDelay = false;  // flushSave：跳过最小间隔
+let _saveWake = null;      // 正在等间隔时 flushSave 提前唤醒
+let _saveLastOk = true;
+
+function snapshotSave() {
   gameData.stats.lastSaveTime = Date.now();
   syncBuffRecord();
   syncGpsPosition();
-  const s = JSON.stringify(gameData);
-  // 按平台定主通道：手机端写应用文件、桌面端写应用数据目录、网页端只有 localStorage。
-  // 另外两条通道照写当兜底（启动时按 lastSaveTime 取最新），主通道失败才提醒
+  return JSON.stringify(gameData);
+}
+
+async function writeSnapshot(s) {
+  // 按平台定主通道：手机端写应用文件、桌面端写应用数据目录、网页端只有 localStorage
   const mobile = window.__POKEIDLE_MOBILE__;
   let primaryOk = null;
   if (mobile?.writeSave) {
@@ -749,10 +772,50 @@ export async function saveGame() {
     try { await window.__TAURI__.core.invoke('save_game_data', { data: s }); primaryOk = true; } catch (_) { primaryOk = false; }
   }
   let lsOk = false;
-  try { localStorage.setItem('pokemon_idle_save', s); lsOk = true; } catch (_) {}
+  // 主通道已落盘就不再同步写 localStorage（WebView 里是阻塞写）；主通道失败时才用它兜底
+  if (primaryOk !== true) {
+    try { localStorage.setItem('pokemon_idle_save', s); lsOk = true; } catch (_) {}
+  }
   const ok = primaryOk === null ? lsOk : primaryOk;
   reportSaveResult(ok);
   return ok;
+}
+
+async function drainSaves() {
+  try {
+    while (_saveDirty) {
+      const wait = _saveLastAt + SAVE_MIN_GAP - Date.now();
+      if (!_saveNoDelay && wait > 0) {
+        await new Promise((r) => {
+          const t = setTimeout(done, wait);
+          function done() { clearTimeout(t); _saveWake = null; r(); }
+          _saveWake = done;
+        });
+      }
+      _saveDirty = false;
+      _saveNoDelay = false;
+      _saveLastOk = await writeSnapshot(snapshotSave());
+      _saveLastAt = Date.now();
+    }
+  } finally {
+    _saving = null;
+  }
+  return _saveLastOk;
+}
+
+export function saveGame() {
+  if (!gameData) return Promise.resolve(false);
+  if (_saveSuspended) return Promise.resolve(false);
+  _saveDirty = true;
+  if (!_saving) _saving = drainSaves();
+  return _saving;
+}
+
+// 退出 / 切后台：不等最小间隔，立刻把当前状态写掉
+export function flushSave() {
+  _saveNoDelay = true;
+  _saveWake?.();
+  return saveGame();
 }
 
 // 相遇日志：单物种只留最近 40 条、全档最多 1500 条。每只的「首次捕获」（普通/闪光各一条）
@@ -1032,6 +1095,20 @@ export function normalizeMassRemainToEnd(g) {
   const fromStart = (g.path[g.seg] === ea) ? fromA : g.totalPx - fromA;
   const walked = Math.max(0, Math.min(fromStart, fromStart - (g.remainPx || 0)));
   g.remainPx = g.totalPx - walked;
+}
+
+// 前往事件点（gps.massTarget）还剩多少像素：末段就是事件边，remainPx 的语义是"到事件点的剩余"；
+// 之前的整段按节点距离矩阵换算（pxPerUnit = 1 单位对应的走路像素）。不在去事件点的路上返回 null
+export function pxLeftToEventTarget(g, pxPerUnit) {
+  if (!g || !g.massTarget || !g.path || g.path.length < 2 || !_distMatrix) return null;
+  const last = g.path.length - 2;
+  if (g.seg >= last) return Math.max(0, g.remainPx || 0);
+  let px = Math.max(0, g.remainPx || 0);
+  for (let i = g.seg + 1; i < last; i++) px += (_distMatrix[g.path[i]]?.[g.path[i + 1]] || 0) * pxPerUnit;
+  const [ea, eb] = g.massTarget.edge;
+  const edgePx = (_distMatrix[ea]?.[eb] || 0) * pxPerUnit;
+  const forward = g.path[last] === ea && g.path[last + 1] === eb;
+  return px + edgePx * (forward ? g.massTarget.t : 1 - g.massTarget.t);
 }
 
 // ---------- 当前地区 ----------

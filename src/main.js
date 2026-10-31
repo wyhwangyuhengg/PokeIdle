@@ -4,10 +4,10 @@ window.__POKEIDLE_BOOTED__ = true;
 // 禁用全局右键菜单（桌面端 webview 的原生右键菜单）
 document.addEventListener('contextmenu', e => e.preventDefault());
 import { CATCH_RATES, SAVE_INTERVAL, ITEM_RATES, ITEM_NAMES, ROAD_SPECIAL_CHANCE, ROAD_WIDTH_MIN, ROAD_WIDTH_MAX, ROAD_SWITCH_CYCLES, BIKE_RESTORE_MAX_GAP_MS, PX_PER_METER, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
-import { allPokemon, gameData, phase, currentEncounter, honeyBuffActive, charmBuffActive, blockBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, getPokemonByIndex, trimEncounterLogs, ensureGpsState, restoreSessionState, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, addAwaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer , setSimClock, _eggHatching  } from './state.js';
+import { allPokemon, gameData, phase, currentEncounter, honeyBuffActive, charmBuffActive, blockBuffActive, honeyCountdownEnd, charmCountdownEnd, _autoCatching, _pokedexInLogView, _lastRegionId, gameTick, _fishing, setAllPokemon, setGameData, setPhase, setCurrentEncounter, setCurrentIsShiny, setEncounterBallsUsed, setCurrentEncounterBalls, setGameTick, pushNav, popNav, resetNav, setLastRegionId, setIdleMsgIdx, setCatchConfirmStep, setBlockBuffActive, setBlockRecipe, setBlockStartWalk, setBlockQuality, setQteState, getDefaultSave, saveGame, flushSave, getPokemonByIndex, trimEncounterLogs, ensureGpsState, restoreSessionState, flushBuffRecord, markBuffStateRestored, calcOffline, addSystemLog, getCurrentRegion, getLastObtainedEntryId, saveSessionState, setEncounterMsg, addPlaySeconds, addAwaySeconds, inMassZone, inTwistZone, setEncounterSource, setEncounterVariant, nextEncounterTimer , setSimClock, _eggHatching  } from './state.js';
 import { migrateEncounterScores } from './scoring.js';
 import { massTick, ensureMassInit as ensureMassInitEvents, twistTick, ensureTwistInit } from './events.js';
-import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, isEvolutionShowActive, isEggShowActive, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView, relayoutStage } from './ui.js';
+import { $, showView, updateTextBox, showConfirmBar, isIdleStageVisible, isPageHidden, applyUiMode, getUiMode, isUiMobile, isDualLayout, isStageView, getAppChannelView, closeAppArea, applyWindowBg, isEvolutionShowActive, isEggShowActive, applyCharSprites, updateBackpack, updateStats, setIdleCharacter, renderIncubatorView, updateIncubatorTimers, updateIncubatorBadge, setupFoodTooltip, setupOwnedTooltip, isIncubatorLogOpen, closeIncubatorLog, closeIncubatorEggView, relayoutStage } from './ui.js';
 import { spawnItemDrop, hasActiveDrop, activateHoney, activateShinyCharm, restoreHoneyRecord, restoreCharmRecord, grantItem, cancelItemDrop, rollCandyMult, ensureEvoMeta, renewBuffLater } from './items.js';
 import { syncBlockVisual, startBlockCountdown, clearBlockCountdown, showMixerView } from './mixer.js';
 import { scheduleNextEncounter, throwBall, fleeEncounter, goIdle, pauseAutoFleeTimer, showEncounter, tryAutoRefill, catchFilterResult, catchUpEncounters, settleEncounterForBackground, settleStaleEncounter, ensureEncounterTextBox, setEncounterAt, syncBattleMusic, encState, setEncPhase, autoCatch, healStuckBuffPause } from './battle.js';
@@ -35,13 +35,13 @@ import { backFromBattlePick, isBattlePicking, migrateTeams, isTeamEditing, close
 import { showCasinoView } from './casino.js';
 import * as road from './road.js';
 import { startSkyBg } from './sky-bg.js';
-import { initBackgroundCatchup, startBackgroundCatchup, notifyAppState, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds, bgPeekAccum, bgTakeStatSeconds } from './background-catchup.js';
+import { initBackgroundCatchup, startBackgroundCatchup, notifyAppState, bgCatchupEnabled, bgTakeAccum, bgTakeBike, bgTakeBuffRemainingMs, seedBgOfflineSeconds, bgPeekAccum, bgTakeStatSeconds, bgTakeOfflineAway } from './background-catchup.js';
 import { startEventRefresh } from './server-events.js';
 import { startActivityRefresh } from './activity.js';
 
 let ROAD_PRESETS = null;
 let ROAD_ALL = []; // 真正能当路段用的下标（road-data.json 里还混着场景地图，见下面筛选）
-const SCENE_MAPS = new Set(['intro', 'train', 'nursery', 'casino']); // 与场景渲染器按名字取用的那几个一致
+const SCENE_MAPS = new Set(['intro', 'train', 'nursery', 'casino', 'casino2']); // 与场景渲染器按名字取用的那几个一致
 let ROAD_LAND = [];   // 普通陆地路段池（无垂钓点、非自行车道）
 let ROAD_WATER = [];  // 水域路段池（有垂钓点，可钓鱼）
 let ROAD_BIKE = [];   // 自行车道路段池（不遇敌、不拾取、快速推进里程）
@@ -536,6 +536,7 @@ async function onGameTick() {
   // 后台补发开关关闭时（如安卓沿用离线暂停哲学）停摆秒数不参与任何补算，主循环保持前台原行为
   const afkRoadSec = bgCatchupEnabled() ? road.takeAfkSeconds() : 0;   // road 帧间隔兜底（Tauri 最小化可能不发 visibilitychange）
   const afkSec = bgCatchupEnabled() ? Math.max(bgTakeAccum(), afkRoadSec) : 0;
+  const offlineAway = bgCatchupEnabled() ? bgTakeOfflineAway() : false; // 离线段：补算按无 buff 估
   // 挂机时长补记：停摆期间没有 tick，逐秒累加走不到；离线那段的秒数由 calcOffline 记过，这里不重复
   if (bgCatchupEnabled()) creditAwaySeconds(Math.max(bgTakeStatSeconds(), afkRoadSec));
   // 骑行停摆期间不产生掉落/遭遇（骑行不遇敌、不拾取），里程仍按骑行速度补算：
@@ -547,7 +548,7 @@ async function onGameTick() {
   let grantSec = afkSec;
   let idleAfkSec = idleAfkSecRaw;
   if (catchUpLog) {
-    const enc = await catchUpEncounters(idleAfkSecRaw, bgTakeBuffRemainingMs());
+    const enc = await catchUpEncounters(idleAfkSecRaw, bgTakeBuffRemainingMs(), offlineAway);
     if (enc) {
       catchUpLog.enc = enc;
       if (enc.stalledSec != null) {
@@ -944,20 +945,27 @@ async function init() {
   const candidates = [];
   // 每个来源各自解析：某一档损坏（半截 JSON）只丢它自己，不能连累其它好档
   const pushCandidate = (raw) => {
-    if (!raw) return;
+    if (!raw) return false;
     try {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.items) candidates.push(parsed);
+      if (parsed && parsed.items) { candidates.push(parsed); return true; }
     } catch (_) {}
+    return false;
   };
   if (window.__TAURI__?.core?.invoke) {
     try { pushCandidate(await window.__TAURI__.core.invoke('load_game_data')); } catch (_) {}
   }
-  try { pushCandidate(await window.__POKEIDLE_MOBILE__?.readSave()); } catch (_) {}
-  // 移动端备份档：主档缺失/损坏时才可能胜出
-  try { pushCandidate(await window.__POKEIDLE_MOBILE__?.readSaveBackup?.()); } catch (_) {}
-  // 移动端外部目录镜像：内部档丢了（清数据/写坏）时靠它
-  try { pushCandidate(await window.__POKEIDLE_MOBILE__?.readSaveMirror?.()); } catch (_) {}
+  // 主档能解析就不读备份/镜像（只可能更旧），少读少解析两份存档
+  if (window.__POKEIDLE_MOBILE__?.readSave) {
+    let mainOk = false;
+    try { mainOk = pushCandidate(await window.__POKEIDLE_MOBILE__.readSave()); } catch (_) {}
+    if (!mainOk) {
+      // 移动端备份档：主档缺失/损坏时才可能胜出
+      try { pushCandidate(await window.__POKEIDLE_MOBILE__.readSaveBackup?.()); } catch (_) {}
+      // 移动端外部目录镜像：内部档丢了（清数据/写坏）时靠它
+      try { pushCandidate(await window.__POKEIDLE_MOBILE__.readSaveMirror?.()); } catch (_) {}
+    }
+  }
   try { pushCandidate(localStorage.getItem('pokemon_idle_save')); } catch (_) {}
   if (candidates.length > 0) {
     candidates.sort((a, b) => (b.stats?.lastSaveTime || 0) - (a.stats?.lastSaveTime || 0));
@@ -978,7 +986,9 @@ async function init() {
   // 手游双屏：下半屏默认显示手机首页
   if (isDualLayout()) import('./phone.js').then(m => m.showPhoneHome());
   ensureGpsState(); // 初始化 GPS 状态（默认从丰缘出发）
-  if (gameData.gps.roamEnabled && gameData.gps.destIdx == null) setRoamEnabled(true);
+  // 蹲在事件点上时不要恢复漫游：漫游会重划路线、把 massArrived 清掉，人直接从事件点走开；
+  // 离线补发也靠这个站位（见 catchUpEncounters 的事件区补算）
+  if (gameData.gps.roamEnabled && gameData.gps.destIdx == null && !(inMassZone() || inTwistZone())) setRoamEnabled(true);
   if (!gameData.achievements) gameData.achievements = {}; // 旧存档补齐成就进度
   if (!gameData.collectedCards) gameData.collectedCards = {}; // 旧存档补齐卡牌收集
   if (!gameData.gachaLogs) gameData.gachaLogs = {}; // 旧存档补齐抽卡记录
@@ -1009,6 +1019,7 @@ async function init() {
   ensureMassInitEvents(); // 大量出没事件：初始化下次生成时间
   ensureTwistInit();      // 时空扭曲事件：初始化下次生成时间
   setupFoodTooltip(); // 游戏内自制 tooltip 委托：全局激活，配招/战斗等所有页面 hover 可用
+  setupOwnedTooltip(); // 遭遇页「已拥有」图标：手机点一下也能看首次捕获时间
   updateBountyBadge(); // 初始化标题栏悬赏红点
   updatePhoneBadge(); // 初始化标题栏手机聚合红点
 
@@ -1049,9 +1060,14 @@ async function init() {
   ROAD_BIKE = [];
   ROAD_ALL = [];
   ROAD_PRESETS.forEach((p, i) => {
-    // 这份数据里除了路段还放着场景地图（名字固定是这四个），混进池子会被当路段铺出来
-    // （渲染 fixed 时直接展开 tiles，游戏厅的地板就上路面了）
-    if (SCENE_MAPS.has(p.name)) return;
+    // 这份数据里除了路段还放着场景地图，混进池子会被当路段铺出来
+    // （渲染 fixed 时直接展开 tiles，游戏厅的地板就上路面了）。
+    // 除了固定名字，没写「地点」的也按场景图跳过——场景图没有 place 文案，
+    // 这样以后新加一层场景忘了改名单也不会漏到路面上
+    if (SCENE_MAPS.has(p.name) || !(p.game && p.game.place)) {
+      if (!SCENE_MAPS.has(p.name)) console.warn('[道路] 未登记的场景图已被跳过：', p.name);
+      return;
+    }
     ROAD_ALL.push(i);
     if (p.game.bike) ROAD_BIKE.push(i);
     else if (p.game.fishingRow) ROAD_WATER.push(i);
@@ -1160,7 +1176,7 @@ async function init() {
       if (isDualLayout()) closeAppArea();
       // 底部背包/统计栏与顶部按钮的恢复由 startSplashDrop 统一处理（splash 显示后淡入，避免闪现）
       // 首次 splash（开场剧情结束后的首个开机动画）不静音：未白镇开场曲顺势延续
-      saveGame().then(() => { beginGameplay(); startSplashDrop(null, false); });
+      flushSave().then(() => { beginGameplay(); startSplashDrop(null, false); });
     });
   } else {
     // 老玩家启动：splash 动画期间全局禁声。必须在 beginGameplay（恢复会话可能同步触发
@@ -1223,14 +1239,21 @@ async function init() {
     // 恢复树果混合 QTE 进行中状态：重连后直接接着进度玩（不给重置机会）
     if (sessionState.qteState) setQteState(sessionState.qteState);
 
-    // 恢复生效中的增益：会话记录最新，其次主存档的耐久记录
+    // 恢复生效中的增益：会话记录优先，但会话里余量已经归零（过期瞬间/被中断）时不能挡掉主存档的好记录，
+    // 否则"自动续杯后立刻退出"回来就没 buff；会话分支还要带上保底，别把没兑现的必闪刷掉
     const buffKeepPaused = willEncounter || !!gameData.wildEncounter;
-    restoreHoneyRecord(sessionState?.honeyBuffActive
+    const sessHoney = sessionState?.honeyBuffActive
       ? { left: sessionState.honeyRemaining || 0, paused: sessionState.honeyPausedRemaining || 0 }
-      : gameData.buffs?.honey, buffKeepPaused);
-    restoreCharmRecord(sessionState?.charmBuffActive
-      ? { left: sessionState.charmRemaining || 0, paused: sessionState.charmPausedRemaining || 0, count: sessionState._charmEncounterCount || 0 }
-      : gameData.buffs?.charm, buffKeepPaused);
+      : null;
+    const sessCharm = sessionState?.charmBuffActive
+      ? { left: sessionState.charmRemaining || 0, paused: sessionState.charmPausedRemaining || 0,
+          count: sessionState._charmEncounterCount || 0, guaranteed: !!sessionState.charmGuaranteed }
+      : null;
+    const honeyRec = (sessHoney && (sessHoney.left > 0 || sessHoney.paused > 0)) ? sessHoney : gameData.buffs?.honey;
+    const charmRec = (sessCharm && (sessCharm.left > 0 || sessCharm.paused > 0)) ? sessCharm : gameData.buffs?.charm;
+    restoreHoneyRecord(honeyRec, buffKeepPaused);
+    restoreCharmRecord(charmRec, buffKeepPaused);
+    markBuffStateRestored();   // 到此 buff 状态已就绪，之后存档才会重写 buffs 字段
 
     // 恢复战斗状态
     if (sessionState.phase === 'encounter' && sessionState.encounter) {
@@ -1536,7 +1559,7 @@ async function init() {
   document.querySelector('.control-btn.close')?.addEventListener('click', async () => {
     // 触发窗口关闭流程：Rust 拦截 close-requested 后弹出二次确认，存档在确认框出现前统一保存
     if (window.__POKEIDLE_MOBILE__) {
-      try { await saveGame(); } catch (_) {}
+      try { await flushSave(); } catch (_) {}
       openQuitDialog();
       return;
     }
@@ -1553,7 +1576,7 @@ async function init() {
   $('quitExit')?.addEventListener('click', async () => {
     closeQuitDialog();
     if (window.__POKEIDLE_MOBILE__) {
-      try { await saveGame(); } catch (_) {}
+      try { await flushSave(); } catch (_) {}
       window.__POKEIDLE_MOBILE__.exitApp();
       return;
     }
@@ -1566,7 +1589,7 @@ async function init() {
   });
 
   window.__POKEIDLE_MOBILE__?.attach({
-    saveNow: () => saveGame(),
+    saveNow: () => flushSave(),
     // 壳里的原生切后台信号：挂机补发用它记账（document.hidden 在 WebView 里不可靠）
     onAppStateChange: (isActive) => notifyAppState(isActive),
     back: () => {
@@ -1584,7 +1607,7 @@ async function init() {
         await win.show();
         await win.setFocus();
       } catch (_) {}
-      try { await saveGame(); } catch (_) {} // 先落盘；存档失败不阻塞确认框弹出
+      try { await flushSave(); } catch (_) {} // 先落盘；存档失败不阻塞确认框弹出
       openQuitDialog();
     }).catch(() => {});
   }
@@ -1595,6 +1618,7 @@ async function init() {
     if (window.__resettingSave) return;
     saveSessionState({ manualBike: road.isManualBike() }); // 骑行中刷新/关闭：记录骑行状态供恢复
     if (gameData) {
+      flushBuffRecord();   // 先把"生效中的 buff"同步进 gameData，最后一道防线也不能漏
       gameData.stats.lastSaveTime = Date.now();
       try { localStorage.setItem('pokemon_idle_save', JSON.stringify(gameData)); } catch (_) {}
     }
