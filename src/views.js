@@ -1096,6 +1096,8 @@ export function renderSettings(container, s) {
   const powerSave = s.powerSave || false;
   const idleBackground = s.idleBackground === true;
   const bgTime = s.idleBackgroundTime || 'auto';   // 背景时段：auto=跟随系统时间
+  const bgScene = s.idleBackgroundScene || 'random'; // 背景场景：random=进出遭遇时随机
+  const seeThroughEncounter = s.seeThroughEncounter === true; // 遭遇页透出挂机背景
   const uiMobile = getUiMode() !== 'classic'; // 双屏布局（手游模式/桌面双屏），存档未设置时按平台取默认
   // 捕捉条件表格：各遇敌类型行，策略列选中即换底色
   const cfRow = key => (cf.rows && cf.rows[key]) || { action: 'catch', levelMin: 1, levelMax: 20, uncaughtOnly: false };
@@ -1246,14 +1248,29 @@ export function renderSettings(container, s) {
             <div class="toggle-knob"></div>
           </div>
         </div>
+        ${idleBackground ? `
         <div class="auto-catch-row" style="display:block;padding-bottom:2px;">
           <div class="auto-catch-label" style="margin-bottom:4px;">背景时段</div>
           <div class="adv-chips" id="bgTimeChips">
-            ${[["auto", "默认"], ["day", "白天"], ["twilight", "薄暮"], ["dusk", "黄昏"], ["night", "夜晚"]].map(([v, t]) =>
+            ${[["auto", "默认"], ["day", "白天"], ["twilight", "薄暮"], ["dusk", "黄昏"], ["night", "夜晚"], ["deepnight", "深夜"]].map(([v, t]) =>
               `<span class="adv-chip${bgTime === v ? " sel" : ""}" data-bgtime="${v}">${t}</span>`).join("")}
           </div>
         </div>
-        <div class="cf-hint" style="padding:0 4px 4px;">天空随系统时间切换白天/薄暮/黄昏/夜晚；省电模式下自动停用</div>
+        <div class="auto-catch-row" style="display:block;padding-bottom:2px;">
+          <div class="auto-catch-label" style="margin-bottom:4px;">背景场景</div>
+          <div class="adv-chips" id="bgSceneChips">
+            ${[["random", "随机"], ["forest", "森林"], ["town", "城市"], ["beach", "海边"]].map(([v, t]) =>
+              `<span class="adv-chip${bgScene === v ? " sel" : ""}" data-bgscene="${v}">${t}</span>`).join("")}
+          </div>
+        </div>
+        <div class="auto-catch-row">
+          <div class="auto-catch-label">透明遭遇背景</div>
+          <div class="toggle-switch" id="toggleSeeThroughEncounter">
+            <div class="toggle-track ${seeThroughEncounter ? 'on' : ''}"></div>
+            <div class="toggle-knob"></div>
+          </div>
+        </div>` : ''}
+        ${idleBackground ? `<div class="cf-hint" style="padding:0 4px 4px;">默认光影随系统时间切换；省电模式下自动停用</div>` : ''}
         <div class="auto-catch-row">
           <div class="auto-catch-label">${isMobilePlatform() ? '手游模式' : '双屏模式'}</div>
           <div class="toggle-switch" id="toggleUiMode">
@@ -1381,6 +1398,11 @@ export function renderSettings(container, s) {
     const chip = e.target.closest('[data-bgtime]');
     if (chip) setIdleBackgroundTime(chip.dataset.bgtime);
   });
+  container.querySelector('#bgSceneChips')?.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-bgscene]');
+    if (chip) setIdleBackgroundScene(chip.dataset.bgscene);
+  });
+  container.querySelector('#toggleSeeThroughEncounter')?.addEventListener('click', toggleSeeThroughEncounter);
   container.querySelector('#togglePowerSave')?.addEventListener('click', togglePowerSave);
   container.querySelector('#toggleUiMode')?.addEventListener('click', toggleUiMode);
   // 窗口倍率下拉：展开/收起（同一时刻只开一个）
@@ -1813,6 +1835,8 @@ function ensureSettings() {
   if (gameData.settings.powerSave == null) gameData.settings.powerSave = false; // 省电模式（默认关闭）
   if (gameData.settings.idleBackground == null) gameData.settings.idleBackground = false; // 挂机页视差背景（默认关闭）
   if (gameData.settings.idleBackgroundTime == null) gameData.settings.idleBackgroundTime = 'auto'; // 背景时段（默认跟随系统时间）
+  if (gameData.settings.idleBackgroundScene == null) gameData.settings.idleBackgroundScene = 'random'; // 背景场景（默认随机）
+  if (gameData.settings.seeThroughEncounter == null) gameData.settings.seeThroughEncounter = false; // 遭遇页透出挂机背景
 }
 
 // 夜间模式开关：立即应用到根元素 data-theme（样式层已定义深色变量覆盖），并持久化
@@ -1829,7 +1853,23 @@ export function toggleDarkMode() {
 // 背景时段：auto 跟随系统时间，其余强制某一档（日出日落都归黄昏档）
 export function setIdleBackgroundTime(v) {
   ensureSettings();
-  gameData.settings.idleBackgroundTime = ['auto', 'day', 'twilight', 'dusk', 'night'].includes(v) ? v : 'auto';
+  gameData.settings.idleBackgroundTime = ['auto', 'day', 'twilight', 'dusk', 'night', 'deepnight'].includes(v) ? v : 'auto';
+  const container = $('settingsContent');
+  renderSettings(container, gameData.settings);
+  saveGame();
+}
+// 遭遇页透出挂机背景：半透明挡住挂机页，背景继续可见
+export function toggleSeeThroughEncounter() {
+  ensureSettings();
+  gameData.settings.seeThroughEncounter = gameData.settings.seeThroughEncounter !== true;
+  const container = $('settingsContent');
+  renderSettings(container, gameData.settings);
+  saveGame();
+}
+// 背景场景：random 在进出遭遇时随机换；forest/town 固定一套
+export function setIdleBackgroundScene(v) {
+  ensureSettings();
+  gameData.settings.idleBackgroundScene = ['random', 'forest', 'town', 'beach'].includes(v) ? v : 'random';
   const container = $('settingsContent');
   renderSettings(container, gameData.settings);
   saveGame();
@@ -2547,7 +2587,7 @@ const TUTORIAL_SECTIONS = [
     html: `<p>在<b>手机</b>桌面打开<b>随从</b>应用：消耗 <b>${FOLLOWER_DRAW_COST} 颗糖果</b>抽一只宝可梦当随从，跟随期间获得限时增益，<b>同时只能跟随 1 只</b>。</p>`
       + `<p>稀有度概率：N <b>${Math.round(FOLLOWER_TIER_CHANCE.N * 100)}%</b> / R <b>${Math.round(FOLLOWER_TIER_CHANCE.R * 100)}%</b> / SR <b>${Math.round(FOLLOWER_TIER_CHANCE.SR * 100)}%</b> / UR <b>${Math.round(FOLLOWER_TIER_CHANCE.UR * 100)}%</b>。稀有度只决定<b>副增益强度</b>，不影响跟随时长。</p>`
       + `<p>跟随时长只看<b>星级</b>——★1~★5 依次 <b>${FOLLOWER_STAR_MIN.join(' / ')}</b> 分钟。</p>`
-      + `<p>随从按<b>属性</b>归入 <b>9</b> 大类：每类有一条<b>幅度固定</b>的主增益，外加一条按稀有度递增（<b>${FOLLOWER_SUB_RANGE}%</b>）的副增益；双属性跨类时两类<b>同时生效</b>：</p>`
+      + `<p>随从按<b>属性</b>归入 <b>9</b> 大类：每类有一条<b>幅度固定</b>的主增益，外加一条按稀有度递增（档位幅度 <b>${FOLLOWER_SUB_RANGE}</b> 个百分点）的副增益；双属性跨类时两类<b>同时生效</b>：</p>`
       + tutorialTable(FOLLOWER_TUTORIAL_ROWS, ['属性', '增益'], [32, 'auto'])
   },
   {
