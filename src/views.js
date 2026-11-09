@@ -997,7 +997,16 @@ export async function applyWindowScale(scale) {
     await applyOnce();
     // 二次校准：窗口 resize 后若 CSS 视口仍偏离基准（274×baseH），用稳定后的 dpr 重设
     await new Promise(r => setTimeout(r, 250));
-    if (Math.abs(window.innerWidth - 274) > 1 || Math.abs(window.innerHeight - baseH) > 1) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    if (vw > 50 && vh > 50 && (vw < 272 || vh < baseH - 2)) {
+      // dpr 被低估（高 DPI 首次启动偶发）：按实际 CSS 视口反推一个校正后的 dpr，
+      // 否则 Rust 算出的 zoom 会偏大，274 宽的界面只露出左边一部分。
+      const sysDpr = (window.devicePixelRatio || 1) / (currentZoom || 1);
+      const ratio = Math.max(274 / vw, baseH / vh);
+      await invoke('set_device_pixel_ratio', { dpr: sysDpr * ratio });
+      const zoom = await invoke('set_window_scale', { scale: s, mode });
+      if (typeof zoom === 'number' && zoom > 0) currentZoom = zoom;
+    } else if (Math.abs(vw - 274) > 1 || Math.abs(vh - baseH) > 1) {
       await applyOnce();
     }
   } catch (_) {
@@ -2606,6 +2615,7 @@ const TUTORIAL_SECTIONS = [
     title: '进化',
     html: `<p>在<b>宝可梦详情页</b>最底部（从宝可梦仓库点进去）能看到这只的<b>进化链</b>：符合条件的点击按钮即可进化；图鉴里未解锁的形态显示 <b>？？？</b>。</p>`
       + `<p>条件有等级、道具、招式、地区、性别等几种；<b>超级进化 / 超极巨化</b>也在这里，消耗对应的专属道具。</p>`
+      + `<p><b>小仙奶 → 霜奶仙</b>：先选一种<b>糖饰</b>决定外观，再进入<b>搅拌</b>小游戏决定口味。按住碗沿绕圈，<b>净转满 3 圈</b>才能点「完成」；口味按<b>方向 + 净圈数</b>——顺时针少于 5 圈 / 5~7 圈 / 7 圈以上分别为奶香香草 / 奶香抹茶 / 奶香薄荷，逆时针分别为奶香红钻 / 奶香雪盐 / 奶香柠檬；来回搅（两个方向都超过 0.6 圈）则按同样三档为焦糖综合 / 红钻综合 / 三色综合。中途继续转可以改口味。</p>`
       + `<p>进化来的宝可梦计进图鉴（不算捕获数）；</p>`,
   },
   {

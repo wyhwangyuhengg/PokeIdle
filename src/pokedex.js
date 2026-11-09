@@ -231,7 +231,10 @@ export function showEncounterLogs(pokemonIndex, fromLogsBack = false) {
   // 未解锁：组件照常摆出来，数值灰显占位（获得过就解锁，进化得到的算解锁、不算捕获数）
   const locked = !dexUnlocked(idx);
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;gap:1px;padding:6px 5px 2px;">
-    <div style="font-size:14px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${displayName}</div>
+    <div style="font-size:14px;font-weight:700;min-width:0;display:flex;align-items:center;gap:5px;">
+      <span id="pokedexDetailName" class="dex-name-trigger" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="点击查看图鉴编号">${displayName}</span>
+      <span id="pokedexDetailDexNo" class="dex-no-reveal">#${idx}</span>
+    </div>
     <button class="incubator-log-btn" id="pokedexLogsBtn">相遇日志</button>
   </div>`;
   // 没见过也没获得过：不展示素材
@@ -319,6 +322,18 @@ export function showEncounterLogs(pokemonIndex, fromLogsBack = false) {
 
   list.innerHTML = html;
   _curDetailIdx = idx;
+  const detailNameEl = $('pokedexDetailName');
+  const detailDexNoEl = $('pokedexDetailDexNo');
+  detailNameEl?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    detailNameEl.style.display = 'none';
+    detailDexNoEl?.classList.add('show');
+  });
+  detailDexNoEl?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    detailDexNoEl.classList.remove('show');
+    if (detailNameEl) detailNameEl.style.display = '';
+  });
   fillAcqBox(idx, locked);
 
   // 右上角「相遇日志」：收进独立页（返回回到本详情）
