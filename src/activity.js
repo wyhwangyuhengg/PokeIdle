@@ -3,8 +3,10 @@
 // 手机桌面会多出对应活动的图标（每个活动一个），活动窗口内点开进容器；到点自己消失。
 // 拉不到清单（离线 / 服务器挂了）就当没有活动，主游戏完全不受影响。
 import { $, showView, showConfirmBar, getCurrentView, isDualLayout, setViewTitle } from './ui.js';
-import { gameData, saveGame, addSystemLog, pushNav, popNav, rollGender } from './state.js';
+import { gameData, saveGame, addSystemLog, pushNav, popNav } from './state.js';
 import { grantItem } from './items.js';
+import { ensureBerryFarm } from './berry.js';
+import { grantPrize } from './prizes.js';
 import { ITEM_NAMES } from './config.js';
 import { ACTIVITIES } from './activities.js';
 import { DEV } from './build-info.js';
@@ -364,39 +366,28 @@ function ctxFor(a, win) {
       saveGame();
       return true;
     },
+    // 树果在 berryFarm.stock，不在 items 里
+    spendBerries: (demand = []) => {
+      const stock = ensureBerryFarm().stock;
+      if ((demand || []).some(({ type, qty }) => (stock[type] || 0) < qty)) return false;
+      for (const { type, qty } of demand) {
+        stock[type] = (stock[type] || 0) - qty;
+        if (stock[type] <= 0) delete stock[type];
+      }
+      saveGame();
+      return true;
+    },
     confirm: (text, onYes) => showConfirmBar(text, onYes || null, null, {}),   // 留取消键，让玩家能反悔
     picks: _picks,                                    // 槽位里已选的个体 id（下标 = 槽位）
     setPick: (i, rid) => { _picks[i] = rid || null; },
     // 打开仓库选择器挑一只放进第 i 个槽；exclude 由活动给（只列得出可上交的那些）
-    openPicker: (i, exclude) => {
+    openPicker: (i, exclude, opts = {}) => {
       import('./roster.js').then(m => m.showRosterPicker({
-        mode: 'activity', slot: i, from: 'activityView', exclude: exclude || [],
+        mode: 'activity', slot: i, from: 'activityView', exclude: exclude || [], label: opts.label || '',
       }));
     },
-    // 发一颗蛋（闪光蛋也走这里）：蛋作为仓库条目存在，个体/性格/性别/闪光都跟着它，
-    // 放进孵蛋器孵出来就是同一只（与培育蛋同一套机制）
-    grantEgg: (species, eggOpts = {}) => {
-      const arr = (gameData && Array.isArray(gameData.roster)) ? gameData.roster : null;
-      if (!arr) return false;
-      arr.push({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-        kind: 'egg',
-        species: String(species),
-        originSpecies: String(species),
-        gender: eggOpts.gender || rollGender(String(species)),
-        level: 1, exp: 0,
-        evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
-        ivs: eggOpts.ivs || { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
-        nature: eggOpts.nature || 'hardy',
-        shiny: !!eggOpts.shiny,
-        variant: eggOpts.variant || null,   // 特殊外观（如霜奶仙糖饰-口味），孵蛋原地转正后保留
-        source: 'egg',
-        obtainedAt: Date.now(),
-        inRoster: true,
-      });
-      saveGame();
-      return true;
-    },
+    // 发一颗蛋：走仓库蛋条目，和培育蛋同一套孵化机制
+    grantEgg: (species, eggOpts = {}) => grantPrize({ kind: 'egg', species, ...eggOpts }),
     // 上交：按 id 从仓库移除（活动改游戏状态只走 grant / take / grantEgg 这几个口子）
     take: (ids, reason) => {
       const arr = (gameData && Array.isArray(gameData.roster)) ? gameData.roster : [];

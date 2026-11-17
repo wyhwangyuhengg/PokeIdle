@@ -69,6 +69,31 @@ export const LOTTERY_PRIZES = [
   '列阵兵进化石', '狠辣椒进化石', '晶光花进化石', '米立龙进化石', '戟脊龙进化石',
 ];
 
+// 抽奖默认奖项：一等奖从 Mega 石池抽，二/三等奖从道具池抽；日程 JSON 可以逐日覆盖。
+// 随机只决定「物品类型」，数量固定：一/二等奖是单件，三等奖按约 150 糖果的预算折算。
+export const LOTTERY_TIERS = [
+  { id: 1, name: '一等奖', winners: 1, pool: 'first' },
+  { id: 2, name: '二等奖', winners: 2, pool: 'second' },
+  { id: 3, name: '三等奖', winners: 3, pool: 'third' },
+];
+export const LOTTERY_PRIZE_POOLS = {
+  first: LOTTERY_PRIZES,
+  second: [
+    '火之石', '水之石', '雷之石', '叶之石', '冰之石', '月之石', '日之石', '光之石', '暗之石', '觉醒之石',
+    '心之石', '联系绳', '极巨汤', '奇异石',
+    'silver-crown', 'golden-crown', '虹色之羽', 'master-ball',
+  ],
+  third: ['exp-candy', 'candy', 'ultra-ball', 'poke-ball', 'sweet-honey'],
+};
+// 三等奖固定数量：商店价 精灵球 10 / 高级球 25 / 甜甜蜜 40；经验糖果无售价，按 50 糖果/颗折算
+export const LOTTERY_PRIZE_QTY = {
+  'candy': 150,
+  'poke-ball': 15,
+  'ultra-ball': 6,
+  'sweet-honey': 3,
+  'exp-candy': 3,
+};
+
 // 精灵球基础捕获率（最终 = 基础率 × 宝可梦 catchRate × 丢球加成）
 export const CATCH_RATES = {
   'poke-ball': 0.35, 'ultra-ball': 0.70, 'master-ball': 1.00,
@@ -331,6 +356,20 @@ export const BATTLE_TIER_ITEMS = {
 export const BATTLE_REFRESH_MS = 20 * 60 * 1000; // NPC 挑战刷新间隔（20 分钟）
 export const BATTLE_NPC_COUNTS = { novice: 1, veteran: 2, leader: 1, champion: 1 }; // 每波各档 NPC 数量
 export const BATTLE_MONS_COUNT = { novice: 3, veteran: 5, leader: 5, champion: 6 };  // 各档队伍宝可梦数量
+
+// ---- 对战帐篷（游戏厅二楼 4 号机）----
+// 随机 3 只租借 → 自动 3 回合 → 最多 5 层；赢了继续或收手拿游戏币，输了归零。
+export const TENT_DEX_GATE = 800;          // 图鉴解锁条目数
+export const TENT_TEAM_SIZE = 3;           // 固定 3 只
+export const TENT_FLOOR_LEVELS = [50, 55, 60, 65, 70]; // 环境全局等级，双方同层同级
+export const TENT_PAYOUT_MULT = [0, 1.2, 1.8, 2.8, 4.0, 6.0]; // 下标 = 已赢层数
+export const TENT_FLOOR_BST = [[400, 500], [450, 530], [480, 560], [520, 600], [560, 999]];
+export const TENT_LEGEND_CHANCE = [0.05, 0.08, 0.12, 0.18, 1];
+export const TENT_SHINY_RATE = 0.04;       // 闪光
+export const TENT_SQUARE_SHINY_RATE = 0.01; // 方闪（含闪光标记）
+export const TENT_VARIANT_RATE = 0.01;     // RGB / 污染 / 炫彩 各 1%，与闪光独立叠加
+export const TENT_SURRENDER_REFUND = 0.5;  // 开局弃权退款比例
+export const TENT_RECORD_MAX = 10;         // 战绩条数上限
 
 // ---- 经验糖果 ----
 // 不可用糖果购买，唯一来源：NPC 训练家对战胜利概率掉落（见 EXP_CANDY_DROP）

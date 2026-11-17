@@ -1,4 +1,5 @@
 import { CANDY_EXCHANGE, ITEM_NAMES, ITEM_RATES, CATCH_RATES, CATCH_BONUS_INC, ULTRA_BALL_ADD, FLEE_CHANCE, FLEE_CHANCE_INC, FLEE_CHANCE_MAX, SHINY_CHANCE, SQUARE_SHINY_CHANCE, EGG_SHINY_CHANCE, CHARM_SHINY_CHANCE, CHARM_UNCAUGHT_CHANCE, ENCOUNTER_MIN, ENCOUNTER_MAX, BUFF_DURATION, BUFF_ENCOUNTER_MIN, BUFF_ENCOUNTER_MAX, HONEY_RARITY_BOOST, CHARM_RARITY_BOOST, FISH_POKEMON_CHANCE, FISH_BUFF_POKEMON_CHANCE, FISH_RARE_RATE, FISH_WAIT_MIN, FISH_WAIT_MAX, FISH_QTY_MIN, FISH_QTY_MAX, FISH_TRIGGER_MIN, FISH_TRIGGER_MAX, FISH_EVO_CHANCE, REGION_CYCLE, PX_PER_METER, AUTO_FLEE_TIMEOUT, ROAD_SPECIAL_CHANCE, ROAD_SPEED_WALK, ROAD_SPEED_RUN, ROAD_SPEED_BIKE, HATCH_DIST_MIN, HATCH_DIST_MAX, BOUNTY_PER_REGION, TM_PRICE_TIERS, TM_SHOP_DAILY, BOUNTY_CANDY_MIN, BOUNTY_CANDY_MAX, BOUNTY_COMMON_QTY_MIN, BOUNTY_COMMON_QTY_MAX, BLOCK_DISTANCE, BLOCK_QUALITY, TRADE_REFRESH_MS, TRADE_SHINY_CHANCE, FARM_PLANT_COST, FARM_MATURE_MIN, FARM_MATURE_MAX, FARM_HARVEST_MIN, FARM_HARVEST_MAX, FARM_MAX_WATER, FARM_WATER_DROP, FARM_BOARD_DEMANDS, FARM_BOARD_BIG_QTY_MIN, FARM_BOARD_BIG_QTY_MAX, FARM_BOARD_MEGA_QTY_MIN, FARM_BOARD_MEGA_QTY_MAX, FARM_HELPER_WORK_STAGE, FARM_HELPER_REST, MASS_GEN_MIN, MASS_GEN_MAX, MASS_DURATION, MASS_COUNT_MIN, MASS_COUNT_MAX, MASS_SPAWN_MIN, MASS_SPAWN_MAX, MASS_SPAWN_HONEY_MIN, MASS_SPAWN_HONEY_MAX, MASS_SHINY_CHANCE, TWIST_GEN_MIN, TWIST_GEN_MAX, TWIST_DURATION, TWIST_COUNT_MIN, TWIST_SHINY_CHANCE, TWIST_SPAWN_MIN, TWIST_SPAWN_MAX, TWIST_SPAWN_HONEY_MIN, TWIST_SPAWN_HONEY_MAX, TWIST_GUARANTEED_IVS, TWIST_RGB_CHANCE, TWIST_POLLUTED_CHANCE, WILD_LEVEL_MAX, LEGEND_ENCOUNTER_RATE, LEGEND_ENCOUNTER_RATE_BUFF, LEGEND_PITY, LEGEND_LEVEL, TRAIN_SLOTS, TRAIN_XP_PER_MIN, TRAIN_LAZY, TRAIN_SATIETY_MAX, TRAIN_SATIETY_DRAIN_PER_MIN, TRAIN_SATIETY_EAT_AT, TRAIN_SATIETY_PER_BERRY, BATTLE_REFRESH_MS, BATTLE_TIER_BAND, COIN_RATE, DEALER_STAND, BJ_MULT, PENGUIN_STEPS, PENGUIN_BREAK_CHANCE, PENGUIN_MULT, HAND_SIZE, RIICHI_COST, GACHA_DRAW_COST, GACHA_DUP_REFUND, EXP_CANDY_XP, EXP_CANDY_DROP, RELEASE_XP_RATE, TRADE_LEVEL_CHANCE, TRADE_WANT_LEVEL_MIN, TRADE_WANT_LEVEL_MAX, FOLLOWER_DRAW_COST, FOLLOWER_TIER_CHANCE, FOLLOWER_TIER_BOOST, FOLLOWER_STAR_MIN, FOLLOWER_EFFECTS, DISPATCH_DURATIONS, DISPATCH_DUR_MULT, DISPATCH_CANDY_PER_HOUR, DISPATCH_CANDY_JITTER, DISPATCH_FREE_SLOTS, DISPATCH_TYPE_BOOST, DISPATCH_VARIANT_CANDY_BONUS, DISPATCH_EVO_MAX_CHANCE, AUTO_CATCH_BALLS_DEFAULT } from './config.js';
+import { TENT_DEX_GATE, TENT_FLOOR_LEVELS, TENT_PAYOUT_MULT, TENT_RECORD_MAX } from './config.js';
 import { phase, gameData, allPokemon, getPokemonByIndex, getCurrentRegion, currentEncounter, honeyBuffActive, charmBuffActive, saveGame, flushSave, setSaveSuspended, formatNum, pad, pushNav, setGameData, getDefaultSave, ensureGpsState, _fishing, isPokemon } from './state.js';
 import { $, showView, updateTextBox, hideTextBox, updateBackpack, updateStats, applyWindowBg, isOnGameView, isUiMobile, applyCharSprites, showConfirmBar, logicViewport, popupBounds, getUiMode, applyUiMode, isMobilePlatform, touchText, watchOutsidePress, viewportToLogic, tryLoadPokemonIcon, isDualLayout } from './ui.js';
 import { doCandyExchange, doSellBall, useBuffNowOrDefer, refillBuffIfEmpty, ITEM_ICONS, BERRY_ICONS, BERRY_NAMES, sellPriceOf, sellSortRank, itemIconSrc, itemDetailOf, BASIC_ITEM_ORDER } from './items.js';
@@ -236,6 +237,7 @@ function refreshDataStats() {
   const mj = wlStat(gameData.mahjongRecords || [], true);
   const pg = wlStat(gameData.penguinRecords || [], true);
   const vf = wlStat(gameData.voltorbRecords || [], true);
+  const tent = wlStat(gameData.battleTent?.records || [], true);
   $('dataCasinoWL').textContent = `胜 ${cs.w} / 负 ${cs.l} / 平 ${cs.p}`;
   $('dataCasinoNet').textContent = `${cs.net > 0 ? '+' : ''}${formatNum(cs.net)} 币`;
   $('dataMjWL').textContent = `胜 ${mj.w} / 负 ${mj.l} / 平 ${mj.p}`;
@@ -244,6 +246,8 @@ function refreshDataStats() {
   $('dataPgNet').textContent = `${pg.net > 0 ? '+' : ''}${formatNum(pg.net)} 币`;
   $('dataVfWL').textContent = `胜 ${vf.w} / 负 ${vf.l} / 平 ${vf.p}`;
   $('dataVfNet').textContent = `${vf.net > 0 ? '+' : ''}${formatNum(vf.net)} 币`;
+  $('dataTentWL').textContent = `胜 ${tent.w} / 负 ${tent.l} / 平 ${tent.p}`;
+  $('dataTentNet').textContent = `${tent.net > 0 ? '+' : ''}${formatNum(tent.net)} 币`;
   const earnedEl = $('dataEarned');
   if (earnedEl) {
     // 只列基础道具：进化道具/专属道具/薄荷加起来上百种，一行一个铺不开
@@ -302,7 +306,7 @@ export function showDataView() {
   // 数值 span 由 refreshDataStats 按 id 填充，避免整页重建导致滚动位置丢失
   content.innerHTML = `
     <div class="stat-inner">
-      <div class="stat-section">欧非评定</div>
+      <div class="stat-section stat-head"><span>欧非评定</span><button id="dataShareBtn" type="button" class="roster-tool stat-share" title="生成训练家名片" aria-label="生成训练家名片"><svg viewBox="0 0 1024 1024" width="18" height="18"><use xlink:href="#icon-share"></use></svg></button></div>
       <div class="stat-row"><span>称号</span><span id="dataRating"></span></div>
       <div class="stat-row"><span>抽卡欧气</span><span id="dataGachaRating"></span></div>
 
@@ -370,6 +374,8 @@ export function showDataView() {
       <div class="stat-row"><span>跳企鹅 净盈亏</span><span id="dataPgNet"></span></div>
       <div class="stat-row"><span>电球翻牌 胜/负/平</span><span id="dataVfWL"></span></div>
       <div class="stat-row"><span>电球翻牌 净盈亏</span><span id="dataVfNet"></span></div>
+      <div class="stat-row"><span>对战帐篷 胜/负/平</span><span id="dataTentWL"></span></div>
+      <div class="stat-row"><span>对战帐篷 净盈亏</span><span id="dataTentNet"></span></div>
       <div class="stat-row"><span>卡册收集进度</span><span id="dataCardPct"></span></div>
 
       <div class="stat-section">道具累计获得</div>
@@ -380,6 +386,9 @@ export function showDataView() {
   refreshDataStats();
   renderRosterMix(); // 这两块要扫仓库和全部相遇日志，只在进页面时算一次，不跟每秒刷新
   renderNemesis();
+  $('dataShareBtn')?.addEventListener('click', () => {
+    import('./player-card.js').then(m => m.openPlayerCard()).catch(e => console.error('[训练家名片]', e));
+  });
   // 卡册收集进度：卡池数据异步加载（有缓存），加载完成后填入
   import('./album.js').then(m => m.getCardCollectionStats()).then(s => {
     const el = $('dataCardPct');
@@ -388,7 +397,6 @@ export function showDataView() {
   if (showDataView._timer) clearInterval(showDataView._timer);
   showDataView._timer = setInterval(() => {
     if ($('dataView')?.style.display === 'none') {
-      document.getElementById('dataShareBtn')?.remove();
       clearInterval(showDataView._timer);
       showDataView._timer = null;
       return;
@@ -396,25 +404,6 @@ export function showDataView() {
     refreshDataStats();
   }, 1000);
 
-  // 分享按钮钉在应用屏右上角：不在统计列表里占行，滚动时也不跑
-  document.getElementById('dataShareBtn')?.remove();
-  const shareBtn = document.createElement('button');
-  shareBtn.id = 'dataShareBtn';
-  shareBtn.type = 'button';
-  shareBtn.className = 'roster-tool data-share-fab';
-  shareBtn.title = '生成训练家名片';
-  shareBtn.setAttribute('aria-label', '生成训练家名片');
-  shareBtn.innerHTML = '<svg viewBox="0 0 1024 1024" width="18" height="18"><use xlink:href="#icon-share"></use></svg>';
-  shareBtn.addEventListener('click', () => {
-    import('./player-card.js').then(m => m.openPlayerCard()).catch(e => console.error('[训练家名片]', e));
-  });
-  ($('appScreen') || document.querySelector('.app-screen') || document.body).appendChild(shareBtn);
-  const removeShareBtn = () => {
-    if ($('dataView')?.style.display !== 'none') return;
-    shareBtn.remove();
-    window.removeEventListener('view-changed', removeShareBtn);
-  };
-  window.addEventListener('view-changed', removeShareBtn);
   showView('dataView');
 }
 
@@ -2411,6 +2400,7 @@ const TUTORIAL_SECTIONS = [
   {
     title: '遭遇',
     html: `<p>每隔 <b>${Math.round(ENCOUNTER_MIN / 60)}~${Math.round(ENCOUNTER_MAX / 60)}</b> 分钟遇到一只<b>当前地区</b>的野生宝可梦。</p>`
+      + `<p>当前地区看脚下路段：每条地区间道路分成两段固定编号，各自属于一端的地区，和行进方向无关（13号道路固定算丰缘）。</p>`
       + `<p>野生宝可梦的等级在<b> ${1}~${WILD_LEVEL_MAX} 级</b>之间。</p>`
       + `<p>每个地区每天还有限定的<b>神兽</b>可以遭遇：遇敌时约 <b>1/${Math.round(1 / LEGEND_ENCOUNTER_RATE)}</b> 的概率直接遇到，甜甜蜜 / 闪耀护符生效期间约 <b>1/${Math.round(1 / LEGEND_ENCOUNTER_RATE_BUFF)}</b>，等级固定 <b>${LEGEND_LEVEL}级</b>。</p>`
       + `<p>保底 <b>${LEGEND_PITY}</b> 次遭遇出神兽：只累计<b>普通道路遇敌</b>（大量出没 / 时空扭曲 / 钓鱼的遭遇不算），且只保证<b>遇到</b>，不保证捕获。</p>`
@@ -2476,7 +2466,7 @@ const TUTORIAL_SECTIONS = [
   {
     title: '地区',
     html: `<p>游戏共 <b>${REGION_CYCLE.length}</b> 个地区：${REGION_CYCLE.map(r => `<b>${r}</b>`).join('、')}。</p>`
-      + `<p>不同地区遇到的宝可梦各不相同：对于地区之间的道路，每段路<b>前半程</b>算出发地区、<b>后半程</b>算目标地区。</p>`
+      + `<p>不同地区遇到的宝可梦各不相同。地区之间的道路会拆成两段固定编号，分别属于这条路的两个端点地区；脚下在哪一段就按哪一段的地区池遇敌，和行进方向无关（例如丰缘↔帕底亚：13号是丰缘侧、14号是帕底亚侧）。</p>`
   },
   {
     title: '导航',
@@ -2485,6 +2475,7 @@ const TUTORIAL_SECTIONS = [
       + `<p>开启<b>漫游</b>后，没有目的地时会自动沿<b>环国路线</b>（合众→帕底亚→阿罗拉→丰缘→关都→城都→神奥→卡洛斯→伽勒尔→合众…循环）选择下一站。</p>`
       + `<p>到达目的地后导航结束，玩家停留在当前区域（若开启<b>漫游</b>，会自动选择下一站）。</p>`
       + `<p>进度由主角实际移动驱动——跑步更快，遇敌或钓鱼时暂停（详见「<b>钓鱼</b>」章节）。</p>`
+      + `<p>道路号 1~28：每两个号是一条相邻地区道路的两半，靠近哪个地区就属于哪个地区，和导航方向无关；例如13号属丰缘、14号属帕底亚。</p>`
       + `<p>导航推进的是<b>所在地区</b>（决定遇敌池、地区悬赏、大量出没事件）；<b>孵蛋</b>与<b>树果方块</b>按<b>行走里程</b>计算，与是否导航<b>无关</b>。</p>`
   },
   {
@@ -2776,8 +2767,17 @@ const TUTORIAL_SECTIONS = [
         ['补给箱', '5%'],
       ], ['图案', '单轮权重'], ['auto', 'auto'])
       + `<p>橙橙果与桃桃果各对应 <b>6</b> 种树果，两个图案之间不能互相配对。</p>`
-      + `<p>中奖后从对应奖池的 <b>8</b> 个随机格子中停 <b>1</b> 格，每格 <b>1/8</b>，格子上的数量已按注额放大。补给箱按权重开经验糖果、甜甜蜜、糖果、神秘蛋、球、游戏币等；神秘蛋图案直接出神秘蛋。游戏币符号按注额返币，2 同的返币高于本局注额。</p>`
+      + `<p>中奖后从对应奖池的 <b>8</b> 个随机格子中停 <b>1</b> 格，每格 <b>1/8</b>，格子上的数量已按注额放大。补给箱按权重开经验糖果、甜甜蜜、糖果、神秘蛋、球、游戏币等。游戏币符号按注额返币，2 同的返币高于本局注额。</p>`
       + `<p>奖励按注额等比放大，10 币和 1000 币用同一套倍率。</p>`,
+  },
+  {
+    title: '对战帐篷',
+    html: `<p>在<b>游戏厅二楼</b>的<b>第四台</b>机器进入，图鉴解锁 <b>${TENT_DEX_GATE}</b> 种后开放。下注游戏币后随机租借 <b>3</b> 只宝可梦，不能挑选；每层开始全队满血。</p>`
+      + `<p>共 <b>${TENT_FLOOR_LEVELS.length}</b> 层，双方等级依次为 <b>${TENT_FLOOR_LEVELS.join(' / ')}</b>，对手阵容的出场顺序随机。</p>`
+      + `<p>战斗手动操作：点「<b>攻击</b>」让宝可梦按性格自动出招，点「<b>宝可梦</b>」换后备；开场前可拖动我方格子调整出场顺序。只剩最后一只时自动出招。</p>`
+      + `<p>打赢一层后可以<b>收手</b>拿走当前提现，或<b>继续</b>下一层；继续后可从败者队伍选 1 只替换我方，也可以不换。提现倍率：</p>`
+      + tutorialTable(TENT_PAYOUT_MULT.slice(1).map((m, i) => [`${i + 1} 层`, `×${m}`]), ['已赢层数', '提现倍率'], ['auto', 'auto'])
+      + `<p>带闪光 / 方闪 / 时空扭曲外观的宝可梦每场可<b>挺住</b>一次致死伤害。战绩保留最近 <b>${TENT_RECORD_MAX}</b> 场。</p>`,
   },
   {
     title: '随从',
@@ -2877,6 +2877,7 @@ const TUTORIAL_SUMMARIES = {
   '口袋麻将': '玩法借鉴自原子碰将，只有对对胡。',
   '抽卡机': '单纯收集卡牌，无特殊作用。',
   '老虎机': '卡册集齐后开放。',
+  '对战帐篷': '三只租借，按性格出招，五层封顶。',
   '随从': '不知道干什么的时候可以抽一只随从。',
   '派遣': '离线也计入派遣时长。',
   '自动操作': '好好设置一下，解放双手必备。',
@@ -2885,9 +2886,18 @@ const TUTORIAL_SUMMARIES = {
   '宝可梦难度': '稀有度越高越稀有。',
   '状态栏图标': '点击可以隐藏任务栏图标。',
 };
+const TENT_TUTORIAL_INDEX = TUTORIAL_SECTIONS.findIndex((s) => s.title === '对战帐篷');
 function tutorialRewards() {
   if (!gameData.tutorialRewards) gameData.tutorialRewards = { claimed: [] };
-  return gameData.tutorialRewards;
+  const r = gameData.tutorialRewards;
+  if (!Array.isArray(r.claimed)) r.claimed = [];
+  // 新章节插在老虎机后面：旧存档按原下标补一位，已领取状态不变
+  if (!r.rev) {
+    const at = TENT_TUTORIAL_INDEX >= 0 ? TENT_TUTORIAL_INDEX : Infinity;
+    r.claimed = r.claimed.map((i) => (Number(i) >= at ? Number(i) + 1 : Number(i)));
+    r.rev = 2;
+  }
+  return r;
 }
 // 是否还有未领取的教程章节（手机"教程"app 图标与标题栏聚合红点共用）
 // 教程章节的平台适配：桌面专属章节整章不展示；正文与总结的触屏措辞替换见 ui.js 的 touchText
